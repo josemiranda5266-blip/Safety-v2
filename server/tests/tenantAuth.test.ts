@@ -4171,6 +4171,214 @@ export async function runAllTenantAuthTests(): Promise<{ total: number; passed: 
     "El servicio de IA no está disponible temporalmente."
   );
 
+  // ==========================================
+  // FINOPS TOKEN BUDGET TESTS
+  // ==========================================
+  await runTest("TEST G3-FINOPS-01: CHAT_RAG pasa si los tokens están dentro del presupuesto (20k)", async () => {
+    const { getGenAI } = await import("../services/gemini");
+    const ai = getGenAI();
+    const originalCountTokens = ai.models.countTokens;
+    const originalGenerateContent = ai.models.generateContent;
+
+    // Stub countTokens to return 1000 tokens
+    ai.models.countTokens = async () => ({ totalTokens: 1000 } as any);
+    // Stub generateContent to return a successful mock response
+    ai.models.generateContent = async (params: any) => {
+      assert(params.config?.maxOutputTokens === 2000, "Debe inyectar maxOutputTokens=2000 para CHAT_RAG");
+      return {
+        text: "Respuesta de prueba",
+        usageMetadata: {
+          promptTokenCount: 1000,
+          candidatesTokenCount: 100,
+          thoughtsTokenCount: 0,
+          cachedContentTokenCount: 0,
+        },
+      } as any;
+    };
+
+    try {
+      const { generateContentWithRetry } = await import("../services/gemini");
+      const res = await generateContentWithRetry({
+        contents: "hola",
+        operationType: "CHAT_RAG",
+      });
+      assert(res.text === "Respuesta de prueba", "Respuesta devuelta exitosamente");
+    } finally {
+      ai.models.countTokens = originalCountTokens;
+      ai.models.generateContent = originalGenerateContent;
+    }
+  });
+
+  await runTest("TEST G3-FINOPS-02: CHAT_RAG falla si excede presupuesto de entrada (20k) y NO consume créditos", async () => {
+    const { getGenAI } = await import("../services/gemini");
+    const ai = getGenAI();
+    const originalCountTokens = ai.models.countTokens;
+    const originalGenerateContent = ai.models.generateContent;
+
+    // Stub countTokens to return 25000 tokens (> 20k)
+    ai.models.countTokens = async () => ({ totalTokens: 25000 } as any);
+    ai.models.generateContent = async () => {
+      throw new Error("No debería invocarse generateContent si el presupuesto es superado");
+    };
+
+    try {
+      const { generateContentWithRetry } = await import("../services/gemini");
+      
+      // Check credits before
+      const profileBefore = getOrCreateUserProfile("user_owner_a");
+      const initialCreditsUsed = profileBefore.creditsUsed;
+
+      let threw = false;
+      try {
+        await generateContentWithRetry({
+          contents: "prompt gigante",
+          operationType: "CHAT_RAG",
+        });
+      } catch (err: any) {
+        threw = true;
+        assert(err.status === 400, "Debe ser HTTP 400");
+        assert(err.code === "TOKEN_BUDGET_EXCEEDED", "Debe tener código TOKEN_BUDGET_EXCEEDED");
+        assert(err.message.includes("excede el presupuesto"), "Mensaje de presupuesto correcto");
+      }
+      assert(threw, "Debe lanzar excepción por exceder el presupuesto");
+
+      // Verify no credits are deducted
+      const profileAfter = getOrCreateUserProfile("user_owner_a");
+      assert(profileAfter.creditsUsed === initialCreditsUsed, "Los créditos no deben descontarse si falla por presupuesto");
+    } finally {
+      ai.models.countTokens = originalCountTokens;
+      ai.models.generateContent = originalGenerateContent;
+    }
+  });
+
+  await runTest("TEST G3-FINOPS-03: DOCUMENT_COMPARISON falla si excede presupuesto de entrada (30k)", async () => {
+    const { getGenAI } = await import("../services/gemini");
+    const ai = getGenAI();
+    const originalCountTokens = ai.models.countTokens;
+    const originalGenerateContent = ai.models.generateContent;
+
+    // Stub countTokens to return 35000 tokens (> 30k)
+    ai.models.countTokens = async () => ({ totalTokens: 35000 } as any);
+    ai.models.generateContent = async () => {
+      throw new Error("No debería invocarse generateContent si el presupuesto es superado");
+    };
+
+    try {
+      const { generateContentWithRetry } = await import("../services/gemini");
+      let threw = false;
+      try {
+        await generateContentWithRetry({
+          contents: "documentos gigantes",
+          operationType: "DOCUMENT_COMPARISON",
+        });
+      } catch (err: any) {
+        threw = true;
+        assert(err.status === 400, "Debe ser HTTP 400");
+        assert(err.code === "TOKEN_BUDGET_EXCEEDED", "Debe tener código TOKEN_BUDGET_EXCEEDED");
+      }
+      assert(threw, "Debe lanzar excepción por exceder el presupuesto");
+    } finally {
+      ai.models.countTokens = originalCountTokens;
+      ai.models.generateContent = originalGenerateContent;
+    }
+  });
+
+  await runTest("TEST G3-FINOPS-04: OCR falla si excede presupuesto de entrada (15k)", async () => {
+    const { getGenAI } = await import("../services/gemini");
+    const ai = getGenAI();
+    const originalCountTokens = ai.models.countTokens;
+    const originalGenerateContent = ai.models.generateContent;
+
+    // Stub countTokens to return 16000 tokens (> 15k)
+    ai.models.countTokens = async () => ({ totalTokens: 16000 } as any);
+    ai.models.generateContent = async () => {
+      throw new Error("No debería invocarse generateContent si el presupuesto es superado");
+    };
+
+    try {
+      const { generateContentWithRetry } = await import("../services/gemini");
+      let threw = false;
+      try {
+        await generateContentWithRetry({
+          contents: "imagen con mucho texto",
+          operationType: "OCR",
+        });
+      } catch (err: any) {
+        threw = true;
+        assert(err.status === 400, "Debe ser HTTP 400");
+        assert(err.code === "TOKEN_BUDGET_EXCEEDED", "Debe tener código TOKEN_BUDGET_EXCEEDED");
+      }
+      assert(threw, "Debe lanzar excepción por exceder el presupuesto");
+    } finally {
+      ai.models.countTokens = originalCountTokens;
+      ai.models.generateContent = originalGenerateContent;
+    }
+  });
+
+  await runTest("TEST G3-FINOPS-05: IMAGE_ANALYSIS falla si excede presupuesto de entrada (15k)", async () => {
+    const { getGenAI } = await import("../services/gemini");
+    const ai = getGenAI();
+    const originalCountTokens = ai.models.countTokens;
+    const originalGenerateContent = ai.models.generateContent;
+
+    // Stub countTokens to return 18000 tokens (> 15k)
+    ai.models.countTokens = async () => ({ totalTokens: 18000 } as any);
+    ai.models.generateContent = async () => {
+      throw new Error("No debería invocarse generateContent si el presupuesto es superado");
+    };
+
+    try {
+      const { generateContentWithRetry } = await import("../services/gemini");
+      let threw = false;
+      try {
+        await generateContentWithRetry({
+          contents: "imagen de alta resolución",
+          operationType: "IMAGE_ANALYSIS",
+        });
+      } catch (err: any) {
+        threw = true;
+        assert(err.status === 400, "Debe ser HTTP 400");
+        assert(err.code === "TOKEN_BUDGET_EXCEEDED", "Debe tener código TOKEN_BUDGET_EXCEEDED");
+      }
+      assert(threw, "Debe lanzar excepción por exceder el presupuesto");
+    } finally {
+      ai.models.countTokens = originalCountTokens;
+      ai.models.generateContent = originalGenerateContent;
+    }
+  });
+
+  await runTest("TEST G3-FINOPS-06: DOCUMENT_COMPARISON verifica inyección de maxOutputTokens=3000", async () => {
+    const { getGenAI } = await import("../services/gemini");
+    const ai = getGenAI();
+    const originalCountTokens = ai.models.countTokens;
+    const originalGenerateContent = ai.models.generateContent;
+
+    ai.models.countTokens = async () => ({ totalTokens: 2000 } as any);
+    ai.models.generateContent = async (params: any) => {
+      assert(params.config?.maxOutputTokens === 3000, "Debe inyectar maxOutputTokens=3000 para DOCUMENT_COMPARISON");
+      return {
+        text: "{}",
+        usageMetadata: {
+          promptTokenCount: 2000,
+          candidatesTokenCount: 150,
+          thoughtsTokenCount: 0,
+          cachedContentTokenCount: 0,
+        },
+      } as any;
+    };
+
+    try {
+      const { generateContentWithRetry } = await import("../services/gemini");
+      await generateContentWithRetry({
+        contents: "comparar",
+        operationType: "DOCUMENT_COMPARISON",
+      });
+    } finally {
+      ai.models.countTokens = originalCountTokens;
+      ai.models.generateContent = originalGenerateContent;
+    }
+  });
+
   const passed = testResults.filter((r) => r.passed).length;
   const failed = testResults.filter((r) => !r.passed).length;
 

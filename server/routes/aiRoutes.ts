@@ -87,6 +87,7 @@ Instrucción: Analiza minuciosamente los fragmentos anteriores de la biblioteca.
           systemInstruction,
           temperature: 0.1,
         },
+        operationType: "CHAT_RAG",
       });
 
       const answer =
@@ -187,6 +188,7 @@ Instrucciones:
             required: ["summaryComparison", "similarities", "differences", "normativeDetails"],
           },
         },
+        operationType: "DOCUMENT_COMPARISON",
       });
 
       const parsed = JSON.parse(response.text || "{}");
@@ -256,6 +258,7 @@ Devuelve únicamente una estructura JSON válida con el siguiente formato:
             required: ["title", "category", "extractedText", "summary", "tags"],
           },
         },
+        operationType: "OCR",
       });
 
       const parsedData = JSON.parse(response.text || "{}");
@@ -354,6 +357,7 @@ Responde únicamente en formato JSON con la siguiente estructura:
             required: ["overallAssessment", "riskLevel", "hazards", "recommendations"],
           },
         },
+        operationType: "IMAGE_ANALYSIS",
       });
 
       const result = JSON.parse(response.text || "{}");

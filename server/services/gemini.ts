@@ -103,12 +103,20 @@ export function mapToGeminiPublicError(error: any): GeminiPublicError {
   return new GeminiPublicError(status, code, message);
 }
 
+export const FINOPS_BUDGETS = {
+  CHAT_RAG: { inputLimit: 20000, outputLimit: 2000 },
+  DOCUMENT_COMPARISON: { inputLimit: 30000, outputLimit: 3000 },
+  OCR: { inputLimit: 15000, outputLimit: 4000 },
+  IMAGE_ANALYSIS: { inputLimit: 15000, outputLimit: 3000 }
+};
+
 export interface GenerateWithRetryOptions {
   model?: string;
   contents: any;
   config?: any;
   maxRetries?: number;
   initialDelayMs?: number;
+  operationType?: "CHAT_RAG" | "DOCUMENT_COMPARISON" | "OCR" | "IMAGE_ANALYSIS";
 }
 
 /**
@@ -134,6 +142,36 @@ export async function generateContentWithRetry(options: GenerateWithRetryOptions
     throw new GeminiPublicError(500, "AI_SERVICE_ERROR", "No fue posible procesar la solicitud de IA.");
   }
 
+  // Pre-request FinOps token count verification
+  if (options.operationType && FINOPS_BUDGETS[options.operationType]) {
+    const budget = FINOPS_BUDGETS[options.operationType];
+    try {
+      const countRes = await ai.models.countTokens({
+        model: primaryModel,
+        contents: options.contents,
+      });
+      const inputTokens = countRes.totalTokens || 0;
+      if (inputTokens > budget.inputLimit) {
+        throw new GeminiPublicError(
+          400,
+          "TOKEN_BUDGET_EXCEEDED",
+          `La solicitud excede el presupuesto máximo de tokens de entrada permitido para esta operación (${inputTokens} > ${budget.inputLimit}).`
+        );
+      }
+    } catch (countErr: any) {
+      if (countErr instanceof GeminiPublicError) {
+        throw countErr;
+      }
+      console.warn("[FinOps Token Count Warning]", countErr?.message || String(countErr));
+    }
+  }
+
+  // Prepare final config with maxOutputTokens override if operationType budget is present
+  const finalConfig = { ...(options.config || {}) };
+  if (options.operationType && FINOPS_BUDGETS[options.operationType]) {
+    finalConfig.maxOutputTokens = FINOPS_BUDGETS[options.operationType].outputLimit;
+  }
+
   let currentModel = primaryModel;
 
   for (let attempt = 1; attempt <= maxRetries; attempt++) {
@@ -141,8 +179,20 @@ export async function generateContentWithRetry(options: GenerateWithRetryOptions
       const response = await ai.models.generateContent({
         model: currentModel,
         contents: options.contents,
-        config: options.config,
+        config: finalConfig,
       });
+
+      // Post-request FinOps usage log
+      if (response.usageMetadata) {
+        const { promptTokenCount, candidatesTokenCount, thoughtsTokenCount, cachedContentTokenCount } = response.usageMetadata;
+        console.log("[FinOps Token Observability]", {
+          operationType: options.operationType || "UNKNOWN",
+          promptTokenCount: promptTokenCount || 0,
+          candidatesTokenCount: candidatesTokenCount || 0,
+          thoughtsTokenCount: thoughtsTokenCount || 0,
+          cachedContentTokenCount: cachedContentTokenCount || 0,
+        });
+      }
 
       return response;
     } catch (error: any) {

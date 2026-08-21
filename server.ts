@@ -7,6 +7,9 @@ import { generalApiLimiter } from "./server/middleware/rateLimiter";
 import { extractAuthUser } from "./server/middleware/auth";
 import aiRoutes from "./server/routes/aiRoutes";
 import userRoutes from "./server/routes/userRoutes";
+import companyRoutes from "./server/routes/companyRoutes";
+import establishmentRoutes from "./server/routes/establishmentRoutes";
+import employeeRoutes from "./server/routes/employeeRoutes";
 
 dotenv.config();
 
@@ -45,6 +48,11 @@ app.get("/api/health", (_req, res) => {
 // Modular Routes
 app.use("/api", aiRoutes);
 app.use("/api/user", userRoutes);
+
+// Safety IA V2 Multi-tenant Routes
+app.use("/api/v2/companies", companyRoutes);
+app.use("/api/v2/establishments", establishmentRoutes);
+app.use("/api/v2/employees", employeeRoutes);
 
 // Vite Middleware for dev or static server in prod
 async function startServer() {

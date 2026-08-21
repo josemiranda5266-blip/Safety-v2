@@ -921,13 +921,12 @@ export async function runAllTenantAuthTests(): Promise<{ total: number; passed: 
       name: "Empresa Sanitizada",
       ownerUid: "owner_123",
       contactEmail: "sanitized@test.com",
-      plan: "invalid_plan_tier", // should default to free
-      planStatus: "invalid_status", // should default to active
+      // absent plan & planStatus -> defaults to free and active
     });
 
-    assert(sanitized !== undefined, "Sanitiza datos válidos con defaults seguros");
-    assert(sanitized?.plan === "free", "Plan inválido cae en default 'free'");
-    assert(sanitized?.planStatus === "active", "PlanStatus inválido cae en default 'active'");
+    assert(sanitized !== undefined, "Sanitiza datos válidos con defaults seguros para campos ausentes");
+    assert(sanitized?.plan === "free", "Plan ausente cae en default 'free'");
+    assert(sanitized?.planStatus === "active", "PlanStatus ausente cae en default 'active'");
 
     // Missing mandatory ID
     const invalid = sanitizeOrganization({ name: "No ID" });
@@ -1425,6 +1424,158 @@ export async function runAllTenantAuthTests(): Promise<{ total: number; passed: 
     const context = await resolveAuthorizationContext("user_tr", "tr@org.com", "org_tr");
     assert(context !== null, "Context resolved");
     assert(readCount === 2, `Exactamente 2 lecturas realizadas a Firestore (se realizaron: ${readCount})`);
+  });
+
+  // =========================================================================
+  // FASE 3 MICRO-HARDENING SANITIZATION TESTS (TEST 79 - TEST 88)
+  // =========================================================================
+
+  // TEST 79: Organization con plan inválido → reject
+  await runTest("TEST 79: Organization con plan inválido → reject", () => {
+    const org = sanitizeOrganization({
+      id: "org_79",
+      name: "Org 79",
+      ownerUid: "owner_79",
+      contactEmail: "org79@test.com",
+      plan: "super_ultra_unlimited_plan",
+    });
+    assert(org === undefined, "Organization con plan inválido debe ser rechazada");
+  });
+
+  // TEST 80: Organization con planStatus inválido → reject
+  await runTest("TEST 80: Organization con planStatus inválido → reject", () => {
+    const org = sanitizeOrganization({
+      id: "org_80",
+      name: "Org 80",
+      ownerUid: "owner_80",
+      contactEmail: "org80@test.com",
+      planStatus: "super_active_godmode",
+    });
+    assert(org === undefined, "Organization con planStatus inválido debe ser rechazada");
+  });
+
+  // TEST 81: Membership active = "false" → reject
+  await runTest("TEST 81: Membership active = \"false\" → reject", () => {
+    const mem = sanitizeMembership({
+      id: "mem_81",
+      orgId: "org_81",
+      userId: "user_81",
+      userEmail: "user81@test.com",
+      role: "member",
+      active: "false",
+    });
+    assert(mem === undefined, "Membership con active string \"false\" debe ser rechazada");
+  });
+
+  // TEST 82: Membership active = 1 → reject
+  await runTest("TEST 82: Membership active = 1 → reject", () => {
+    const mem = sanitizeMembership({
+      id: "mem_82",
+      orgId: "org_82",
+      userId: "user_82",
+      userEmail: "user82@test.com",
+      role: "member",
+      active: 1,
+    });
+    assert(mem === undefined, "Membership con active number 1 debe ser rechazada");
+  });
+
+  // TEST 83: Membership active = null → reject
+  await runTest("TEST 83: Membership active = null → reject", () => {
+    const mem = sanitizeMembership({
+      id: "mem_83",
+      orgId: "org_83",
+      userId: "user_83",
+      userEmail: "user83@test.com",
+      role: "member",
+      active: null,
+    });
+    assert(mem === undefined, "Membership con active null debe ser rechazada");
+  });
+
+  // TEST 84: assignedCompanyIds con elemento no-string → reject
+  await runTest("TEST 84: assignedCompanyIds con elemento no-string → reject", () => {
+    const mem = sanitizeMembership({
+      id: "mem_84",
+      orgId: "org_84",
+      userId: "user_84",
+      userEmail: "user84@test.com",
+      role: "member",
+      active: true,
+      assignedCompanyIds: ["companyA", 123, "companyB"],
+    });
+    assert(mem === undefined, "assignedCompanyIds con número debe ser rechazado completamente");
+  });
+
+  // TEST 85: assignedCompanyIds con string vacío → reject
+  await runTest("TEST 85: assignedCompanyIds con string vacío → reject", () => {
+    const mem = sanitizeMembership({
+      id: "mem_85",
+      orgId: "org_85",
+      userId: "user_85",
+      userEmail: "user85@test.com",
+      role: "member",
+      active: true,
+      assignedCompanyIds: ["companyA", "   ", "companyB"],
+    });
+    assert(mem === undefined, "assignedCompanyIds con string vacío o whitespace debe ser rechazado");
+  });
+
+  // TEST 86: assignedCompanyIds completamente válido → accept
+  await runTest("TEST 86: assignedCompanyIds completamente válido → accept", () => {
+    const mem = sanitizeMembership({
+      id: "mem_86",
+      orgId: "org_86",
+      userId: "user_86",
+      userEmail: "user86@test.com",
+      role: "member",
+      active: true,
+      assignedCompanyIds: ["companyA", "companyB"],
+    });
+    assert(mem !== undefined, "Membership con assignedCompanyIds válido debe ser aceptada");
+    assert(mem?.assignedCompanyIds?.length === 2, "Array contiene 2 elementos");
+    assert(mem?.assignedCompanyIds?.[0] === "companyA", "Elemento 0 es companyA");
+    assert(mem?.assignedCompanyIds?.[1] === "companyB", "Elemento 1 es companyB");
+  });
+
+  // TEST 87: Membership role inválido → reject
+  await runTest("TEST 87: Membership role inválido → reject", () => {
+    const mem = sanitizeMembership({
+      id: "mem_87",
+      orgId: "org_87",
+      userId: "user_87",
+      userEmail: "user87@test.com",
+      role: "root_hacker",
+      active: true,
+    });
+    assert(mem === undefined, "Membership con role inválido debe ser rechazada");
+  });
+
+  // TEST 88: Datos válidos existentes → continúan funcionando
+  await runTest("TEST 88: Datos válidos existentes → continúan funcionando", () => {
+    const org = sanitizeOrganization({
+      id: "org_88",
+      name: "Empresa 88",
+      ownerUid: "owner_88",
+      contactEmail: "org88@test.com",
+      plan: "enterprise",
+      planStatus: "active",
+    });
+    assert(org !== undefined, "Organization válida aceptada");
+    assert(org?.plan === "enterprise", "Plan enterprise correcto");
+
+    const mem = sanitizeMembership({
+      id: "mem_88",
+      orgId: "org_88",
+      userId: "user_88",
+      userEmail: "user88@test.com",
+      role: "admin",
+      active: true,
+      assignedCompanyIds: ["comp_1"],
+    });
+    assert(mem !== undefined, "Membership válida aceptada");
+    assert(mem?.role === "admin", "Role admin correcto");
+    assert(mem?.active === true, "Active boolean true correcto");
   });
 
   const passed = testResults.filter((r) => r.passed).length;

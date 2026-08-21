@@ -21,13 +21,23 @@ export function sanitizeOrganization(raw: Record<string, unknown>): Organization
     return undefined;
   }
 
-  const plan = (typeof raw.plan === "string" && VALID_PLAN_TIERS.includes(raw.plan as UserPlanTier))
-    ? (raw.plan as UserPlanTier)
-    : "free";
+  let plan: UserPlanTier = "free";
+  if (raw.plan !== undefined && raw.plan !== null) {
+    if (typeof raw.plan === "string" && VALID_PLAN_TIERS.includes(raw.plan as UserPlanTier)) {
+      plan = raw.plan as UserPlanTier;
+    } else {
+      return undefined;
+    }
+  }
 
-  const planStatus = (typeof raw.planStatus === "string" && ["active", "trial", "past_due", "cancelled"].includes(raw.planStatus))
-    ? (raw.planStatus as Organization["planStatus"])
-    : "active";
+  let planStatus: Organization["planStatus"] = "active";
+  if (raw.planStatus !== undefined && raw.planStatus !== null) {
+    if (typeof raw.planStatus === "string" && ["active", "trial", "past_due", "cancelled"].includes(raw.planStatus)) {
+      planStatus = raw.planStatus as Organization["planStatus"];
+    } else {
+      return undefined;
+    }
+  }
 
   const org: Organization = {
     id,
@@ -49,7 +59,7 @@ export function sanitizeOrganization(raw: Record<string, unknown>): Organization
 
 /**
  * Validates and sanitizes raw membership data from Firestore.
- * Enforces valid roles and active flags.
+ * Enforces valid roles, boolean active flags, and strictly validated assignedCompanyIds.
  */
 export function sanitizeMembership(raw: Record<string, unknown>): Membership | undefined {
   if (!raw || typeof raw !== "object") return undefined;
@@ -58,7 +68,11 @@ export function sanitizeMembership(raw: Record<string, unknown>): Membership | u
   const orgId = typeof raw.orgId === "string" ? raw.orgId.trim() : "";
   const userId = typeof raw.userId === "string" ? raw.userId.trim() : "";
   const userEmail = typeof raw.userEmail === "string" ? raw.userEmail.trim() : "";
-  const active = Boolean(raw.active);
+
+  if (typeof raw.active !== "boolean") {
+    return undefined;
+  }
+  const active: boolean = raw.active;
 
   if (!id || !orgId || !userId || !userEmail) {
     return undefined;
@@ -73,11 +87,16 @@ export function sanitizeMembership(raw: Record<string, unknown>): Membership | u
 
   // Validate assignedCompanyIds
   let assignedCompanyIds: string[] | undefined = undefined;
-  if (Array.isArray(raw.assignedCompanyIds)) {
-    const validIds = raw.assignedCompanyIds.filter((cid): cid is string => typeof cid === "string" && cid.trim() !== "");
-    if (validIds.length > 0) {
-      assignedCompanyIds = validIds;
+  if (raw.assignedCompanyIds !== undefined && raw.assignedCompanyIds !== null) {
+    if (!Array.isArray(raw.assignedCompanyIds)) {
+      return undefined;
     }
+    for (const item of raw.assignedCompanyIds) {
+      if (typeof item !== "string" || item.trim() === "") {
+        return undefined;
+      }
+    }
+    assignedCompanyIds = raw.assignedCompanyIds.map((cid: string) => cid.trim());
   }
 
   const membership: Membership = {

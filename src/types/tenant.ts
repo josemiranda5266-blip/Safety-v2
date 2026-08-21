@@ -1,3 +1,6 @@
+// Temporal consistency: All timestamps are ISO 8601 strings (UTC) in this phase.
+// The future persistence layer will convert between Firestore Timestamp <-> ISO string.
+
 export type PlatformUserRole =
   | 'platform_admin'
   | 'consultant_admin'
@@ -17,8 +20,8 @@ export interface UserProfileV2 {
   professionalLicenseNumber?: string; // Matrícula profesional H&S
   role: PlatformUserRole;
   activeOrgId?: string;
-  createdAt: string;
-  updatedAt?: string;
+  createdAt: string; // ISO 8601 string
+  updatedAt?: string; // ISO 8601 string
 }
 
 export interface Organization {
@@ -32,8 +35,8 @@ export interface Organization {
   contactEmail: string;
   contactPhone?: string;
   address?: string;
-  createdAt: string;
-  updatedAt?: string;
+  createdAt: string; // ISO 8601 string
+  updatedAt?: string; // ISO 8601 string
 }
 
 export interface Membership {
@@ -45,8 +48,8 @@ export interface Membership {
   role: MembershipRole;
   assignedCompanyIds?: string[]; // Si está vacío o undefined, tiene alcance a todas las empresas de la Org
   active: boolean;
-  invitedAt: string;
-  joinedAt?: string;
+  invitedAt: string; // ISO 8601 string
+  joinedAt?: string; // ISO 8601 string
 }
 
 export interface Company {
@@ -61,8 +64,8 @@ export interface Company {
   artPolicyNumber?: string;
   isLegacyMigrated?: boolean; // Marca para identificar empresas migradas desde V1
   active: boolean;
-  createdAt: string;
-  updatedAt?: string;
+  createdAt: string; // ISO 8601 string
+  updatedAt?: string; // ISO 8601 string
 }
 
 export interface Establishment {
@@ -82,8 +85,8 @@ export interface Establishment {
   isConstructionSite?: boolean;
   isLegacyMigrated?: boolean;
   active: boolean;
-  createdAt: string;
-  updatedAt?: string;
+  createdAt: string; // ISO 8601 string
+  updatedAt?: string; // ISO 8601 string
 }
 
 export interface Sector {
@@ -96,8 +99,8 @@ export interface Sector {
   responsibleName?: string;
   noiseLevelEstimatedDBA?: number;
   requiresSpecificPPE?: boolean;
-  createdAt: string;
-  updatedAt?: string;
+  createdAt: string; // ISO 8601 string
+  updatedAt?: string; // ISO 8601 string
 }
 
 export interface Position {
@@ -111,8 +114,8 @@ export interface Position {
   standardRequiredPPEIds?: string[]; // IDs de catálogo de EPP requerido por defecto
   requiresAnnualAudiometry?: boolean;
   requiresRespiratoryProtection?: boolean;
-  createdAt: string;
-  updatedAt?: string;
+  createdAt: string; // ISO 8601 string
+  updatedAt?: string; // ISO 8601 string
 }
 
 export interface Employee {
@@ -125,17 +128,13 @@ export interface Employee {
   cuil: string;
   firstName: string;
   lastName: string;
-  hireDate?: string;
+  hireDate?: string; // ISO 8601 string
   active: boolean;
   isContractorStaff?: boolean;
   contractorId?: string;
-  emergencyContact?: {
-    name: string;
-    relationship: string;
-    phone: string;
-  };
-  createdAt: string;
-  updatedAt?: string;
+  // NOTE: Medical data and emergencyContact removed from V2 core to minimize PII exposure
+  createdAt: string; // ISO 8601 string
+  updatedAt?: string; // ISO 8601 string
 }
 
 export interface Contractor {
@@ -146,13 +145,13 @@ export interface Contractor {
   cuit: string;
   activityDescription: string;
   artInsuranceName: string;
-  artCertificateExpiryDate: string; // Vencimiento de nómina y cobertura con cláusula de no repetición
-  lifeInsuranceExpiryDate?: string;
+  artCertificateExpiryDate: string; // Vencimiento de nómina y cobertura con cláusula de no repetición (ISO 8601)
+  lifeInsuranceExpiryDate?: string; // ISO 8601 string
   authorizedWorkerCount?: number;
   complianceStatus: 'compliant' | 'missing_documentation' | 'expired_insurance' | 'blocked';
   notes?: string;
-  createdAt: string;
-  updatedAt?: string;
+  createdAt: string; // ISO 8601 string
+  updatedAt?: string; // ISO 8601 string
 }
 
 export interface ActivityProfile {
@@ -171,6 +170,6 @@ export interface ActivityProfile {
   hasFlammablesStorage: boolean;
   hasForklifts: boolean;
   hasBoilersOrPressureVessels: boolean;
-  evaluatedAt: string;
+  evaluatedAt: string; // ISO 8601 string
   evaluatedByUserId: string;
 }

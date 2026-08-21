@@ -1,3 +1,15 @@
+// Temporal consistency: All timestamps are ISO 8601 strings (UTC) in this phase.
+// The future persistence layer will convert between Firestore Timestamp <-> ISO string.
+
+/**
+ * ACCOUNTING & SECURITY RULES:
+ * 1. CreditBalance belongs to the Organization (tenant root).
+ * 2. CreditLedgerEntry identifies both the organization and the user who triggered the operation.
+ * 3. The client CANNOT modify the ledger or increase its own balance.
+ * 4. The backend is the SOLE authority to reserve, consume, release, or grant credits.
+ * 5. All debits are idempotent using idempotencyKey / requestId.
+ */
+
 export type AIOperation =
   | 'CHAT_RAG'
   | 'SUMMARY'
@@ -9,6 +21,14 @@ export type AIOperation =
   | 'COMPLIANCE_AUDIT';
 
 export type AIPlanTier = 'free' | 'pro' | 'pro_plus' | 'enterprise';
+
+export type CreditLedgerStatus =
+  | 'RESERVED'
+  | 'CONSUMED'
+  | 'RELEASED'
+  | 'REFUNDED'
+  | 'GRANTED'
+  | 'PURCHASED';
 
 export interface AIPlan {
   id: AIPlanTier;
@@ -27,9 +47,11 @@ export interface CreditLedgerEntry {
   orgId: string;
   userId: string;
   operationType: AIOperation;
-  credits: number; // Monto descontado (positivo) o recargado
-  requestId: string; // Idempotency key para prevenir cobros duplicados
-  status: 'SUCCESS' | 'FAILED' | 'REFUNDED';
+  operationId?: string; // ID de la entidad generada (InspectionReport, HazardAnalysisResult, etc.)
+  credits: number; // Monto descontado (positivo) o acreditado
+  idempotencyKey: string; // Clave única de idempotencia V2
+  requestId: string; // Mantenido por compatibilidad conceptual
+  status: CreditLedgerStatus;
   timestamp: string; // ISO 8601 UTC
   metadata?: {
     modelUsed?: string;
@@ -47,7 +69,8 @@ export interface CreditBalance {
   monthlyAllowance: number;
   creditsUsedThisPeriod: number;
   availableCredits: number;
-  periodStart: string;
-  periodEnd: string;
-  lastUpdated: string;
+  periodStart: string; // ISO 8601 string
+  periodEnd: string; // ISO 8601 string
+  lastUpdated: string; // ISO 8601 string
 }
+

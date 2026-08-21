@@ -1,3 +1,6 @@
+// Temporal consistency: All timestamps are ISO 8601 strings (UTC) in this phase.
+// The future persistence layer will convert between Firestore Timestamp <-> ISO string.
+
 export type ObligationStatus =
   | 'COMPLIANT'
   | 'PENDING'
@@ -17,13 +20,69 @@ export type AlertType =
   | 'worker_missing_ppe'
   | 'normative_update';
 
-export type RiskLevel = 'Trivial' | 'Tolerable' | 'Moderado' | 'Importante' | 'Intolerable';
+/**
+ * Normalized RiskLevel V2 Taxonomy:
+ * Uses standard Argentine & international H&S methodologies (Fine, NTP 330, INSHT).
+ *
+ * NOTE: Legacy taxonomy in safety.ts ('Bajo' | 'Medio' | 'Alto' | 'Crítico') is preserved
+ * for backward compatibility with pre-existing inspection results during migration.
+ */
+export type RiskLevel =
+  | 'TRIVIAL'
+  | 'TOLERABLE'
+  | 'MODERADO'
+  | 'IMPORTANTE'
+  | 'INTOLERABLE';
 
 export type CorrectiveActionStatus = 'pending' | 'in_progress' | 'completed' | 'verified';
 
 export type AccidentType = 'workplace' | 'in_itinere' | 'occupational_disease' | 'near_miss';
 
 export type NormType = 'Ley' | 'Decreto' | 'Resolucion_SRT' | 'Resolucion_MTEySS' | 'Disposicion' | 'Norma_IRAM' | 'Convenio';
+
+// --- Compliance Engine: Declarative Safe DSL for Requirements ---
+
+export type ConditionOperator =
+  | 'equals'
+  | 'not_equals'
+  | 'greater_than'
+  | 'less_than'
+  | 'greater_or_equal'
+  | 'less_or_equal'
+  | 'contains'
+  | 'in';
+
+export type RequirementConditionField =
+  | 'activityProfile.ciiuCode'
+  | 'activityProfile.industryCategory'
+  | 'activityProfile.hasDangerousMachinery'
+  | 'activityProfile.hasChemicalSubstances'
+  | 'activityProfile.hasNoiseExposure'
+  | 'activityProfile.hasHeightWork'
+  | 'activityProfile.hasConfinedSpaces'
+  | 'activityProfile.hasElectricalHighVoltage'
+  | 'activityProfile.hasFlammablesStorage'
+  | 'activityProfile.hasForklifts'
+  | 'activityProfile.hasBoilersOrPressureVessels'
+  | 'establishment.surfaceM2'
+  | 'establishment.totalWorkers'
+  | 'establishment.installedPowerKW'
+  | 'establishment.isConstructionSite'
+  | 'establishment.province'
+  | 'company.artInsuranceName';
+
+export interface AtomicRequirementCondition {
+  field: RequirementConditionField;
+  operator: ConditionOperator;
+  value: string | number | boolean | string[] | number[];
+}
+
+export type RequirementConditionGroup =
+  | { type: 'ALL'; conditions: RequirementCondition[] }
+  | { type: 'ANY'; conditions: RequirementCondition[] }
+  | { type: 'NOT'; condition: RequirementCondition };
+
+export type RequirementCondition = AtomicRequirementCondition | RequirementConditionGroup;
 
 // --- Normativa y Trazabilidad Jurídica ---
 
@@ -32,7 +91,7 @@ export interface OfficialSource {
   name: string; // Ej: "Boletín Oficial de la República Argentina", "InfoLeg", "SRT"
   url: string;
   organization: string; // Ej: "Superintendencia de Riesgos del Trabajo"
-  lastCheckedDate: string;
+  lastCheckedDate: string; // ISO 8601 string
   reliabilityScore: number;
 }
 
@@ -46,12 +105,12 @@ export interface Regulation {
   issuingAuthority: string; // Ej: "Poder Ejecutivo Nacional", "SRT"
   officialSourceId?: string;
   officialSourceUrl?: string;
-  publicationDate?: string;
+  publicationDate?: string; // ISO 8601 string
   status: 'Vigente' | 'Derogada' | 'Modificada_Parcialmente';
   summary?: string;
   activeVersion: string;
-  createdAt: string;
-  updatedAt?: string;
+  createdAt: string; // ISO 8601 string
+  updatedAt?: string; // ISO 8601 string
 }
 
 export interface RegulationArticle {
@@ -76,18 +135,11 @@ export interface Requirement {
   title: string;
   description: string;
   category: 'EPP' | 'Capacitacion' | 'Medicion' | 'Documentacion' | 'Instalaciones' | 'Ergonomia' | 'Emergencias' | 'Examenes_Medicos_Administracion';
-  applicabilityCondition: {
-    industryCategories?: string[]; // Ej: ["industry", "construction"]
-    requiresDangerousMachinery?: boolean;
-    requiresNoiseExposure?: boolean;
-    requiresForklifts?: boolean;
-    minWorkers?: number;
-    customRuleExpression?: string; // Regla declarativa evaluada por el Compliance Engine
-  };
+  condition?: RequirementCondition; // Declarative Safe Rule (NO eval, Function, or JS execution)
   periodicityDays?: number; // Ej: 365 para mediciones anuales, 180 para capacitaciones semestrales
   evidenceTypeRequired: 'Documento_PDF' | 'Protocolo_Firmado' | 'Planilla_Entrega_EPP' | 'Acta_Capacitacion' | 'Informe_Tecnico';
   version: string;
-  createdAt: string;
+  createdAt: string; // ISO 8601 string
 }
 
 // --- Compliance Engine: Obligación Concreta ---
@@ -102,11 +154,11 @@ export interface ComplianceObligation {
   title: string;
   category: string;
   status: ObligationStatus;
-  dueDate?: string;
+  dueDate?: string; // ISO 8601 string
   evidenceIds: string[]; // IDs de Document, InspectionReport, Measurement o PPEAssignment que sustentan el cumplimiento
   responsibleUserId?: string;
-  generatedAt: string;
-  evaluatedAt: string;
+  generatedAt: string; // ISO 8601 string
+  evaluatedAt: string; // ISO 8601 string
   sourceVersion: string;
   notes?: string;
 }
@@ -122,13 +174,13 @@ export interface RiskAssessment {
   positionId?: string;
   evaluatorUid: string;
   evaluatorName?: string;
-  assessmentDate: string;
+  assessmentDate: string; // ISO 8601 string
   methodology: 'Fine' | 'NTP330' | 'Matriz_5x5' | 'INSHT';
   overallRiskLevel: RiskLevel;
   risksCount: number;
   status: 'draft' | 'approved' | 'superseded';
-  createdAt: string;
-  updatedAt?: string;
+  createdAt: string; // ISO 8601 string
+  updatedAt?: string; // ISO 8601 string
 }
 
 export interface Risk {
@@ -146,7 +198,7 @@ export interface Risk {
   applicableRegulationArticleId?: string;
   preventiveMeasuresDescription: string;
   suggestedPPEIds?: string[];
-  createdAt: string;
+  createdAt: string; // ISO 8601 string
 }
 
 export interface PPE {
@@ -159,7 +211,7 @@ export interface PPE {
   brandModel?: string;
   estimatedLifespanDays?: number;
   active: boolean;
-  createdAt: string;
+  createdAt: string; // ISO 8601 string
 }
 
 export interface PPEAssignment {
@@ -172,14 +224,14 @@ export interface PPEAssignment {
   orgId: string;
   ppeId: string;
   ppeName: string;
-  deliveryDate: string;
-  renewalDueDate?: string;
+  deliveryDate: string; // ISO 8601 string
+  renewalDueDate?: string; // ISO 8601 string
   reason: 'Ingreso' | 'Renovacion_Periodica' | 'Deterioro' | 'Extravio';
   receiptDocumentUrl?: string; // Formulario Resolución SRT 299/11
   hasSignedReceipt: boolean;
   compliantWithRes299_11: boolean;
   deliveredByUid: string;
-  createdAt: string;
+  createdAt: string; // ISO 8601 string
 }
 
 export interface Training {
@@ -190,13 +242,13 @@ export interface Training {
   topic: string; // Ej: "Uso seguro de extintores y plan de evacuación", "Riesgos en trabajo en altura"
   legalRequirementId?: string; // Enlace a Requirement
   durationMinutes: number;
-  date: string;
+  date: string; // ISO 8601 string
   instructorName: string;
   instructorLicenseNumber?: string;
   totalAttendees: number;
   hasEvaluation: boolean;
   syllabusSummary?: string;
-  createdAt: string;
+  createdAt: string; // ISO 8601 string
 }
 
 export interface TrainingAttendance {
@@ -217,17 +269,17 @@ export interface Measurement {
   companyId: string;
   orgId: string;
   protocolType: 'Ruido_Res_85_12' | 'Iluminacion_Res_84_12' | 'Puesta_A_Tierra_Res_900_15' | 'Ergonomia_Res_886_15' | 'Contaminantes_Quimicos' | 'Termico';
-  measurementDate: string;
+  measurementDate: string; // ISO 8601 string
   equipmentModel?: string;
-  equipmentCalibrationDate?: string;
-  nextDueDate: string;
+  equipmentCalibrationDate?: string; // ISO 8601 string
+  nextDueDate: string; // ISO 8601 string
   measuredPointsCount: number;
   outOfCompliancePointsCount: number;
   protocolFileUrl?: string;
   evaluatorName: string;
   evaluatorLicenseNumber: string;
   status: 'compliant' | 'non_compliant' | 'observations_pending';
-  createdAt: string;
+  createdAt: string; // ISO 8601 string
 }
 
 export interface Inspection {
@@ -239,16 +291,24 @@ export interface Inspection {
   inspectorName: string;
   inspectorRegistration?: string;
   inspectionType: 'InspectorIA_Fotografico' | 'Checklist_General' | 'Auditoria_Reglamentaria' | 'Inspeccion_Sectorial';
-  date: string;
+  date: string; // ISO 8601 string
   score: number; // 0 - 100
   totalFindings: number;
   criticalFindingsCount: number;
   status: 'draft' | 'completed' | 'reviewed';
   reportPdfUrl?: string;
-  createdAt: string;
-  updatedAt?: string;
+  createdAt: string; // ISO 8601 string
+  updatedAt?: string; // ISO 8601 string
 }
 
+/**
+ * InspectionFinding V2 Model:
+ * Represents findings in the normalized V2 architecture.
+ *
+ * NOTE:
+ * - compliance.ts -> V2 persistent model with strict tenancy and requirement linkages.
+ * - safety.ts -> Legacy InspectionFinding model kept for backward compatibility with V1 views.
+ */
 export interface InspectionFinding {
   id: string;
   inspectionId: string;
@@ -262,7 +322,7 @@ export interface InspectionFinding {
   legalCitation?: string;
   applicableRequirementId?: string;
   correctiveActionId?: string;
-  createdAt: string;
+  createdAt: string; // ISO 8601 string
 }
 
 export interface CorrectiveAction {
@@ -276,14 +336,14 @@ export interface CorrectiveAction {
   actionRequired: string;
   assignedResponsibleName: string;
   priority: 'Baja' | 'Media' | 'Alta' | 'Urgente';
-  deadlineDate: string;
+  deadlineDate: string; // ISO 8601 string
   status: CorrectiveActionStatus;
-  completionDate?: string;
-  verificationDate?: string;
+  completionDate?: string; // ISO 8601 string
+  verificationDate?: string; // ISO 8601 string
   verifiedByUid?: string;
   evidenceNotes?: string;
-  createdAt: string;
-  updatedAt?: string;
+  createdAt: string; // ISO 8601 string
+  updatedAt?: string; // ISO 8601 string
 }
 
 export interface Accident {
@@ -293,19 +353,19 @@ export interface Accident {
   orgId: string;
   employeeId?: string;
   employeeFullName?: string;
-  date: string;
+  date: string; // ISO 8601 string
   time?: string;
   accidentType: AccidentType;
   description: string;
   bodyPartAffected?: string;
   lostWorkdays: number;
-  artNotificationDate?: string;
+  artNotificationDate?: string; // ISO 8601 string
   artClaimNumber?: string;
   directCausesSummary?: string;
   rootCausesSummary?: string;
   investigationCompleted: boolean;
   correctiveActionIds?: string[];
-  createdAt: string;
+  createdAt: string; // ISO 8601 string
 }
 
 export interface Alert {
@@ -319,10 +379,10 @@ export interface Alert {
   alertType: AlertType;
   title: string;
   message: string;
-  dueDate?: string;
+  dueDate?: string; // ISO 8601 string
   resolved: boolean;
-  resolvedAt?: string;
-  createdAt: string;
+  resolvedAt?: string; // ISO 8601 string
+  createdAt: string; // ISO 8601 string
 }
 
 export interface CalendarTask {
@@ -332,10 +392,63 @@ export interface CalendarTask {
   establishmentId?: string;
   title: string;
   description?: string;
-  date: string;
+  date: string; // ISO 8601 string
   taskType: 'Measurement' | 'Training' | 'Inspection' | 'Audit' | 'Action_Deadline' | 'Contractor_Doc_Review';
   relatedEntityId?: string;
   completed: boolean;
   assignedUid?: string;
-  createdAt: string;
+  createdAt: string; // ISO 8601 string
 }
+
+// --- RAG Multi-Tenant V2 Conceptual Types (Types Only) ---
+
+export type DocumentScope = 'GLOBAL_NORMATIVE' | 'ORGANIZATION_PRIVATE' | 'COMPANY_PRIVATE';
+
+export interface DocumentV2 {
+  id: string;
+  scope: DocumentScope;
+  orgId?: string; // Obligatorio si scope es ORGANIZATION_PRIVATE o COMPANY_PRIVATE
+  companyId?: string; // Obligatorio si scope es COMPANY_PRIVATE
+  establishmentId?: string; // Opcional para documentos de establecimiento específico
+  title: string;
+  category: string;
+  fileType: 'pdf' | 'docx' | 'xlsx' | 'txt' | 'image';
+  fileSize?: number;
+  storageUrl?: string;
+  isOfficialNorm: boolean;
+  regulationId?: string; // Enlace si es norma oficial
+  uploadedByUid?: string;
+  createdAt: string; // ISO 8601 string
+  updatedAt?: string; // ISO 8601 string
+}
+
+export interface DocChunkV2 {
+  id: string;
+  documentId: string;
+  docTitle: string;
+  scope: DocumentScope;
+  orgId?: string;
+  companyId?: string;
+  establishmentId?: string;
+  text: string;
+  pageNumber?: number;
+  chapter?: string;
+  articleNumber?: string;
+  metadata?: {
+    jurisdiction?: string;
+    normNumber?: string;
+    category?: string;
+  };
+  createdAt: string; // ISO 8601 string
+}
+
+export interface CitationV2 {
+  documentId: string;
+  docTitle: string;
+  scope: DocumentScope;
+  pageNumber?: number;
+  chapter?: string;
+  articleNumber?: string;
+  relevantExcerpt: string;
+}
+

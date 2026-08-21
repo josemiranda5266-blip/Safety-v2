@@ -71,7 +71,7 @@ export const Navigation: React.FC<NavigationProps> = ({
 
   // Sidebar Menu Items based on requirement:
   // Inicio, Empresas, Establecimientos, Sectores, Puestos, Trabajadores, Inspecciones, Acciones correctivas, EPP, Capacitaciones, Documentación, Calendario, Informes
-  const primaryMenuItems: { id: TabType; label: string; icon: any; badge?: string | number }[] = [
+  const primaryMenuItems = ([
     { id: 'dashboard', label: 'Dashboard', icon: LayoutDashboard },
     { id: 'home', label: 'Consola', icon: ShieldAlert },
     { id: 'companies', label: 'Empresas', icon: Building2, badge: companies.length },
@@ -86,7 +86,7 @@ export const Navigation: React.FC<NavigationProps> = ({
     { id: 'documentation', label: 'Documentación', icon: FileText },
     { id: 'calendar', label: 'Calendario', icon: Calendar },
     { id: 'reports', label: 'Informes', icon: BarChart3 },
-  ].filter(item => canAccess(item.id));
+  ] as { id: TabType; label: string; icon: any; badge?: string | number }[]).filter(item => canAccess(item.id));
 
   return (
     <>

@@ -209,7 +209,7 @@ router.post("/upload", requirePermission("document:create"), async (req: TenantR
   try {
     const context = req.authContext!;
     const uid = req.userUid!;
-    const userRole = context.role;
+    const userRole = context.membershipRole;
 
     // 1. Validate payload server-side
     const validation = validateDocumentUpload(req.body);
@@ -256,7 +256,7 @@ router.post("/upload", requirePermission("document:create"), async (req: TenantR
     const documentRecord = await createDocument({
       orgId: context.orgId,
       uid,
-      userName: (req.user as any)?.name || (req.user as any)?.email || "Profesional H&S",
+      userName: req.userDisplayName || req.userEmail || "Profesional H&S",
       filename: validation.sanitizedFilename!,
       fileBuffer: validation.fileBuffer!,
       mimeType,
@@ -368,7 +368,7 @@ router.post("/:documentId/renew", requirePermission("document:create"), async (r
       orgId: context.orgId,
       documentId,
       uid,
-      userName: (req.user as any)?.name || (req.user as any)?.email || "Profesional H&S",
+      userName: req.userDisplayName || req.userEmail || "Profesional H&S",
       filename: validation.sanitizedFilename!,
       fileBuffer: validation.fileBuffer!,
       mimeType,
@@ -404,7 +404,7 @@ router.delete("/:documentId", requirePermission("document:delete"), async (req: 
       context.orgId,
       documentId,
       uid,
-      (req.user as any)?.name || (req.user as any)?.email || "Profesional H&S",
+      req.userDisplayName || req.userEmail || "Profesional H&S",
       context.assignedCompanyIds
     );
 

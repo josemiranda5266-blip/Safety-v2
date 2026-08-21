@@ -397,7 +397,7 @@ export interface LegalRequirement {
 export interface AuditLog {
   id: string;
   action: string;
-  entityType: 'EPP' | 'Training' | 'Document' | 'Worker' | 'Inspection' | 'IPER' | 'Incident' | 'Emergency' | 'Hygiene' | 'Normative';
+  entityType: 'EPP' | 'Training' | 'Document' | 'Worker' | 'Inspection' | 'IPER' | 'Incident' | 'Emergency' | 'Hygiene' | 'Normative' | 'Navigation';
   entityId: string;
   userId: string;
   timestamp: string;

@@ -28,7 +28,7 @@ import { DocumentDetailModal } from './DocumentDetailModal';
 import { DocumentRenewModal } from './DocumentRenewModal';
 
 export const DocumentsScreen: React.FC = () => {
-  const { currentOrg, activeCompanyId } = useTenant();
+  const { activeOrg, activeCompanyId } = useTenant();
 
   const [activeTab, setActiveTab] = useState<'explorer' | 'dashboard' | 'alerts' | 'calendar'>('explorer');
   const [documents, setDocuments] = useState<ProfessionalDocument[]>([]);

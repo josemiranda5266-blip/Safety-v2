@@ -12,8 +12,19 @@ import {
   validateDocumentUpload,
   clearDocumentStoreForTesting,
 } from "../services/documentService";
+import { setAdminFirestoreForTesting, setAdminStorageBucketForTesting } from "../auth/firestoreAdmin";
+import { createMockFirestore } from "./mockFirestore";
 import { calculateExpirationMetrics } from "../../src/utils/expirationEngine";
 import { DOCUMENT_CATEGORIES, DocumentCategory } from "../../src/types/documentManagement";
+
+const mockDb = createMockFirestore();
+setAdminFirestoreForTesting(mockDb as any);
+setAdminStorageBucketForTesting({
+  file: () => ({
+    save: async () => {},
+    delete: async () => {},
+  }),
+});
 
 describe("FASE 3 — Gestor Documental Profesional & Motor de Vencimientos", () => {
   const orgA = "org_alpha_safety";
@@ -24,6 +35,7 @@ describe("FASE 3 — Gestor Documental Profesional & Motor de Vencimientos", () 
 
   beforeEach(() => {
     clearDocumentStoreForTesting();
+    mockDb._clear();
   });
 
   describe("1. Motor de Vencimientos (90, 30, 15, 7 días y vencido)", () => {

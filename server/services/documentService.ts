@@ -230,6 +230,28 @@ export function validateDocumentUpload(body: any): UploadValidationResult {
     return { valid: false, error: "El organismo emisor no puede superar 100 caracteres", code: "FIELD_TOO_LONG" };
   }
 
+  // PageCount validation
+  if (pageCount !== undefined) {
+    if (typeof pageCount !== "number" || !Number.isInteger(pageCount) || pageCount <= 0) {
+      return { valid: false, error: "pageCount debe ser un número entero mayor a cero", code: "INVALID_PAGE_COUNT" };
+    }
+  }
+
+  // Chunks validation
+  if (chunks !== undefined) {
+    if (!Array.isArray(chunks)) {
+      return { valid: false, error: "chunks debe ser un array", code: "INVALID_CHUNKS" };
+    }
+    if (chunks.length > MAX_CHUNKS_COUNT) {
+      return { valid: false, error: `Excede el máximo de ${MAX_CHUNKS_COUNT} chunks`, code: "TOO_MANY_CHUNKS" };
+    }
+    for (const chunk of chunks) {
+      if (chunk.text && typeof chunk.text === "string" && chunk.text.length > MAX_CHUNK_TEXT_LENGTH) {
+        return { valid: false, error: `El texto del chunk excede el máximo de ${MAX_CHUNK_TEXT_LENGTH} caracteres`, code: "CHUNK_TOO_LARGE" };
+      }
+    }
+  }
+
   return {
     valid: true,
     sanitizedFilename,
@@ -778,7 +800,7 @@ export async function getDocumentById(
     const docRef = db.collection("organizations").doc(orgId).collection("documents").doc(documentId);
     const snap = await docRef.get();
     if (snap.exists) {
-      docRecord = snap.data() as ProfessionalDocument;
+      docRecord = snap.data() as ProfessionalDocument; 
     }
   } catch (e: any) {
     if (isProduction) {

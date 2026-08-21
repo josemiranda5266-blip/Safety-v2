@@ -107,7 +107,10 @@ export const FINOPS_BUDGETS = {
   CHAT_RAG: { inputLimit: 20000, outputLimit: 2000 },
   DOCUMENT_COMPARISON: { inputLimit: 30000, outputLimit: 3000 },
   OCR: { inputLimit: 15000, outputLimit: 4000 },
-  IMAGE_ANALYSIS: { inputLimit: 15000, outputLimit: 3000 }
+  IMAGE_ANALYSIS: { inputLimit: 15000, outputLimit: 3000 },
+  SUGGESTIONS: { inputLimit: 10000, outputLimit: 2000 },
+  DRAFTING: { inputLimit: 10000, outputLimit: 2000 },
+  PLANNING: { inputLimit: 10000, outputLimit: 2000 }
 };
 
 export interface GenerateWithRetryOptions {
@@ -116,7 +119,7 @@ export interface GenerateWithRetryOptions {
   config?: any;
   maxRetries?: number;
   initialDelayMs?: number;
-  operationType?: "CHAT_RAG" | "DOCUMENT_COMPARISON" | "OCR" | "IMAGE_ANALYSIS";
+  operationType?: "CHAT_RAG" | "DOCUMENT_COMPARISON" | "OCR" | "IMAGE_ANALYSIS" | "SUGGESTIONS" | "DRAFTING" | "PLANNING";
 }
 
 /**
@@ -143,8 +146,8 @@ export async function generateContentWithRetry(options: GenerateWithRetryOptions
   }
 
   // Pre-request FinOps token count verification
-  if (options.operationType && FINOPS_BUDGETS[options.operationType]) {
-    const budget = FINOPS_BUDGETS[options.operationType];
+  if (options.operationType && FINOPS_BUDGETS[options.operationType as keyof typeof FINOPS_BUDGETS]) {
+    const budget = FINOPS_BUDGETS[options.operationType as keyof typeof FINOPS_BUDGETS];
     try {
       const countRes = await ai.models.countTokens({
         model: primaryModel,
@@ -168,8 +171,8 @@ export async function generateContentWithRetry(options: GenerateWithRetryOptions
 
   // Prepare final config with maxOutputTokens override if operationType budget is present
   const finalConfig = { ...(options.config || {}) };
-  if (options.operationType && FINOPS_BUDGETS[options.operationType]) {
-    finalConfig.maxOutputTokens = FINOPS_BUDGETS[options.operationType].outputLimit;
+  if (options.operationType && FINOPS_BUDGETS[options.operationType as keyof typeof FINOPS_BUDGETS]) {
+    finalConfig.maxOutputTokens = FINOPS_BUDGETS[options.operationType as keyof typeof FINOPS_BUDGETS].outputLimit;
   }
 
   let currentModel = primaryModel;

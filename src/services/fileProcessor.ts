@@ -31,7 +31,15 @@ export async function processUploadedFile(
   } else if (fileType === 'xlsx') {
     onProgress?.(30, 'Extrayendo hojas de cálculo Excel...');
     const arrayBuffer = await file.arrayBuffer();
-    const workbook = XLSX.read(arrayBuffer, { type: 'array' });
+    // Hardened client-side XLSX parsing options to minimize processing attack surface
+    // Note: Disabling formula/HTML evaluation reduces risk, though library vulnerabilities remain tracked.
+    const workbook = XLSX.read(arrayBuffer, {
+      type: 'array',
+      cellFormula: false,
+      cellHTML: false,
+      cellNF: false,
+      cellText: false,
+    });
     const sheetTextArray: string[] = [];
 
     workbook.SheetNames.forEach((sheetName) => {

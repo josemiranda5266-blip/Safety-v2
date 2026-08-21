@@ -1910,6 +1910,244 @@ export async function runAllTenantAuthTests(): Promise<{ total: number; passed: 
     assert(res.statusCode === 401, "Headers alternativos no otorgan identidad");
   });
 
+  // =========================================================================
+  // FASE 5: PRUEBAS DE HARDENING, CSP, OBSERVABILIDAD Y SALUD OPERACIONAL
+  // =========================================================================
+
+  // TEST 103: FASE 5 — GET /api/health/liveness responde HTTP 200 OK
+  await runTest("TEST 103: FASE 5 — GET /api/health/liveness responde 200 OK sin requerir Firestore", async () => {
+    const app = express();
+    app.get("/api/health/liveness", (_req, res) => {
+      res.json({ status: "ok" });
+    });
+
+    const req = { method: "GET", url: "/api/health/liveness", headers: {} };
+    const res = createMockResponse();
+    await new Promise<void>((resolve) => {
+      (app as any).handle(req as any, res as any, () => resolve());
+      setImmediate(resolve);
+    });
+    assert(res.statusCode === 200, "Liveness devuelve HTTP 200");
+    assert(res.jsonData?.status === "ok", "Liveness body indica ok");
+  });
+
+  // TEST 104: FASE 5 — GET /api/health/readiness responde HTTP 200 OK cuando el repositorio es saludable
+  await runTest("TEST 104: FASE 5 — GET /api/health/readiness responde 200 OK con repositorio saludable", async () => {
+    const app = express();
+    const mockRepo = {
+      healthCheck: async () => true,
+    } as any;
+    setAuthorizationRepository(mockRepo);
+
+    const checkReadiness = async (_req: express.Request, res: express.Response) => {
+      const repo = getAuthorizationRepository();
+      const isHealthy = repo.healthCheck ? await repo.healthCheck() : true;
+      if (!isHealthy) return res.status(503).json({ status: "error" });
+      return res.json({ status: "ok", app: "Safety IA" });
+    };
+    app.get("/api/health/readiness", checkReadiness);
+
+    const req = { method: "GET", url: "/api/health/readiness", headers: {} };
+    const res = createMockResponse();
+    await new Promise<void>((resolve) => {
+      (app as any).handle(req as any, res as any, () => resolve());
+      setImmediate(resolve);
+    });
+    assert(res.statusCode === 200, "Readiness devuelve HTTP 200");
+    assert(res.jsonData?.status === "ok", "Readiness body indica ok");
+  });
+
+  // TEST 105: FASE 5 — GET /api/health/readiness responde HTTP 503 Service Unavailable cuando healthCheck falla
+  await runTest("TEST 105: FASE 5 — GET /api/health/readiness responde 503 cuando healthCheck de Firestore falla", async () => {
+    const app = express();
+    const mockFailingRepo = {
+      healthCheck: async () => false,
+    } as any;
+    setAuthorizationRepository(mockFailingRepo);
+
+    const checkReadiness = async (_req: express.Request, res: express.Response) => {
+      const repo = getAuthorizationRepository();
+      const isHealthy = repo.healthCheck ? await repo.healthCheck() : true;
+      if (!isHealthy) return res.status(503).json({ status: "error", error: "Authorization repository unavailable" });
+      return res.json({ status: "ok" });
+    };
+    app.get("/api/health/readiness", checkReadiness);
+
+    const req = { method: "GET", url: "/api/health/readiness", headers: {} };
+    const res = createMockResponse();
+    await new Promise<void>((resolve) => {
+      (app as any).handle(req as any, res as any, () => resolve());
+      setImmediate(resolve);
+    });
+    assert(res.statusCode === 503, "Readiness devuelve HTTP 503 ante fallos de Firestore");
+    assert(res.jsonData?.status === "error", "Status es error");
+    assert(res.jsonData?.error === "Authorization repository unavailable", "Mensaje de error correcto");
+
+    // Restablecer in-memory repo
+    setAuthorizationRepository(new InMemoryAuthorizationRepository());
+  });
+
+  // TEST 106: FASE 5 — Producción rechaza MockAuthVerifier
+  await runTest("TEST 106: FASE 5 — Producción rechaza MockAuthVerifier (Fail-Closed)", async () => {
+    const origEnv = process.env.NODE_ENV;
+    process.env.NODE_ENV = "production";
+    let threw = false;
+    try {
+      setGlobalAuthVerifier(new MockAuthVerifier());
+    } catch (e: any) {
+      threw = true;
+      assert(e.message.includes("CRITICAL SECURITY VIOLATION"), "Lanza error explícito de seguridad");
+    } finally {
+      process.env.NODE_ENV = origEnv;
+      resetGlobalAuthVerifier();
+    }
+    assert(threw, "Rechazó MockAuthVerifier en producción");
+  });
+
+  // TEST 107: FASE 5 — Producción rechaza InMemoryAuthorizationRepository
+  await runTest("TEST 107: FASE 5 — Producción rechaza InMemoryAuthorizationRepository en startup", async () => {
+    const origEnv = process.env.NODE_ENV;
+    process.env.NODE_ENV = "production";
+    let threw = false;
+    try {
+      setAuthorizationRepository(new InMemoryAuthorizationRepository());
+      if (process.env.NODE_ENV === "production" && getAuthorizationRepository() instanceof InMemoryAuthorizationRepository) {
+        throw new Error("CRITICAL SECURITY ERROR: Production authorization repository cannot be InMemory.");
+      }
+    } catch (e: any) {
+      threw = true;
+      assert(e.message.includes("cannot be InMemory"), "Lanza error explícito de producción");
+    } finally {
+      process.env.NODE_ENV = origEnv;
+    }
+    assert(threw, "Rechazó InMemoryAuthorizationRepository en producción");
+  });
+
+  // TEST 108: FASE 5 — Producción rechaza AUTH_DEV_MODE=true
+  await runTest("TEST 108: FASE 5 — Producción rechaza AUTH_DEV_MODE=true (Fail-Closed)", async () => {
+    const origEnv = process.env.NODE_ENV;
+    const origDevMode = process.env.AUTH_DEV_MODE;
+    process.env.NODE_ENV = "production";
+    process.env.AUTH_DEV_MODE = "true";
+    resetGlobalAuthVerifier();
+
+    let threw = false;
+    try {
+      getAuthVerifier();
+    } catch (e: any) {
+      threw = true;
+      assert(e.message.includes("AUTH_DEV_MODE cannot be enabled"), "Lanza error por AUTH_DEV_MODE en prod");
+    } finally {
+      process.env.NODE_ENV = origEnv;
+      if (origDevMode) process.env.AUTH_DEV_MODE = origDevMode;
+      else delete process.env.AUTH_DEV_MODE;
+      resetGlobalAuthVerifier();
+    }
+    assert(threw, "Rechazó AUTH_DEV_MODE=true en producción");
+  });
+
+  // TEST 109: FASE 5 — Helmet activa CSP y Security Headers en producción
+  await runTest("TEST 109: FASE 5 — Helmet activa CSP estricta y Security Headers en producción", async () => {
+    const helmet = (await import("helmet")).default;
+    const prodApp = express();
+    prodApp.use(
+      helmet({
+        contentSecurityPolicy: {
+          directives: {
+            defaultSrc: ["'self'"],
+            scriptSrc: ["'self'"],
+            styleSrc: ["'self'", "'unsafe-inline'"],
+            objectSrc: ["'none'"],
+            baseUri: ["'self'"],
+            frameAncestors: ["'none'"],
+          },
+        },
+        hsts: { maxAge: 31536000, includeSubDomains: true },
+        xContentTypeOptions: true,
+        referrerPolicy: { policy: "strict-origin-when-cross-origin" },
+        crossOriginEmbedderPolicy: false,
+      })
+    );
+    prodApp.get("/test-headers", (_req, res) => res.send("ok"));
+
+    const req = { method: "GET", url: "/test-headers", headers: {} };
+    const res = createMockResponse();
+    await new Promise<void>((resolve) => {
+      (prodApp as any).handle(req as any, res as any, () => resolve());
+      setImmediate(resolve);
+    });
+
+    assert(res.statusCode === 200, "Responde OK");
+    assert(res.headers["content-security-policy"] !== undefined, "Header Content-Security-Policy presente");
+    assert(res.headers["x-content-type-options"] === "nosniff", "Header X-Content-Type-Options: nosniff presente");
+    assert(res.headers["strict-transport-security"] !== undefined, "Header Strict-Transport-Security presente");
+    assert(res.headers["referrer-policy"] === "strict-origin-when-cross-origin", "Header Referrer-Policy correcto");
+  });
+
+  // TEST 110: FASE 5 — Helmet mantiene compatibilidad con Vite en desarrollo
+  await runTest("TEST 110: FASE 5 — Helmet mantiene compatibilidad con Vite en desarrollo", async () => {
+    const helmet = (await import("helmet")).default;
+    const devApp = express();
+    devApp.use(
+      helmet({
+        contentSecurityPolicy: false,
+        crossOriginEmbedderPolicy: false,
+      })
+    );
+    devApp.get("/test-dev", (_req, res) => res.send("ok"));
+
+    const req = { method: "GET", url: "/test-dev", headers: {} };
+    const res = createMockResponse();
+    await new Promise<void>((resolve) => {
+      (devApp as any).handle(req as any, res as any, () => resolve());
+      setImmediate(resolve);
+    });
+
+    assert(res.statusCode === 200, "Responde OK en dev");
+    assert(res.headers["content-security-policy"] === undefined, "CSP deshabilitada en dev para Vite");
+  });
+
+  // TEST 111: FASE 5 — Opciones seguras de XLSX verificadas
+  await runTest("TEST 111: FASE 5 — Opciones seguras de lectura XLSX aplicadas correctamente", async () => {
+    const XLSX = await import("xlsx");
+    const ws = XLSX.utils.aoa_to_sheet([["Encabezado 1", "Encabezado 2"], ["Dato A", "Dato B"]]);
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, ws, "Sheet1");
+    const buf = XLSX.write(wb, { type: "array", bookType: "xlsx" });
+
+    const readWb = XLSX.read(buf, {
+      type: "array",
+      cellFormula: false,
+      cellHTML: false,
+      cellNF: false,
+      cellText: false,
+    });
+
+    assert(readWb.SheetNames.includes("Sheet1"), "Hoja Sheet1 leída exitosamente");
+    const csv = XLSX.utils.sheet_to_csv(readWb.Sheets["Sheet1"]);
+    assert(csv.includes("Encabezado 1"), "Contenido de texto extraído correctamente");
+  });
+
+  // TEST 112: FASE 5 — Logger estructurado sanitiza headers de autorización y tokens
+  await runTest("TEST 112: FASE 5 — Logger estructurado sanitiza y redacta datos sensibles", async () => {
+    const { sanitizeLogMetadata } = await import("../utils/logger");
+    const inputData = {
+      user: "user_owner_a",
+      authorization: "Bearer eyJhbGciOiJSUzI1NiIs...",
+      token: "secret_firebase_token",
+      apiKey: "AIzaSy...",
+      gemini_api_key: "secret_gemini",
+      normalField: "public_value",
+    };
+
+    const sanitized = sanitizeLogMetadata(inputData);
+    assert(sanitized.authorization === "[REDACTED]", "Redactó authorization");
+    assert(sanitized.token === "[REDACTED]", "Redactó token");
+    assert(sanitized.apiKey === "[REDACTED]", "Redactó apiKey");
+    assert(sanitized.gemini_api_key === "[REDACTED]", "Redactó gemini_api_key");
+    assert(sanitized.normalField === "public_value", "Preservó normalField");
+  });
+
   const passed = testResults.filter((r) => r.passed).length;
   const failed = testResults.filter((r) => !r.passed).length;
 

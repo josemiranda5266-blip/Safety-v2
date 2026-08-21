@@ -1178,6 +1178,8 @@ export class LocalSafetyDB {
         const parsed = JSON.parse(local);
         if (parsed.uid === user.uid) {
           return parsed;
+        } else {
+          localStorage.removeItem(STORAGE_KEYS.USER_PROFILE);
         }
       }
 

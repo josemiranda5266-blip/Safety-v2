@@ -15,19 +15,75 @@ import {
   getAuthorizationRepository,
 } from "./server/authorization/store";
 import { InMemoryAuthorizationRepository } from "./server/authorization/repository";
+import { logStructured } from "./server/utils/logger";
 
 dotenv.config();
 
 const app = express();
 const PORT = 3000;
 
-// Security Middlewares
-app.use(
-  helmet({
-    contentSecurityPolicy: false, // Vite Dev Compatibility
-    crossOriginEmbedderPolicy: false,
-  })
-);
+// Security Middlewares (H-03 Hardening)
+const isProd = process.env.NODE_ENV === "production";
+
+if (isProd) {
+  app.use(
+    helmet({
+      contentSecurityPolicy: {
+        directives: {
+          defaultSrc: ["'self'"],
+          scriptSrc: ["'self'"],
+          styleSrc: ["'self'", "'unsafe-inline'"],
+          imgSrc: [
+            "'self'",
+            "data:",
+            "blob:",
+            "https://*.google.com",
+            "https://*.googleapis.com",
+            "https://*.googleusercontent.com",
+            "https://*.gstatic.com",
+          ],
+          connectSrc: [
+            "'self'",
+            "https://*.googleapis.com",
+            "https://*.firebaseio.com",
+            "https://identitytoolkit.googleapis.com",
+            "https://securetoken.googleapis.com",
+          ],
+          fontSrc: ["'self'", "data:", "https://fonts.gstatic.com"],
+          objectSrc: ["'none'"],
+          baseUri: ["'self'"],
+          frameAncestors: ["'none'"],
+        },
+      },
+      hsts: { maxAge: 31536000, includeSubDomains: true },
+      xContentTypeOptions: true,
+      referrerPolicy: { policy: "strict-origin-when-cross-origin" },
+      crossOriginEmbedderPolicy: false,
+    })
+  );
+} else {
+  app.use(
+    helmet({
+      contentSecurityPolicy: false, // Vite Dev Mode Compatibility
+      crossOriginEmbedderPolicy: false,
+    })
+  );
+}
+
+// Structured request logging middleware (never logs auth tokens, credentials or PII)
+app.use((req, res, next) => {
+  const start = Date.now();
+  res.on("finish", () => {
+    const durationMs = Date.now() - start;
+    logStructured("info", "http_request", {
+      method: req.method,
+      route: req.path,
+      statusCode: res.statusCode,
+      durationMs,
+    });
+  });
+  next();
+});
 
 // General Rate Limiter for all API routes
 app.use("/api/", generalApiLimiter);
@@ -39,16 +95,45 @@ app.use(express.urlencoded({ extended: true, limit: "20mb" }));
 // User identity extractor middleware
 app.use(extractAuthUser);
 
-// Health check
-app.get("/api/health", (_req, res) => {
-  res.json({
-    status: "ok",
-    app: "Safety IA",
-    engine: "Gemini Pro / Flash",
-    freemium: "Active",
-    time: new Date().toISOString(),
-  });
+// Liveness check (independent of Firestore)
+app.get("/api/health/liveness", (_req, res) => {
+  res.json({ status: "ok" });
 });
+
+// Readiness check (verifies active authorization repository)
+const checkReadiness = async (_req: express.Request, res: express.Response) => {
+  try {
+    const repo = getAuthorizationRepository();
+    if (!repo) {
+      return res.status(503).json({
+        status: "error",
+        error: "Authorization repository unavailable",
+      });
+    }
+    const isHealthy = repo.healthCheck ? await repo.healthCheck() : true;
+    if (!isHealthy) {
+      return res.status(503).json({
+        status: "error",
+        error: "Authorization repository unavailable",
+      });
+    }
+    return res.json({
+      status: "ok",
+      app: "Safety IA",
+      engine: "Gemini Pro / Flash",
+      freemium: "Active",
+      time: new Date().toISOString(),
+    });
+  } catch (err: any) {
+    return res.status(503).json({
+      status: "error",
+      error: "Authorization repository unavailable",
+    });
+  }
+};
+
+app.get("/api/health/readiness", checkReadiness);
+app.get("/api/health", checkReadiness);
 
 // Modular Routes
 app.use("/api", aiRoutes);

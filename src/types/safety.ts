@@ -1,5 +1,5 @@
 export type UserPlan = 'free' | 'pro' | 'pro_plus';
-export type UserRole = 'professional' | 'admin';
+export type UserRole = 'professional' | 'empresa' | 'rrhh' | 'supervisor' | 'trabajador';
 
 export interface UserProfile {
   uid: string;
@@ -345,6 +345,8 @@ export interface InspectionReport {
   updatedAt: string;
 }
 
+// ... existing content ...
+
 export interface InspectorStats {
   totalInspections: number;
   openInspections: number;
@@ -355,5 +357,237 @@ export interface InspectorStats {
   findingsByRisk: { risk: RiskLevel; count: number }[];
   avgResolutionTimeDays: number;
   monthlyTrend: { month: string; inspectionsCount: number; findingsCount: number }[];
+}
+
+// ----------------------------------------------------
+// EPP Y CAPACITACIONES
+// ----------------------------------------------------
+
+export interface Norma {
+  id: string;
+  norma: string;
+  type: string;
+  number: string;
+  articleAnexo: string;
+  topic: string;
+  activity: string;
+  risk: string;
+  obligation: string;
+  validity: string;
+  modifications: string;
+  repeal?: string;
+  source: string;
+  evidenceRequired: string;
+  lastVerified: string;
+  isVerified: boolean;
+}
+
+export type ComplianceStatus = 'CUMPLE' | 'NO CUMPLE' | 'PENDIENTE' | 'NO APLICA' | 'REVISAR';
+
+export interface LegalRequirement {
+  id: string;
+  companyId: string;
+  normaId: string;
+  status: ComplianceStatus;
+  evidenceUrl?: string;
+  lastChecked: string;
+  notes: string;
+}
+
+export interface AuditLog {
+  id: string;
+  action: string;
+  entityType: 'EPP' | 'Training' | 'Document' | 'Worker' | 'Inspection' | 'IPER' | 'Incident' | 'Emergency' | 'Hygiene' | 'Normative';
+  entityId: string;
+  userId: string;
+  timestamp: string;
+  details: any;
+}
+
+export interface HygieneInstrument {
+  id: string;
+  brand: string;
+  model: string;
+  serialNumber: string;
+  calibrationDate: string;
+  calibrationExpiry: string;
+  certificateUrl: string;
+}
+
+export interface HygieneMeasurement {
+  id: string;
+  companyId: string;
+  establishmentId: string;
+  sectorId: string;
+  jobPositionId: string;
+  agent: string;
+  instrumentId: string;
+  date: string;
+  value: number;
+  unit: string;
+  applicableLimit: number;
+  result: 'Aceptable' | 'No Aceptable';
+  professionalName: string;
+  reportUrl?: string;
+  certificateUrl?: string;
+}
+
+export interface Investigation {
+  immediateCauses: string[];
+  basicCauses: string[];
+  contributingFactors: string[];
+  correctiveActions: string[];
+  investigator: string;
+  date: string;
+}
+
+export interface Incident {
+  id: string;
+  type: 'Accidente' | 'Incidente' | 'CasiAccidente';
+  workerId: string;
+  workerName: string;
+  date: string;
+  time: string;
+  location: string;
+  task: string;
+  bodyPart?: string;
+  agent?: string;
+  description: string;
+  witnesses: string[];
+  photoUrls: string[];
+  medicalAttention: string;
+  artInvolved: boolean;
+  investigation?: Investigation;
+  status: 'Abierto' | 'En Proceso' | 'Vencido' | 'Cerrado';
+}
+
+export interface EmergencyPlan {
+  id: string;
+  companyId: string;
+  planName: string;
+  scenarios: string[];
+  brigades: string[];
+  responsibles: string[];
+  resources: string[];
+  evacuationRoutes: string[];
+  assemblyPoints: string[];
+  drills: EmergencyDrill[];
+}
+
+export interface EmergencyDrill {
+  id: string;
+  date: string;
+  scenario: string;
+  participants: string[];
+  reportUrl?: string;
+}
+
+export interface Inspection {
+  id: string;
+  companyId: string;
+  establishmentId: string;
+  sectorId: string;
+  date: string;
+  type: string;
+  status: 'Open' | 'In Progress' | 'Closed';
+  findings: Finding[];
+}
+
+export interface Finding {
+  id: string;
+  description: string;
+  hazard: string;
+  risk: string;
+  severity: 'Low' | 'Medium' | 'High' | 'Critical';
+  photoUrl?: string;
+  location: string;
+  responsible: string;
+  dueDate: string;
+  status: 'Open' | 'In Progress' | 'Overdue' | 'Closed';
+  evidenceUrl?: string;
+}
+
+export interface EPPItem {
+  id: string;
+  name: string;
+  category: string;
+  description: string;
+}
+
+export interface EPPAssignment {
+  id: string;
+  workerId: string;
+  workerName: string;
+  itemId: string;
+  itemName: string;
+  quantity: number;
+  date: string;
+  status: 'Entregado' | 'En uso' | 'Devuelto' | 'Desgastado';
+  renewalDate?: string;
+  observations?: string;
+  signatureUrl?: string;
+}
+
+export interface TrainingActivity {
+  id: string;
+  programId: string;
+  topic: string;
+  date: string;
+  durationHours: number;
+  trainer: string;
+  establishmentId: string;
+  establishmentName: string;
+  attendees: {
+    workerId: string;
+    workerName: string;
+    attended: boolean;
+    signatureUrl?: string;
+  }[];
+}
+
+export type RiskLevelValue = 1 | 2 | 3 | 4 | 5;
+export type SeverityValue = 1 | 2 | 3 | 4;
+
+export interface RiskEvaluation {
+  probability: RiskLevelValue;
+  severity: SeverityValue;
+  level: number;
+}
+
+export interface ControlMeasures {
+  elimination: string[];
+  substitution: string[];
+  engineering: string[];
+  administrative: string[];
+  ppe: string[];
+}
+
+export interface IPEREntry {
+  id: string;
+  taskId: string;
+  taskName: string;
+  hazard: string;
+  risk: string;
+  initialEvaluation: RiskEvaluation;
+  controls: ControlMeasures;
+  residualEvaluation: RiskEvaluation;
+  approved?: boolean;
+}
+
+export interface IPERVersion {
+  version: number;
+  author: string;
+  date: string;
+  changes: string;
+  entries: IPEREntry[];
+}
+
+export interface IPERMatrix {
+  id: string;
+  companyId: string;
+  establishmentId: string;
+  sectorId: string;
+  versions: IPERVersion[];
+  currentVersion: number;
 }
 

@@ -1,6 +1,46 @@
 import jsPDF from 'jspdf';
 import autoTable from 'jspdf-autotable';
-import { Citation, ChecklistInspection, HazardAnalysisResult, SummaryResult } from '../types/safety';
+import { Citation, ChecklistInspection, HazardAnalysisResult, SummaryResult, EPPAssignment, TrainingActivity, Inspection, Incident, EmergencyPlan } from '../types/safety';
+
+export function exportManagementReportPDF(type: 'mensual' | 'anual' | 'empresa', data: any): void {
+  const doc = new jsPDF();
+  doc.text(`Informe ${type.toUpperCase()}`, 14, 20);
+  doc.text(`Fecha de generación: ${new Date().toLocaleDateString()}`, 14, 30);
+  // Add data representation logic here
+  doc.save(`Informe_${type}_${new Date().toISOString()}.pdf`);
+}
+
+export function exportIncidentReportPDF(incident: Incident): void {
+  const doc = new jsPDF();
+  doc.text(`Informe de Incidente/Accidente: ${incident.type}`, 14, 20);
+  doc.text(`Fecha: ${incident.date} ${incident.time}`, 14, 30);
+  doc.text(`Trabajador: ${incident.workerName}`, 14, 40);
+  doc.text(`Descripción: ${incident.description}`, 14, 50, { maxWidth: 180 });
+  
+  if (incident.investigation) {
+    doc.text('Investigación:', 14, 70);
+    doc.text(`Causas inmediatas: ${incident.investigation.immediateCauses.join(', ')}`, 14, 80);
+    doc.text(`Acciones correctivas: ${incident.investigation.correctiveActions.join(', ')}`, 14, 90);
+  }
+
+  doc.save(`Incidente_${incident.workerName.replace(/\s+/g, '_')}_${incident.date}.pdf`);
+}
+
+export function exportInspectionReportPDF(inspection: Inspection): void {
+  const doc = new jsPDF();
+  doc.text(`Informe de Inspección: ${inspection.type}`, 14, 20);
+  doc.text(`Fecha: ${inspection.date}`, 14, 30);
+  doc.text(`Estado: ${inspection.status}`, 14, 40);
+  
+  const tableData = inspection.findings.map(f => [f.description, f.hazard, f.severity, f.status]);
+  autoTable(doc, {
+    head: [['Descripción', 'Peligro', 'Gravedad', 'Estado']],
+    body: tableData,
+    startY: 50
+  });
+
+  doc.save(`Inspeccion_${inspection.date}.pdf`);
+}
 
 export function exportChatAnswerPDF(
   question: string,
@@ -349,4 +389,59 @@ export function exportSummaryPDF(summary: SummaryResult): void {
   });
 
   doc.save(`SafetyIA_Resumen_${summary.docTitle.replace(/\s+/g, '_')}.pdf`);
+}
+
+export function exportEPPDeliveryReceiptPDF(assignment: EPPAssignment): void {
+  const doc = new jsPDF();
+  const pageWidth = doc.internal.pageSize.width;
+
+  doc.setFillColor(15, 23, 42);
+  doc.rect(0, 0, pageWidth, 30, 'F');
+  doc.setTextColor(255, 255, 255);
+  doc.setFont('helvetica', 'bold');
+  doc.setFontSize(16);
+  doc.text('CONSTANCIA DE ENTREGA DE EPP', 14, 18);
+
+  doc.setFontSize(10);
+  doc.setFont('helvetica', 'normal');
+  doc.text(`Fecha: ${assignment.date}`, pageWidth - 14, 18, { align: 'right' });
+
+  let y = 40;
+  doc.setTextColor(0, 0, 0);
+  doc.text(`Trabajador: ${assignment.workerName}`, 14, y);
+  y += 10;
+  doc.text(`Elemento: ${assignment.itemName}`, 14, y);
+  y += 10;
+  doc.text(`Cantidad: ${assignment.quantity}`, 14, y);
+  y += 10;
+  doc.text(`Observaciones: ${assignment.observations || 'Sin observaciones'}`, 14, y);
+
+  y += 40;
+  doc.line(20, y, 90, y);
+  doc.text('Firma Trabajador', 55, y + 5, { align: 'center' });
+
+  doc.save(`EPP_${assignment.workerName.replace(/\s+/g, '_')}_${assignment.itemName.replace(/\s+/g, '_')}.pdf`);
+}
+
+export function exportTrainingCertificatePDF(activity: TrainingActivity, workerId: string): void {
+  const worker = activity.attendees.find(a => a.workerId === workerId);
+  if (!worker) return;
+
+  const doc = new jsPDF({ orientation: 'landscape' });
+  doc.setFillColor(15, 23, 42);
+  doc.rect(0, 0, doc.internal.pageSize.width, doc.internal.pageSize.height, 'F');
+  
+  doc.setTextColor(255, 255, 255);
+  doc.setFont('helvetica', 'bold');
+  doc.setFontSize(24);
+  doc.text('CERTIFICADO DE CAPACITACIÓN', doc.internal.pageSize.width / 2, 50, { align: 'center' });
+  
+  doc.setFontSize(16);
+  doc.text(worker.workerName, doc.internal.pageSize.width / 2, 80, { align: 'center' });
+  
+  doc.setFontSize(14);
+  doc.setFont('helvetica', 'normal');
+  doc.text(`Por haber completado el curso: ${activity.topic}`, doc.internal.pageSize.width / 2, 100, { align: 'center' });
+  
+  doc.save(`Certificado_${activity.topic.replace(/\s+/g, '_')}_${worker.workerName.replace(/\s+/g, '_')}.pdf`);
 }

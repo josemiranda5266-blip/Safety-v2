@@ -232,6 +232,93 @@
         "updatedAt": { "type": "string" }
       },
       "required": ["id", "companyId", "establishmentId", "orgId", "cuil", "firstName", "lastName", "active", "createdAt"]
+    },
+    "Sector": {
+      "title": "Sector",
+      "description": "Work area or sector within an establishment",
+      "properties": {
+        "id": { "type": "string" },
+        "establishmentId": { "type": "string" },
+        "companyId": { "type": "string" },
+        "orgId": { "type": "string" },
+        "name": { "type": "string" },
+        "description": { "type": "string" },
+        "responsibleName": { "type": "string" },
+        "noiseLevelEstimatedDBA": { "type": "number" },
+        "requiresSpecificPPE": { "type": "boolean" },
+        "active": { "type": "boolean" },
+        "createdAt": { "type": "string" },
+        "updatedAt": { "type": "string" }
+      },
+      "required": ["id", "establishmentId", "companyId", "orgId", "name", "active", "createdAt"]
+    },
+    "Position": {
+      "title": "Position",
+      "description": "Job position or role within a sector",
+      "properties": {
+        "id": { "type": "string" },
+        "sectorId": { "type": "string" },
+        "establishmentId": { "type": "string" },
+        "companyId": { "type": "string" },
+        "orgId": { "type": "string" },
+        "title": { "type": "string" },
+        "description": { "type": "string" },
+        "standardRequiredPPEIds": { "type": "array", "items": { "type": "string" } },
+        "requiresAnnualAudiometry": { "type": "boolean" },
+        "requiresRespiratoryProtection": { "type": "boolean" },
+        "active": { "type": "boolean" },
+        "createdAt": { "type": "string" },
+        "updatedAt": { "type": "string" }
+      },
+      "required": ["id", "sectorId", "establishmentId", "companyId", "orgId", "title", "active", "createdAt"]
+    },
+    "ProfessionalDocument": {
+      "title": "ProfessionalDocument",
+      "description": "Professional safety and occupational health document record",
+      "properties": {
+        "id": { "type": "string" },
+        "orgId": { "type": "string" },
+        "scope": { "type": "string", "enum": ["company", "establishment", "employee", "organization"] },
+        "companyId": { "type": "string" },
+        "establishmentId": { "type": "string" },
+        "employeeId": { "type": "string" },
+        "title": { "type": "string" },
+        "category": {
+          "type": "string",
+          "enum": [
+            "ART",
+            "Legajo empresa",
+            "Trabajadores",
+            "EPP",
+            "Capacitaciones",
+            "Inspecciones",
+            "Mediciones",
+            "Procedimientos",
+            "Informes",
+            "Emergencias",
+            "Matriz de riesgos",
+            "Organismos"
+          ]
+        },
+        "subCategory": { "type": "string" },
+        "documentNumber": { "type": "string" },
+        "issueDate": { "type": "string" },
+        "expirationDate": { "type": "string" },
+        "responsibleName": { "type": "string" },
+        "responsibleUid": { "type": "string" },
+        "issuingOrganism": { "type": "string" },
+        "status": { "type": "string", "enum": ["vigente", "por_vencer", "vencido", "archivado", "en_revision"] },
+        "filename": { "type": "string" },
+        "fileSize": { "type": "number" },
+        "mimeType": { "type": "string" },
+        "storagePath": { "type": "string" },
+        "hash": { "type": "string" },
+        "version": { "type": "number" },
+        "isDeleted": { "type": "boolean" },
+        "createdAt": { "type": "string" },
+        "updatedAt": { "type": "string" }
+      },
+      "required": ["id", "orgId", "title", "category", "issueDate", "responsibleName", "filename", "isDeleted", "createdAt"]
     }
   }
 }

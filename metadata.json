@@ -1,6 +1,6 @@
 {
   "name": "Safety IA",
-  "description": "Asistente Inteligente de Higiene y Seguridad Laboral con base documental RAG, OCR, análisis visual de riesgos, resúmenes normativos y listas de control en PDF.",
+  "description": "Consola Profesional Multiempresa de Higiene y Seguridad Laboral (SG-SST) con Legajos Digitales de Trabajadores (Res. SRT 299/11, 37/10), trazabilidad documental RAG y análisis visual con IA.",
   "requestFramePermissions": [
     "camera",
     "microphone"

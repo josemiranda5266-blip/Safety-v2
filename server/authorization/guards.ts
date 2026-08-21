@@ -1,5 +1,5 @@
 import { AuthorizationContext, Permission, MEMBERSHIP_ROLE_PERMISSIONS } from "./types";
-import { Company, Establishment, Employee } from "../../src/types/tenant";
+import { Company, Establishment, Employee, Sector, Position } from "../../src/types/tenant";
 
 /**
  * Checks if the given AuthorizationContext has the requested Permission.
@@ -109,3 +109,66 @@ export function canAccessEmployee(
 
   return true;
 }
+
+/**
+ * Zero-Trust Sector Access Validator:
+ * 1. Checks tenant isolation (Sector.orgId === Context.orgId).
+ * 2. Checks role permission.
+ * 3. Checks assignedCompanyIds restriction on the parent company.
+ */
+export function canAccessSector(
+  context: AuthorizationContext,
+  sector: Sector,
+  requiredPermission: Permission = "sector:read"
+): boolean {
+  // 1. Strict Tenant Isolation
+  if (sector.orgId !== context.orgId) {
+    return false;
+  }
+
+  // 2. Role Permission Check
+  if (!hasPermission(context, requiredPermission)) {
+    return false;
+  }
+
+  // 3. Parent Company Assignment Check
+  if (context.assignedCompanyIds) {
+    if (!context.assignedCompanyIds.includes(sector.companyId)) {
+      return false;
+    }
+  }
+
+  return true;
+}
+
+/**
+ * Zero-Trust Position Access Validator:
+ * 1. Checks tenant isolation (Position.orgId === Context.orgId).
+ * 2. Checks role permission.
+ * 3. Checks assignedCompanyIds restriction on the parent company.
+ */
+export function canAccessPosition(
+  context: AuthorizationContext,
+  position: Position,
+  requiredPermission: Permission = "position:read"
+): boolean {
+  // 1. Strict Tenant Isolation
+  if (position.orgId !== context.orgId) {
+    return false;
+  }
+
+  // 2. Role Permission Check
+  if (!hasPermission(context, requiredPermission)) {
+    return false;
+  }
+
+  // 3. Parent Company Assignment Check
+  if (context.assignedCompanyIds) {
+    if (!context.assignedCompanyIds.includes(position.companyId)) {
+      return false;
+    }
+  }
+
+  return true;
+}
+

@@ -133,6 +133,24 @@ service cloud.firestore {
       allow write: if isAdmin();
     }
 
+    // Multi-tenant Sectors
+    match /sectors/{sectorId} {
+      allow read: if isSignedIn() && (
+        exists(/databases/$(database)/documents/memberships/$(resource.data.orgId + '_' + request.auth.uid)) ||
+        isAdmin()
+      );
+      allow write: if isAdmin();
+    }
+
+    // Multi-tenant Positions
+    match /positions/{positionId} {
+      allow read: if isSignedIn() && (
+        exists(/databases/$(database)/documents/memberships/$(resource.data.orgId + '_' + request.auth.uid)) ||
+        isAdmin()
+      );
+      allow write: if isAdmin();
+    }
+
     // Credit Transactions (Immutable audit trail)
     match /creditTransactions/{txId} {
       allow read: if isExistingOwner() || isAdmin();

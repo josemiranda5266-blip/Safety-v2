@@ -15,6 +15,16 @@ export type Permission =
   | "establishment:read"
   | "establishment:update"
   | "establishment:delete"
+  // Sector permissions
+  | "sector:create"
+  | "sector:read"
+  | "sector:update"
+  | "sector:delete"
+  // Position permissions
+  | "position:create"
+  | "position:read"
+  | "position:update"
+  | "position:delete"
   // Employee permissions
   | "employee:create"
   | "employee:read"
@@ -60,6 +70,14 @@ export const MEMBERSHIP_ROLE_PERMISSIONS: Record<MembershipRole, Permission[]> =
     "establishment:read",
     "establishment:update",
     "establishment:delete",
+    "sector:create",
+    "sector:read",
+    "sector:update",
+    "sector:delete",
+    "position:create",
+    "position:read",
+    "position:update",
+    "position:delete",
     "employee:create",
     "employee:read",
     "employee:update",
@@ -87,6 +105,14 @@ export const MEMBERSHIP_ROLE_PERMISSIONS: Record<MembershipRole, Permission[]> =
     "establishment:read",
     "establishment:update",
     "establishment:delete",
+    "sector:create",
+    "sector:read",
+    "sector:update",
+    "sector:delete",
+    "position:create",
+    "position:read",
+    "position:update",
+    "position:delete",
     "employee:create",
     "employee:read",
     "employee:update",
@@ -110,6 +136,12 @@ export const MEMBERSHIP_ROLE_PERMISSIONS: Record<MembershipRole, Permission[]> =
     "establishment:create",
     "establishment:read",
     "establishment:update",
+    "sector:create",
+    "sector:read",
+    "sector:update",
+    "position:create",
+    "position:read",
+    "position:update",
     "employee:create",
     "employee:read",
     "employee:update",
@@ -126,6 +158,8 @@ export const MEMBERSHIP_ROLE_PERMISSIONS: Record<MembershipRole, Permission[]> =
     "organization:read",
     "company:read",
     "establishment:read",
+    "sector:read",
+    "position:read",
     "employee:read",
     "inspection:read",
     "compliance:read",

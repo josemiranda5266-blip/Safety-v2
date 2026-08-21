@@ -9,8 +9,11 @@ import aiRoutes from "./server/routes/aiRoutes";
 import userRoutes from "./server/routes/userRoutes";
 import companyRoutes from "./server/routes/companyRoutes";
 import establishmentRoutes from "./server/routes/establishmentRoutes";
+import sectorRoutes from "./server/routes/sectorRoutes";
+import positionRoutes from "./server/routes/positionRoutes";
 import employeeRoutes from "./server/routes/employeeRoutes";
 import documentRoutes from "./server/routes/documentRoutes";
+import tenantContextRoutes from "./server/routes/tenantContextRoutes";
 import {
   initializeAuthorizationRepository,
   getAuthorizationRepository,
@@ -143,8 +146,11 @@ app.use("/api/user", userRoutes);
 // Safety IA V2 Multi-tenant Routes
 app.use("/api/v2/companies", companyRoutes);
 app.use("/api/v2/establishments", establishmentRoutes);
+app.use("/api/v2/sectors", sectorRoutes);
+app.use("/api/v2/positions", positionRoutes);
 app.use("/api/v2/employees", employeeRoutes);
 app.use("/api/v2/documents", documentRoutes);
+app.use("/api/v2/tenant", tenantContextRoutes);
 
 // Vite Middleware for dev or static server in prod
 async function startServer() {

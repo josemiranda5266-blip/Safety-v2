@@ -1,32 +1,20 @@
 import crypto from "crypto";
 import { getAdminFirestore, getAdminStorageBucket } from "../auth/firestoreAdmin";
-import { DocChunk, CategoryType } from "../../src/types/safety";
-
-export interface StoredDocumentRecord {
-  id: string;
-  orgId: string;
-  uid: string;
-  filename: string;
-  title: string;
-  category: string;
-  fileType: string;
-  fileSize: number;
-  mimeType: string;
-  storagePath: string;
-  hash: string;
-  createdAt: string;
-  uploadDate: string;
-  documentDate?: string;
-  pageCount: number;
-  chunksCount: number;
-  summary: string;
-  author?: string;
-  issuingOrganism?: string;
-  tags?: string[];
-  status: string;
-  version: number;
-  processingState: string;
-}
+import { DocChunk } from "../../src/types/safety";
+import {
+  DocumentCategory,
+  DOCUMENT_CATEGORIES,
+  DocumentScope,
+  ProfessionalDocument,
+  DocumentVersionRecord,
+  DocumentDashboardMetrics,
+  DocumentCalendarEvent,
+  DocumentFilterOptions,
+} from "../../src/types/documentManagement";
+import { calculateExpirationMetrics, enrichDocumentWithExpiration } from "../../src/utils/expirationEngine";
+import { getCompanyById } from "./companyService";
+import { getEstablishmentById } from "./establishmentService";
+import { getEmployeeById } from "./employeeService";
 
 export interface UploadValidationResult {
   valid: boolean;
@@ -44,20 +32,7 @@ const ALLOWED_MIME_TYPES = new Set([
   "text/plain",
 ]);
 
-const ALLOWED_CATEGORIES = new Set<CategoryType>([
-  "Ley",
-  "Decreto",
-  "Resolución SRT",
-  "Norma IRAM",
-  "Norma ISO",
-  "Manual",
-  "Procedimiento",
-  "Instructivo",
-  "Apunte",
-  "Formulario",
-  "Informe",
-  "Otro",
-]);
+const ALLOWED_CATEGORIES = new Set<DocumentCategory>(DOCUMENT_CATEGORIES);
 
 const MAX_FILE_SIZE_BYTES = 15 * 1024 * 1024; // 15MB
 const MAX_CHUNKS_COUNT = 1000;
@@ -65,7 +40,7 @@ const MAX_CHUNK_TEXT_LENGTH = 10000;
 const MAX_TAGS_COUNT = 20;
 
 // In-memory document storage fallback for non-production/test environments ONLY
-const memoryDocumentsStore = new Map<string, StoredDocumentRecord>();
+const memoryDocumentsStore = new Map<string, ProfessionalDocument>();
 const memoryChunksStore = new Map<string, DocChunk[]>();
 const memoryFilesStore = new Map<string, Buffer>();
 
@@ -101,7 +76,7 @@ export function validateDocumentUpload(body: any): UploadValidationResult {
     return { valid: false, error: "Payload de solicitud inválido", code: "INVALID_PAYLOAD" };
   }
 
-  const { filename, fileBase64, mimeType, chunks, tags, title, category, pageCount, summary, author, issuingOrganism } = body;
+  const { filename, fileBase64, mimeType, chunks, tags, title, category, pageCount, summary, responsibleName, issuingOrganism, scope } = body;
 
   if (!filename || typeof filename !== "string" || filename.trim() === "") {
     return { valid: false, error: "El nombre de archivo (filename) es requerido", code: "MISSING_FILENAME" };
@@ -166,7 +141,7 @@ export function validateDocumentUpload(body: any): UploadValidationResult {
   if (!ALLOWED_MIME_TYPES.has(cleanMime)) {
     return {
       valid: false,
-      error: `Tipo MIME no permitido o no soportado (${cleanMime}). El tipo application/octet-stream no está permitido.`,
+      error: `Tipo MIME no permitido o no soportado (${cleanMime}).`,
       code: "INVALID_MIME_TYPE",
     };
   }
@@ -193,7 +168,6 @@ export function validateDocumentUpload(body: any): UploadValidationResult {
 
   // Magic Bytes Validation
   if (ext === ".pdf") {
-    // PDF Magic bytes: %PDF (0x25 0x50 0x44 0x46)
     if (fileBuffer.length < 4 ||
         fileBuffer[0] !== 0x25 ||
         fileBuffer[1] !== 0x50 ||
@@ -206,7 +180,6 @@ export function validateDocumentUpload(body: any): UploadValidationResult {
       };
     }
   } else if (ext === ".docx" || ext === ".xlsx") {
-    // DOCX/XLSX ZIP signature: PK (0x50 0x4b 0x03 0x04)
     if (fileBuffer.length < 4 ||
         fileBuffer[0] !== 0x50 ||
         fileBuffer[1] !== 0x4b ||
@@ -220,24 +193,25 @@ export function validateDocumentUpload(body: any): UploadValidationResult {
     }
   }
 
-  // PageCount validation
-  if (pageCount !== undefined) {
-    if (typeof pageCount !== "number" || isNaN(pageCount) || !isFinite(pageCount) || pageCount < 1 || !Number.isInteger(pageCount) || pageCount > 10000) {
+  // Category validation
+  if (category !== undefined) {
+    if (typeof category !== "string" || !ALLOWED_CATEGORIES.has(category as DocumentCategory)) {
       return {
         valid: false,
-        error: "El campo pageCount debe ser un número entero válido entre 1 y 10000. No se permiten objetos, arrays, NaN o Infinity.",
-        code: "INVALID_PAGE_COUNT",
+        error: `Categoría inválida (${category}). Las categorías requeridas son: ${DOCUMENT_CATEGORIES.join(", ")}`,
+        code: "INVALID_CATEGORY",
       };
     }
   }
 
-  // Category validation
-  if (category !== undefined) {
-    if (typeof category !== "string" || !ALLOWED_CATEGORIES.has(category as CategoryType)) {
+  // Scope validation
+  if (scope !== undefined) {
+    const validScopes: DocumentScope[] = ['company', 'establishment', 'employee', 'organization'];
+    if (!validScopes.includes(scope)) {
       return {
         valid: false,
-        error: `Categoría inválida (${category}). Las categorías permitidas son Ley, Decreto, Resolución SRT, Norma IRAM, Norma ISO, Manual, Procedimiento, Instructivo, Apunte, Formulario, Informe, Otro`,
-        code: "INVALID_CATEGORY",
+        error: `Alcance (scope) inválido. Debe ser: company, establishment, employee u organization`,
+        code: "INVALID_SCOPE",
       };
     }
   }
@@ -246,54 +220,14 @@ export function validateDocumentUpload(body: any): UploadValidationResult {
   if (title && typeof title === "string" && title.length > 200) {
     return { valid: false, error: "El título no puede superar 200 caracteres", code: "FIELD_TOO_LONG" };
   }
-  if (category && typeof category === "string" && category.length > 50) {
-    return { valid: false, error: "La categoría no puede superar 50 caracteres", code: "FIELD_TOO_LONG" };
-  }
   if (summary && typeof summary === "string" && summary.length > 1000) {
     return { valid: false, error: "El resumen no puede superar 1000 caracteres", code: "FIELD_TOO_LONG" };
   }
-  if (author && typeof author === "string" && author.length > 100) {
-    return { valid: false, error: "El autor no puede superar 100 caracteres", code: "FIELD_TOO_LONG" };
+  if (responsibleName && typeof responsibleName === "string" && responsibleName.length > 100) {
+    return { valid: false, error: "El responsable no puede superar 100 caracteres", code: "FIELD_TOO_LONG" };
   }
   if (issuingOrganism && typeof issuingOrganism === "string" && issuingOrganism.length > 100) {
     return { valid: false, error: "El organismo emisor no puede superar 100 caracteres", code: "FIELD_TOO_LONG" };
-  }
-
-  // Tags validation
-  if (tags !== undefined) {
-    if (!Array.isArray(tags)) {
-      return { valid: false, error: "El campo tags debe ser una lista", code: "INVALID_TAGS" };
-    }
-    if (tags.length > MAX_TAGS_COUNT) {
-      return { valid: false, error: `Se excede el máximo permitido de ${MAX_TAGS_COUNT} tags`, code: "TOO_MANY_TAGS" };
-    }
-    for (const tag of tags) {
-      if (typeof tag !== "string" || tag.length > 50) {
-        return { valid: false, error: "Cada tag debe ser un texto de máximo 50 caracteres", code: "INVALID_TAG" };
-      }
-    }
-  }
-
-  // Chunks validation
-  if (chunks !== undefined) {
-    if (!Array.isArray(chunks)) {
-      return { valid: false, error: "El campo chunks debe ser una lista", code: "INVALID_CHUNKS" };
-    }
-    if (chunks.length > MAX_CHUNKS_COUNT) {
-      return { valid: false, error: `Se excede el máximo permitido de ${MAX_CHUNKS_COUNT} chunks`, code: "TOO_MANY_CHUNKS" };
-    }
-    for (const chunk of chunks) {
-      if (!chunk || typeof chunk !== "object") {
-        return { valid: false, error: "Chunk con estructura inválida", code: "INVALID_CHUNK" };
-      }
-      if (chunk.text && typeof chunk.text === "string" && chunk.text.length > MAX_CHUNK_TEXT_LENGTH) {
-        return {
-          valid: false,
-          error: `Un chunk excede el tamaño máximo permitido de ${MAX_CHUNK_TEXT_LENGTH} caracteres`,
-          code: "CHUNK_TOO_LARGE",
-        };
-      }
-    }
   }
 
   return {
@@ -306,32 +240,50 @@ export function validateDocumentUpload(body: any): UploadValidationResult {
 export async function createDocument(params: {
   orgId: string;
   uid: string;
+  userName?: string;
   filename: string;
   fileBuffer: Buffer;
   mimeType: string;
   title?: string;
-  category?: string;
-  pageCount?: number;
-  chunks?: DocChunk[];
-  summary?: string;
-  author?: string;
+  category: DocumentCategory;
+  subCategory?: string;
+  scope?: DocumentScope;
+  companyId?: string;
+  establishmentId?: string;
+  employeeId?: string;
+  documentNumber?: string;
+  issueDate?: string;
+  expirationDate?: string;
+  responsibleName?: string;
   issuingOrganism?: string;
+  summary?: string;
+  notes?: string;
   tags?: string[];
-}): Promise<StoredDocumentRecord> {
+  chunks?: DocChunk[];
+}): Promise<ProfessionalDocument> {
   const {
     orgId,
     uid,
+    userName = "Profesional H&S",
     filename,
     fileBuffer,
     mimeType,
     title,
     category,
-    pageCount = 1,
-    chunks = [],
+    subCategory,
+    scope = "company",
+    companyId,
+    establishmentId,
+    employeeId,
+    documentNumber,
+    issueDate = new Date().toISOString().split("T")[0],
+    expirationDate,
+    responsibleName = userName,
+    issuingOrganism = "Organismo / ART",
     summary = "",
-    author = "Usuario",
-    issuingOrganism = "Organismo Oficial",
+    notes = "",
     tags = [],
+    chunks = [],
   } = params;
 
   const isProduction = process.env.NODE_ENV === "production";
@@ -339,43 +291,115 @@ export async function createDocument(params: {
   const documentId = `doc_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`;
   const hash = crypto.createHash("sha256").update(fileBuffer).digest("hex");
   const storagePath = `organizations/${orgId}/documents/${documentId}/${sanitizedFilename}`;
-  const createdAt = new Date().toISOString();
+  const nowIso = new Date().toISOString();
 
   const cleanTitle = title || sanitizedFilename.replace(/\.[^/.]+$/, "").replace(/_/g, " ");
 
-  const record: StoredDocumentRecord = {
-    id: documentId,
-    orgId,
-    uid,
+  // Fetch relational display names if IDs are provided
+  let companyName: string | undefined;
+  let establishmentName: string | undefined;
+  let employeeName: string | undefined;
+  let employeeCuil: string | undefined;
+
+  if (companyId) {
+    const comp = await getCompanyById(orgId, companyId);
+    if (comp) companyName = comp.legalName || comp.tradeName;
+  }
+
+  if (establishmentId) {
+    const est = await getEstablishmentById(orgId, establishmentId);
+    if (est) {
+      establishmentName = est.name;
+      if (!companyId && est.companyId) {
+        const comp = await getCompanyById(orgId, est.companyId);
+        if (comp) companyName = comp.legalName;
+      }
+    }
+  }
+
+  if (employeeId) {
+    const emp = await getEmployeeById(orgId, employeeId);
+    if (emp) {
+      employeeName = `${emp.lastName}, ${emp.firstName}`;
+      employeeCuil = emp.cuil;
+      if (!companyId && emp.companyId) {
+        const comp = await getCompanyById(orgId, emp.companyId);
+        if (comp) companyName = comp.legalName;
+      }
+      if (!establishmentId && emp.establishmentId) {
+        const est = await getEstablishmentById(orgId, emp.establishmentId);
+        if (est) establishmentName = est.name;
+      }
+    }
+  }
+
+  // Calculate expiration metrics
+  const expirationMetrics = calculateExpirationMetrics(expirationDate);
+
+  const initialVersion: DocumentVersionRecord = {
+    version: 1,
     filename: sanitizedFilename,
-    title: cleanTitle,
-    category: category || "Informe",
-    fileType: sanitizedFilename.split(".").pop()?.toLowerCase() || "pdf",
     fileSize: fileBuffer.length,
     mimeType,
     storagePath,
     hash,
-    createdAt,
-    uploadDate: createdAt,
-    pageCount,
-    chunksCount: chunks.length,
-    summary: summary || `${cleanTitle} - Documento subido para auditoría.`,
-    author,
+    uploadedAt: nowIso,
+    uploadedByUid: uid,
+    uploadedByName: userName,
+    issueDate,
+    expirationDate,
+    changeNotes: "Versión inicial",
+  };
+
+  const record: ProfessionalDocument = {
+    id: documentId,
+    orgId,
+    scope,
+    companyId,
+    establishmentId,
+    employeeId,
+    companyName,
+    establishmentName,
+    employeeName,
+    employeeCuil,
+    title: cleanTitle,
+    category,
+    subCategory,
+    documentNumber,
+    issueDate,
+    expirationDate,
+    responsibleName,
+    responsibleUid: uid,
     issuingOrganism,
+    status: expirationMetrics.suggestedStatus,
+    filename: sanitizedFilename,
+    fileSize: fileBuffer.length,
+    mimeType,
+    fileType: sanitizedFilename.split(".").pop()?.toLowerCase() || "pdf",
+    storagePath,
+    hash,
+    summary: summary || `${cleanTitle} - ${category}`,
     tags,
-    status: "Vigente",
+    notes,
     version: 1,
-    processingState: "indexed",
+    versionHistory: [initialVersion],
+    isDeleted: false,
+    createdAt: nowIso,
+    updatedAt: nowIso,
+    uploadedByUid: uid,
+    uploadedByName: userName,
+    daysUntilExpiration: expirationMetrics.daysUntilExpiration,
+    expirationAlertLevel: expirationMetrics.alertLevel,
   };
 
   // Sanitize chunks: MANDATORILY assign orgId and docId server-side
   const sanitizedChunks: (DocChunk & { orgId: string })[] = chunks.map((chunk, idx) => ({
     id: `chunk_${documentId}_${idx + 1}`,
-    docId: documentId, // SERVER AUTHORITATIVE OVERRIDE
-    orgId: orgId,      // SERVER AUTHORITATIVE OVERRIDE
+    docId: documentId,
+    orgId: orgId,
     text: String(chunk.text || "").substring(0, MAX_CHUNK_TEXT_LENGTH),
     docTitle: String(chunk.docTitle || cleanTitle).substring(0, 200),
-    category: ((chunk.category as CategoryType) || (category as CategoryType) || "Informe") as CategoryType,
+    category: (chunk.category || category) as any,
     pageNumber: typeof chunk.pageNumber === "number" ? chunk.pageNumber : 1,
     chapter: chunk.chapter ? String(chunk.chapter).substring(0, 100) : undefined,
     section: chunk.section ? String(chunk.section).substring(0, 100) : undefined,
@@ -388,28 +412,28 @@ export async function createDocument(params: {
   let storageUploadSuccess = false;
   let metadataCreatedSuccess = false;
 
-  // 1. Upload physical file to Storage
+  // 1. Upload file to Storage
   try {
     const bucket = getAdminStorageBucket();
     const file = bucket.file(storagePath);
     await file.save(fileBuffer, {
       metadata: {
         contentType: mimeType,
-        metadata: { orgId, documentId, uid },
+        metadata: { orgId, documentId, uid, version: "1" },
       },
     });
     storageUploadSuccess = true;
   } catch (storageErr: any) {
     if (isProduction) {
-      console.error("[DocumentService] Error crítico al guardar archivo en Storage en producción:", storageErr.message);
-      const infraErr: any = new Error("Error de infraestructura en servicio de almacenamiento (Storage)");
+      console.error("[DocumentService] Error en Storage en producción:", storageErr.message);
+      const infraErr: any = new Error("Error de infraestructura en servicio de almacenamiento");
       infraErr.code = "INFRASTRUCTURE_ERROR";
       infraErr.status = 503;
       throw infraErr;
     }
   }
 
-  // 2. Persist metadata & chunks to Firestore (with Rollback compensation if Firestore fails)
+  // 2. Persist metadata to Firestore
   try {
     const db = getAdminFirestore();
     const docRef = db.collection("organizations").doc(orgId).collection("documents").doc(documentId);
@@ -426,38 +450,29 @@ export async function createDocument(params: {
       await batch.commit();
     }
   } catch (firestoreErr: any) {
-    // Transactional Rollback: Clean up any partially created Firestore metadata or chunks
     if (metadataCreatedSuccess) {
       try {
         const db = getAdminFirestore();
-        const docRef = db.collection("organizations").doc(orgId).collection("documents").doc(documentId);
-        
-        // Delete metadata
-        await docRef.delete();
-      } catch {
-        // Suppress secondary cleanup errors
-      }
+        await db.collection("organizations").doc(orgId).collection("documents").doc(documentId).delete();
+      } catch {}
     }
 
-    // Transactional Rollback: Delete file from Storage if Firestore write failed
     if (storageUploadSuccess) {
       try {
         const bucket = getAdminStorageBucket();
         await bucket.file(storagePath).delete();
-      } catch {
-        // Suppress secondary cleanup errors
-      }
+      } catch {}
     }
 
     if (isProduction) {
-      console.error("[DocumentService] Error crítico al persistir metadata en Firestore en producción:", firestoreErr.message);
-      const infraErr: any = new Error("Error de infraestructura en servicio de base de datos (Firestore)");
+      console.error("[DocumentService] Error en Firestore en producción:", firestoreErr.message);
+      const infraErr: any = new Error("Error de infraestructura en base de datos");
       infraErr.code = "INFRASTRUCTURE_ERROR";
       infraErr.status = 503;
       throw infraErr;
     }
 
-    // Dev/Test environment fallback
+    // Dev/Test fallback
     memoryDocumentsStore.set(`${orgId}:${documentId}`, record);
     memoryChunksStore.set(documentId, sanitizedChunks);
     memoryFilesStore.set(storagePath, fileBuffer);
@@ -469,49 +484,304 @@ export async function createDocument(params: {
     memoryFilesStore.set(storagePath, fileBuffer);
   }
 
-  return record;
+  return enrichDocumentWithExpiration(record);
 }
 
-export async function listDocuments(orgId: string): Promise<StoredDocumentRecord[]> {
-  const isProduction = process.env.NODE_ENV === "production";
+export async function renewDocumentVersion(params: {
+  orgId: string;
+  documentId: string;
+  uid: string;
+  userName?: string;
+  filename: string;
+  fileBuffer: Buffer;
+  mimeType: string;
+  issueDate?: string;
+  expirationDate?: string;
+  changeNotes?: string;
+}): Promise<ProfessionalDocument> {
+  const {
+    orgId,
+    documentId,
+    uid,
+    userName = "Profesional H&S",
+    filename,
+    fileBuffer,
+    mimeType,
+    issueDate,
+    expirationDate,
+    changeNotes = "Renovación periódica",
+  } = params;
 
+  const existingDoc = await getDocumentById(orgId, documentId, true);
+  if (!existingDoc) {
+    const notFoundErr: any = new Error("Documento no encontrado");
+    notFoundErr.status = 404;
+    notFoundErr.code = "DOCUMENT_NOT_FOUND";
+    throw notFoundErr;
+  }
+
+  const nextVersion = (existingDoc.version || 1) + 1;
+  const sanitizedFilename = sanitizeFilename(filename);
+  const hash = crypto.createHash("sha256").update(fileBuffer).digest("hex");
+  const storagePath = `organizations/${orgId}/documents/${documentId}/v${nextVersion}_${sanitizedFilename}`;
+  const nowIso = new Date().toISOString();
+
+  // Upload new version to Storage
   try {
-    const db = getAdminFirestore();
-    const snapshot = await db.collection("organizations").doc(orgId).collection("documents").get();
-    return snapshot.docs.map((doc) => doc.data() as StoredDocumentRecord);
+    const bucket = getAdminStorageBucket();
+    const file = bucket.file(storagePath);
+    await file.save(fileBuffer, {
+      metadata: {
+        contentType: mimeType,
+        metadata: { orgId, documentId, uid, version: String(nextVersion) },
+      },
+    });
   } catch (e: any) {
-    if (isProduction) {
-      console.error("[DocumentService] Error en listDocuments Firestore en producción:", e.message);
-      const infraErr: any = new Error("Error de infraestructura en consulta de documentos");
+    if (process.env.NODE_ENV === "production") {
+      const infraErr: any = new Error("Error de almacenamiento al renovar archivo");
       infraErr.code = "INFRASTRUCTURE_ERROR";
       infraErr.status = 503;
       throw infraErr;
     }
   }
 
-  const results: StoredDocumentRecord[] = [];
-  memoryDocumentsStore.forEach((value, key) => {
-    if (key.startsWith(`${orgId}:`)) {
-      results.push(value);
+  const newVersionRecord: DocumentVersionRecord = {
+    version: nextVersion,
+    filename: sanitizedFilename,
+    fileSize: fileBuffer.length,
+    mimeType,
+    storagePath,
+    hash,
+    uploadedAt: nowIso,
+    uploadedByUid: uid,
+    uploadedByName: userName,
+    issueDate: issueDate || existingDoc.issueDate,
+    expirationDate: expirationDate || existingDoc.expirationDate,
+    changeNotes,
+  };
+
+  const updatedHistory = [...(existingDoc.versionHistory || []), newVersionRecord];
+  const finalIssueDate = issueDate || existingDoc.issueDate;
+  const finalExpirationDate = expirationDate !== undefined ? expirationDate : existingDoc.expirationDate;
+
+  const expirationMetrics = calculateExpirationMetrics(finalExpirationDate);
+
+  const updatedDoc: ProfessionalDocument = {
+    ...existingDoc,
+    version: nextVersion,
+    filename: sanitizedFilename,
+    fileSize: fileBuffer.length,
+    mimeType,
+    fileType: sanitizedFilename.split(".").pop()?.toLowerCase() || "pdf",
+    storagePath,
+    hash,
+    issueDate: finalIssueDate,
+    expirationDate: finalExpirationDate,
+    status: expirationMetrics.suggestedStatus,
+    versionHistory: updatedHistory,
+    updatedAt: nowIso,
+    daysUntilExpiration: expirationMetrics.daysUntilExpiration,
+    expirationAlertLevel: expirationMetrics.alertLevel,
+  };
+
+  try {
+    const db = getAdminFirestore();
+    await db
+      .collection("organizations")
+      .doc(orgId)
+      .collection("documents")
+      .doc(documentId)
+      .set(updatedDoc, { merge: true });
+  } catch (e: any) {
+    if (process.env.NODE_ENV === "production") {
+      const infraErr: any = new Error("Error en base de datos al renovar documento");
+      infraErr.code = "INFRASTRUCTURE_ERROR";
+      infraErr.status = 503;
+      throw infraErr;
     }
-  });
-  return results;
+  }
+
+  memoryDocumentsStore.set(`${orgId}:${documentId}`, updatedDoc);
+  memoryFilesStore.set(storagePath, fileBuffer);
+
+  return enrichDocumentWithExpiration(updatedDoc);
 }
 
-export async function getDocumentById(orgId: string, documentId: string): Promise<StoredDocumentRecord | null> {
+export async function updateDocumentMetadata(
+  orgId: string,
+  documentId: string,
+  updates: Partial<Pick<ProfessionalDocument, 'title' | 'category' | 'subCategory' | 'documentNumber' | 'issueDate' | 'expirationDate' | 'responsibleName' | 'issuingOrganism' | 'status' | 'notes' | 'tags' | 'summary'>>
+): Promise<ProfessionalDocument> {
+  const existingDoc = await getDocumentById(orgId, documentId, true);
+  if (!existingDoc) {
+    const notFoundErr: any = new Error("Documento no encontrado");
+    notFoundErr.status = 404;
+    notFoundErr.code = "DOCUMENT_NOT_FOUND";
+    throw notFoundErr;
+  }
+
+  const nowIso = new Date().toISOString();
+  const merged: ProfessionalDocument = {
+    ...existingDoc,
+    ...updates,
+    updatedAt: nowIso,
+  };
+
+  // Recalculate expiration if expirationDate changed
+  const expMetrics = calculateExpirationMetrics(merged.expirationDate);
+  merged.daysUntilExpiration = expMetrics.daysUntilExpiration;
+  merged.expirationAlertLevel = expMetrics.alertLevel;
+  if (!updates.status) {
+    merged.status = expMetrics.suggestedStatus;
+  }
+
+  try {
+    const db = getAdminFirestore();
+    await db
+      .collection("organizations")
+      .doc(orgId)
+      .collection("documents")
+      .doc(documentId)
+      .set(merged, { merge: true });
+  } catch (e: any) {
+    if (process.env.NODE_ENV === "production") {
+      const infraErr: any = new Error("Error en base de datos al actualizar documento");
+      infraErr.code = "INFRASTRUCTURE_ERROR";
+      infraErr.status = 503;
+      throw infraErr;
+    }
+  }
+
+  memoryDocumentsStore.set(`${orgId}:${documentId}`, merged);
+  return enrichDocumentWithExpiration(merged);
+}
+
+export async function listDocuments(
+  orgId: string,
+  options: DocumentFilterOptions = {},
+  assignedCompanyIds?: string[]
+): Promise<ProfessionalDocument[]> {
   const isProduction = process.env.NODE_ENV === "production";
+  let docs: ProfessionalDocument[] = [];
+
+  try {
+    const db = getAdminFirestore();
+    let query: FirebaseFirestore.Query = db.collection("organizations").doc(orgId).collection("documents");
+
+    if (!options.includeDeleted) {
+      query = query.where("isDeleted", "==", false);
+    }
+
+    const snapshot = await query.get();
+    docs = snapshot.docs.map((d) => d.data() as ProfessionalDocument);
+  } catch (e: any) {
+    if (isProduction) {
+      const infraErr: any = new Error("Error al consultar documentos");
+      infraErr.code = "INFRASTRUCTURE_ERROR";
+      infraErr.status = 503;
+      throw infraErr;
+    }
+
+    memoryDocumentsStore.forEach((value, key) => {
+      if (key.startsWith(`${orgId}:`)) {
+        if (options.includeDeleted || !value.isDeleted) {
+          docs.push(value);
+        }
+      }
+    });
+  }
+
+  // Apply Expiration Engine enrichment to all docs
+  let enriched = docs.map((doc) => enrichDocumentWithExpiration(doc));
+
+  // Scoped consultant filtering (BOLA / IDOR protection)
+  if (assignedCompanyIds && assignedCompanyIds.length > 0) {
+    const allowed = new Set(assignedCompanyIds);
+    enriched = enriched.filter((d) => {
+      // If doc is company-specific, companyId must be in allowed list
+      if (d.companyId) {
+        return allowed.has(d.companyId);
+      }
+      // If org-wide without specific company, allowed only if user has access to org
+      return true;
+    });
+  }
+
+  // Filter by options
+  if (options.scope && options.scope !== 'all') {
+    enriched = enriched.filter((d) => d.scope === options.scope);
+  }
+
+  if (options.companyId) {
+    enriched = enriched.filter((d) => d.companyId === options.companyId);
+  }
+
+  if (options.establishmentId) {
+    enriched = enriched.filter((d) => d.establishmentId === options.establishmentId);
+  }
+
+  if (options.employeeId) {
+    enriched = enriched.filter((d) => d.employeeId === options.employeeId);
+  }
+
+  if (options.category && options.category !== 'all') {
+    enriched = enriched.filter((d) => d.category === options.category);
+  }
+
+  if (options.status && options.status !== 'all') {
+    enriched = enriched.filter((d) => d.status === options.status);
+  }
+
+  if (options.alertLevel && options.alertLevel !== 'all') {
+    enriched = enriched.filter((d) => d.expirationAlertLevel === options.alertLevel);
+  }
+
+  if (options.searchQuery && options.searchQuery.trim() !== '') {
+    const q = options.searchQuery.toLowerCase().trim();
+    enriched = enriched.filter((d) =>
+      d.title.toLowerCase().includes(q) ||
+      d.filename.toLowerCase().includes(q) ||
+      (d.documentNumber && d.documentNumber.toLowerCase().includes(q)) ||
+      (d.responsibleName && d.responsibleName.toLowerCase().includes(q)) ||
+      (d.issuingOrganism && d.issuingOrganism.toLowerCase().includes(q)) ||
+      (d.employeeName && d.employeeName.toLowerCase().includes(q)) ||
+      (d.companyName && d.companyName.toLowerCase().includes(q)) ||
+      (d.tags && d.tags.some((t) => t.toLowerCase().includes(q)))
+    );
+  }
+
+  // Sort by expiration urgency (expired & critical first, then creation date desc)
+  enriched.sort((a, b) => {
+    if (a.daysUntilExpiration !== null && a.daysUntilExpiration !== undefined &&
+        b.daysUntilExpiration !== null && b.daysUntilExpiration !== undefined) {
+      return a.daysUntilExpiration - b.daysUntilExpiration;
+    }
+    if (a.daysUntilExpiration !== null && a.daysUntilExpiration !== undefined) return -1;
+    if (b.daysUntilExpiration !== null && b.daysUntilExpiration !== undefined) return 1;
+    return new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime();
+  });
+
+  return enriched;
+}
+
+export async function getDocumentById(
+  orgId: string,
+  documentId: string,
+  includeDeleted = false,
+  assignedCompanyIds?: string[]
+): Promise<ProfessionalDocument | null> {
+  const isProduction = process.env.NODE_ENV === "production";
+  let docRecord: ProfessionalDocument | null = null;
 
   try {
     const db = getAdminFirestore();
     const docRef = db.collection("organizations").doc(orgId).collection("documents").doc(documentId);
     const snap = await docRef.get();
     if (snap.exists) {
-      return snap.data() as StoredDocumentRecord;
+      docRecord = snap.data() as ProfessionalDocument;
     }
-    return null;
   } catch (e: any) {
     if (isProduction) {
-      console.error("[DocumentService] Error en getDocumentById Firestore en producción:", e.message);
       const infraErr: any = new Error("Error de infraestructura al obtener documento");
       infraErr.code = "INFRASTRUCTURE_ERROR";
       infraErr.status = 503;
@@ -519,72 +789,318 @@ export async function getDocumentById(orgId: string, documentId: string): Promis
     }
   }
 
-  const mem = memoryDocumentsStore.get(`${orgId}:${documentId}`);
-  return mem || null;
+  if (!docRecord) {
+    const mem = memoryDocumentsStore.get(`${orgId}:${documentId}`);
+    if (mem) docRecord = mem;
+  }
+
+  if (!docRecord) return null;
+
+  if (!includeDeleted && docRecord.isDeleted) {
+    return null;
+  }
+
+  // Scoped consultant check (BOLA)
+  if (assignedCompanyIds && assignedCompanyIds.length > 0 && docRecord.companyId) {
+    if (!assignedCompanyIds.includes(docRecord.companyId)) {
+      const accessErr: any = new Error("Acceso denegado: documento fuera del alcance de empresa asignada");
+      accessErr.status = 403;
+      accessErr.code = "FORBIDDEN_COMPANY_SCOPE";
+      throw accessErr;
+    }
+  }
+
+  return enrichDocumentWithExpiration(docRecord);
 }
 
-export async function deleteDocument(orgId: string, documentId: string): Promise<boolean> {
-  const isProduction = process.env.NODE_ENV === "production";
-
-  const existingDoc = await getDocumentById(orgId, documentId);
+/**
+ * Soft-delete (Eliminación lógica) for legal preservation & audit compliance.
+ */
+export async function softDeleteDocument(
+  orgId: string,
+  documentId: string,
+  uid: string,
+  userName = "Profesional H&S",
+  assignedCompanyIds?: string[]
+): Promise<boolean> {
+  const existingDoc = await getDocumentById(orgId, documentId, false, assignedCompanyIds);
   if (!existingDoc) {
     return false;
   }
 
-  let storageDeleted = false;
+  const nowIso = new Date().toISOString();
+  const updatedDoc: ProfessionalDocument = {
+    ...existingDoc,
+    isDeleted: true,
+    deletedAt: nowIso,
+    deletedByUid: uid,
+    deletedByName: userName,
+    updatedAt: nowIso,
+  };
 
-  // 1. Delete original object in Storage first
   try {
-    const bucket = getAdminStorageBucket();
-    await bucket.file(existingDoc.storagePath).delete();
-    storageDeleted = true;
+    const db = getAdminFirestore();
+    await db
+      .collection("organizations")
+      .doc(orgId)
+      .collection("documents")
+      .doc(documentId)
+      .set(updatedDoc, { merge: true });
   } catch (e: any) {
-    if (isProduction) {
-      console.error("[DocumentService] Error al eliminar archivo en Storage en producción:", e.message);
-      const infraErr: any = new Error("Error de infraestructura al eliminar objeto en almacenamiento");
+    if (process.env.NODE_ENV === "production") {
+      const infraErr: any = new Error("Error en base de datos al realizar baja lógica");
       infraErr.code = "INFRASTRUCTURE_ERROR";
       infraErr.status = 503;
       throw infraErr;
     }
-    // In dev/test environment, assume delete succeeded if we use fallback stores
-    storageDeleted = true;
   }
 
-  // 2. Delete Firestore Metadata & Chunks upon successful Storage deletion
-  if (storageDeleted) {
-    try {
-      const db = getAdminFirestore();
-      const docRef = db.collection("organizations").doc(orgId).collection("documents").doc(documentId);
+  memoryDocumentsStore.set(`${orgId}:${documentId}`, updatedDoc);
+  return true;
+}
 
-      // Delete chunks subcollection
-      const chunksSnap = await docRef.collection("chunks").get();
-      if (!chunksSnap.empty) {
-        const batch = db.batch();
-        chunksSnap.docs.forEach((doc) => batch.delete(doc.ref));
-        await batch.commit();
-      }
+export async function restoreDocument(
+  orgId: string,
+  documentId: string,
+  assignedCompanyIds?: string[]
+): Promise<boolean> {
+  const existingDoc = await getDocumentById(orgId, documentId, true, assignedCompanyIds);
+  if (!existingDoc) {
+    return false;
+  }
 
-      await docRef.delete();
-    } catch (e: any) {
-      if (isProduction) {
-        console.error(
-          `[CRITICAL INCONSISTENCY] El archivo físico se eliminó de Storage (path: ${existingDoc.storagePath}), pero falló la eliminación de metadata/chunks en Firestore para el documento ${documentId}. Error: ${e.message}`
-        );
-        const infraErr: any = new Error("Error de infraestructura al eliminar documento de la base de datos (Firestore)");
-        infraErr.code = "INFRASTRUCTURE_ERROR";
-        infraErr.status = 503;
-        throw infraErr;
-      }
+  const nowIso = new Date().toISOString();
+  const updatedDoc: ProfessionalDocument = {
+    ...existingDoc,
+    isDeleted: false,
+    deletedAt: undefined,
+    deletedByUid: undefined,
+    deletedByName: undefined,
+    updatedAt: nowIso,
+  };
+
+  try {
+    const db = getAdminFirestore();
+    await db
+      .collection("organizations")
+      .doc(orgId)
+      .collection("documents")
+      .doc(documentId)
+      .set(updatedDoc, { merge: true });
+  } catch (e: any) {
+    if (process.env.NODE_ENV === "production") {
+      const infraErr: any = new Error("Error al restaurar documento");
+      infraErr.code = "INFRASTRUCTURE_ERROR";
+      infraErr.status = 503;
+      throw infraErr;
     }
   }
 
-  // Clean memory store in dev/test
+  memoryDocumentsStore.set(`${orgId}:${documentId}`, updatedDoc);
+  return true;
+}
+
+/**
+ * Hard delete (permanent removal) if strictly necessary.
+ */
+export async function hardDeleteDocument(
+  orgId: string,
+  documentId: string,
+  assignedCompanyIds?: string[]
+): Promise<boolean> {
+  const existingDoc = await getDocumentById(orgId, documentId, true, assignedCompanyIds);
+  if (!existingDoc) {
+    return false;
+  }
+
+  try {
+    const bucket = getAdminStorageBucket();
+    await bucket.file(existingDoc.storagePath).delete();
+  } catch (e: any) {}
+
+  try {
+    const db = getAdminFirestore();
+    const docRef = db.collection("organizations").doc(orgId).collection("documents").doc(documentId);
+    const chunksSnap = await docRef.collection("chunks").get();
+    if (!chunksSnap.empty) {
+      const batch = db.batch();
+      chunksSnap.docs.forEach((doc) => batch.delete(doc.ref));
+      await batch.commit();
+    }
+    await docRef.delete();
+  } catch (e: any) {}
+
   const key = `${orgId}:${documentId}`;
   memoryDocumentsStore.delete(key);
   memoryChunksStore.delete(documentId);
   memoryFilesStore.delete(existingDoc.storagePath);
 
   return true;
+}
+
+/**
+ * Aggregates complete dashboard metrics and expiration breakdown.
+ */
+export async function getDocumentDashboardMetrics(
+  orgId: string,
+  assignedCompanyIds?: string[]
+): Promise<DocumentDashboardMetrics> {
+  const docs = await listDocuments(orgId, { includeDeleted: false }, assignedCompanyIds);
+
+  const initialByCategory: Record<DocumentCategory, number> = {
+    'ART': 0,
+    'Legajo empresa': 0,
+    'Trabajadores': 0,
+    'EPP': 0,
+    'Capacitaciones': 0,
+    'Inspecciones': 0,
+    'Mediciones': 0,
+    'Procedimientos': 0,
+    'Informes': 0,
+    'Emergencias': 0,
+    'Matriz de riesgos': 0,
+    'Organismos': 0,
+  };
+
+  const metrics: DocumentDashboardMetrics = {
+    totalDocuments: docs.length,
+    activeDocuments: docs.length,
+    expiredCount: 0,
+    critical7dCount: 0,
+    urgent15dCount: 0,
+    warning30dCount: 0,
+    notice90dCount: 0,
+    validCount: 0,
+    noExpiryCount: 0,
+    byCategory: initialByCategory,
+    byScope: {
+      company: 0,
+      establishment: 0,
+      employee: 0,
+      organization: 0,
+    },
+    byCompany: [],
+  };
+
+  const companyMap = new Map<string, { companyId: string; companyName: string; total: number; expired: number; expiringSoon: number }>();
+
+  for (const doc of docs) {
+    // Categories
+    if (metrics.byCategory[doc.category] !== undefined) {
+      metrics.byCategory[doc.category]++;
+    }
+
+    // Scopes
+    if (doc.scope && metrics.byScope[doc.scope] !== undefined) {
+      metrics.byScope[doc.scope]++;
+    }
+
+    // Expiration brackets
+    switch (doc.expirationAlertLevel) {
+      case 'expired':
+        metrics.expiredCount++;
+        break;
+      case 'critical_7d':
+        metrics.critical7dCount++;
+        break;
+      case 'urgent_15d':
+        metrics.urgent15dCount++;
+        break;
+      case 'warning_30d':
+        metrics.warning30dCount++;
+        break;
+      case 'notice_90d':
+        metrics.notice90dCount++;
+        break;
+      case 'valid':
+        metrics.validCount++;
+        break;
+      case 'no_expiry':
+      default:
+        metrics.noExpiryCount++;
+        break;
+    }
+
+    // By company
+    if (doc.companyId) {
+      let cEntry = companyMap.get(doc.companyId);
+      if (!cEntry) {
+        cEntry = {
+          companyId: doc.companyId,
+          companyName: doc.companyName || "Empresa",
+          total: 0,
+          expired: 0,
+          expiringSoon: 0,
+        };
+        companyMap.set(doc.companyId, cEntry);
+      }
+      cEntry.total++;
+      if (doc.expirationAlertLevel === 'expired') {
+        cEntry.expired++;
+      } else if (
+        doc.expirationAlertLevel === 'critical_7d' ||
+        doc.expirationAlertLevel === 'urgent_15d' ||
+        doc.expirationAlertLevel === 'warning_30d'
+      ) {
+        cEntry.expiringSoon++;
+      }
+    }
+  }
+
+  metrics.byCompany = Array.from(companyMap.values());
+  return metrics;
+}
+
+/**
+ * Generates calendar events for document expirations, issuances, and renewals.
+ */
+export async function getDocumentCalendarEvents(
+  orgId: string,
+  assignedCompanyIds?: string[]
+): Promise<DocumentCalendarEvent[]> {
+  const docs = await listDocuments(orgId, { includeDeleted: false }, assignedCompanyIds);
+  const events: DocumentCalendarEvent[] = [];
+
+  for (const doc of docs) {
+    // Expiration event
+    if (doc.expirationDate) {
+      events.push({
+        id: `cal_exp_${doc.id}`,
+        documentId: doc.id,
+        title: `Vto: ${doc.title}`,
+        date: doc.expirationDate.split("T")[0],
+        eventType: 'expiration',
+        category: doc.category,
+        scope: doc.scope,
+        companyName: doc.companyName,
+        establishmentName: doc.establishmentName,
+        employeeName: doc.employeeName,
+        alertLevel: doc.expirationAlertLevel || 'valid',
+        responsibleName: doc.responsibleName,
+      });
+    }
+
+    // Issue event
+    if (doc.issueDate) {
+      events.push({
+        id: `cal_iss_${doc.id}`,
+        documentId: doc.id,
+        title: `Emisión: ${doc.title}`,
+        date: doc.issueDate.split("T")[0],
+        eventType: 'issue',
+        category: doc.category,
+        scope: doc.scope,
+        companyName: doc.companyName,
+        establishmentName: doc.establishmentName,
+        employeeName: doc.employeeName,
+        alertLevel: 'no_expiry',
+        responsibleName: doc.responsibleName,
+      });
+    }
+  }
+
+  events.sort((a, b) => a.date.localeCompare(b.date));
+  return events;
 }
 
 export async function getDocumentChunks(orgId: string, documentId: string): Promise<DocChunk[]> {
@@ -602,8 +1118,7 @@ export async function getDocumentChunks(orgId: string, documentId: string): Prom
     return snapshot.docs.map((doc) => doc.data() as DocChunk);
   } catch (e: any) {
     if (isProduction) {
-      console.error("[DocumentService] Error en getDocumentChunks Firestore en producción:", e.message);
-      const infraErr: any = new Error("Error de infraestructura al obtener fragmentos");
+      const infraErr: any = new Error("Error al obtener fragmentos");
       infraErr.code = "INFRASTRUCTURE_ERROR";
       infraErr.status = 503;
       throw infraErr;
@@ -613,26 +1128,44 @@ export async function getDocumentChunks(orgId: string, documentId: string): Prom
   return memoryChunksStore.get(documentId) || [];
 }
 
-export async function getDocumentFileBuffer(orgId: string, documentId: string): Promise<{ buffer: Buffer; mimeType: string; filename: string } | null> {
+export async function getDocumentFileBuffer(
+  orgId: string,
+  documentId: string,
+  versionNumber?: number,
+  assignedCompanyIds?: string[]
+): Promise<{ buffer: Buffer; mimeType: string; filename: string } | null> {
   const isProduction = process.env.NODE_ENV === "production";
 
-  const docRecord = await getDocumentById(orgId, documentId);
+  const docRecord = await getDocumentById(orgId, documentId, true, assignedCompanyIds);
   if (!docRecord) {
     return null;
   }
 
+  let targetStoragePath = docRecord.storagePath;
+  let targetMimeType = docRecord.mimeType;
+  let targetFilename = docRecord.filename;
+
+  // Specific version download
+  if (versionNumber && versionNumber !== docRecord.version && docRecord.versionHistory) {
+    const histVer = docRecord.versionHistory.find((v) => v.version === versionNumber);
+    if (histVer) {
+      targetStoragePath = histVer.storagePath;
+      targetMimeType = histVer.mimeType;
+      targetFilename = histVer.filename;
+    }
+  }
+
   try {
     const bucket = getAdminStorageBucket();
-    const file = bucket.file(docRecord.storagePath);
+    const file = bucket.file(targetStoragePath);
     const [buffer] = await file.download();
     return {
       buffer,
-      mimeType: docRecord.mimeType,
-      filename: docRecord.filename,
+      mimeType: targetMimeType,
+      filename: targetFilename,
     };
   } catch (e: any) {
     if (isProduction) {
-      console.error("[DocumentService] Error al descargar archivo desde Storage en producción:", e.message);
       const infraErr: any = new Error("Error de infraestructura al descargar archivo");
       infraErr.code = "INFRASTRUCTURE_ERROR";
       infraErr.status = 503;
@@ -640,12 +1173,12 @@ export async function getDocumentFileBuffer(orgId: string, documentId: string): 
     }
   }
 
-  const memBuffer = memoryFilesStore.get(docRecord.storagePath);
+  const memBuffer = memoryFilesStore.get(targetStoragePath);
   if (memBuffer) {
     return {
       buffer: memBuffer,
-      mimeType: docRecord.mimeType,
-      filename: docRecord.filename,
+      mimeType: targetMimeType,
+      filename: targetFilename,
     };
   }
 

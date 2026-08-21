@@ -61,7 +61,70 @@ export const updateEstablishmentSchema = z
   })
   .strict();
 
-// --- Employee Validation Schemas (Strict: No medical fields, no emergency contacts) ---
+// --- Sector Validation Schemas ---
+export const createSectorSchema = z
+  .object({
+    companyId: z.string().min(1, "El companyId es obligatorio"),
+    establishmentId: z.string().min(1, "El establishmentId es obligatorio"),
+    name: z.string().min(2, "El nombre del sector debe tener al menos 2 caracteres").max(200),
+    description: z.string().max(1000).optional(),
+    responsibleName: z.string().max(200).optional(),
+    noiseLevelEstimatedDBA: z.number().min(0).max(180).optional(),
+    requiresSpecificPPE: z.boolean().optional(),
+  })
+  .strict();
+
+export const updateSectorSchema = z
+  .object({
+    name: z.string().min(2).max(200).optional(),
+    description: z.string().max(1000).optional(),
+    responsibleName: z.string().max(200).optional(),
+    noiseLevelEstimatedDBA: z.number().min(0).max(180).optional(),
+    requiresSpecificPPE: z.boolean().optional(),
+    active: z.boolean().optional(),
+  })
+  .strict();
+
+// --- Position Validation Schemas ---
+export const createPositionSchema = z
+  .object({
+    companyId: z.string().min(1, "El companyId es obligatorio"),
+    establishmentId: z.string().min(1, "El establishmentId es obligatorio"),
+    sectorId: z.string().min(1, "El sectorId es obligatorio"),
+    title: z.string().min(2, "El título del puesto debe tener al menos 2 caracteres").max(200),
+    description: z.string().max(1000).optional(),
+    standardRequiredPPEIds: z.array(z.string().max(100)).max(50).optional(),
+    requiresAnnualAudiometry: z.boolean().optional(),
+    requiresRespiratoryProtection: z.boolean().optional(),
+  })
+  .strict();
+
+export const updatePositionSchema = z
+  .object({
+    sectorId: z.string().min(1).optional(),
+    title: z.string().min(2).max(200).optional(),
+    description: z.string().max(1000).optional(),
+    standardRequiredPPEIds: z.array(z.string().max(100)).max(50).optional(),
+    requiresAnnualAudiometry: z.boolean().optional(),
+    requiresRespiratoryProtection: z.boolean().optional(),
+    active: z.boolean().optional(),
+  })
+  .strict();
+
+// --- Employee Validation Schemas ---
+export const medicalFitnessSchema = z
+  .object({
+    status: z.enum(['fit', 'fit_with_restrictions', 'unfit', 'pending']),
+    examDate: z.string().optional(),
+    expirationDate: z.string().optional(),
+    examType: z.enum(['pre_occupational', 'periodic', 'post_absence', 'transfer', 'exit']).optional(),
+    restrictions: z.array(z.string().max(200)).max(20).optional(),
+    issuingDoctorOrClinic: z.string().max(200).optional(),
+    certificateNumber: z.string().max(100).optional(),
+    notes: z.string().max(1000).optional(),
+  })
+  .strict();
+
 export const createEmployeeSchema = z
   .object({
     companyId: z.string().min(1, "El companyId es obligatorio"),
@@ -69,9 +132,15 @@ export const createEmployeeSchema = z
     sectorId: z.string().max(100).optional(),
     positionId: z.string().max(100).optional(),
     cuil: z.string().min(10, "El CUIL debe tener al menos 10 dígitos").max(13),
+    dni: z.string().max(20).optional(),
     firstName: z.string().min(1, "El nombre es obligatorio").max(100),
     lastName: z.string().min(1, "El apellido es obligatorio").max(100),
     hireDate: z.string().optional(),
+    shift: z.enum(['morning', 'afternoon', 'night', 'rotating', 'custom']).optional(),
+    category: z.string().max(150).optional(),
+    associatedRisks: z.array(z.string().max(100)).max(30).optional(),
+    medicalFitness: medicalFitnessSchema.optional(),
+    notes: z.string().max(2000).optional(),
     isContractorStaff: z.boolean().optional(),
     contractorId: z.string().max(100).optional(),
   })
@@ -79,14 +148,115 @@ export const createEmployeeSchema = z
 
 export const updateEmployeeSchema = z
   .object({
-    sectorId: z.string().max(100).optional(),
-    positionId: z.string().max(100).optional(),
+    sectorId: z.string().max(100).optional().nullable(),
+    positionId: z.string().max(100).optional().nullable(),
     cuil: z.string().min(10).max(13).optional(),
+    dni: z.string().max(20).optional(),
     firstName: z.string().min(1).max(100).optional(),
     lastName: z.string().min(1).max(100).optional(),
     hireDate: z.string().optional(),
+    shift: z.enum(['morning', 'afternoon', 'night', 'rotating', 'custom']).optional(),
+    category: z.string().max(150).optional(),
+    associatedRisks: z.array(z.string().max(100)).max(30).optional(),
+    medicalFitness: medicalFitnessSchema.optional(),
+    notes: z.string().max(2000).optional(),
     active: z.boolean().optional(),
+    terminationDate: z.string().optional(),
+    terminationReason: z.string().max(500).optional(),
     isContractorStaff: z.boolean().optional(),
     contractorId: z.string().max(100).optional(),
   })
   .strict();
+
+export const createPpeDeliverySchema = z
+  .object({
+    itemType: z.string().min(2).max(200),
+    brandModel: z.string().max(200).optional(),
+    standardOrCertification: z.string().max(150).optional(),
+    deliveryDate: z.string().min(4),
+    renewalDate: z.string().optional(),
+    quantity: z.number().int().min(1).default(1),
+    receiptSigned: z.boolean().default(true),
+    status: z.enum(['active', 'renewed', 'expired', 'damaged', 'returned']).default('active'),
+    deliveredBy: z.string().max(150).optional(),
+    notes: z.string().max(1000).optional(),
+  })
+  .strict();
+
+export const createTrainingRecordSchema = z
+  .object({
+    title: z.string().min(2).max(250),
+    topic: z.string().max(150).optional(),
+    trainingDate: z.string().min(4),
+    durationHours: z.number().min(0.25).max(100),
+    instructorName: z.string().max(150).optional(),
+    institution: z.string().max(150).optional(),
+    scoreOrGrade: z.string().max(50).optional(),
+    certificationIssued: z.boolean().default(false),
+    status: z.enum(['attended', 'certified', 'pending_evaluation', 'absent']).default('attended'),
+    notes: z.string().max(1000).optional(),
+  })
+  .strict();
+
+export const createAccidentRecordSchema = z
+  .object({
+    type: z.enum(['accident', 'incident', 'unsafe_act', 'occupational_disease']),
+    eventDate: z.string().min(4),
+    severity: z.enum(['first_aid', 'minor_medical', 'lost_time', 'severe', 'near_miss', 'fatal']),
+    description: z.string().min(5).max(2000),
+    locationDetails: z.string().max(200).optional(),
+    bodyPartAffected: z.string().max(150).optional(),
+    lostDaysCount: z.number().int().nonnegative().optional(),
+    daysOffWork: z.number().int().nonnegative().optional(),
+    artReportNumber: z.string().max(100).optional(),
+    status: z.enum(['reported', 'under_investigation', 'closed']).default('reported'),
+    correctiveActionPlanId: z.string().max(100).optional(),
+    investigatorName: z.string().max(150).optional(),
+    notes: z.string().max(1000).optional(),
+  })
+  .strict();
+
+export const createDocumentRecordSchema = z
+  .object({
+    title: z.string().min(2).max(200),
+    category: z.enum(['medical_fitness', 'induction', 'afip_alta', 'ppe_receipt', 'training_certificate', 'license_permit', 'affidavit', 'other']),
+    issueDate: z.string().optional(),
+    expirationDate: z.string().optional(),
+    fileUrl: z.string().max(500).optional(),
+    fileName: z.string().max(200).optional(),
+    status: z.enum(['valid', 'expired', 'pending_renewal', 'archived']).default('valid'),
+    notes: z.string().max(1000).optional(),
+  })
+  .strict();
+
+export const createTimelineEventSchema = z
+  .object({
+    type: z.enum(['hire', 'induction', 'ppe_delivery', 'training', 'inspection', 'ppe_renewal', 'accident', 'incident', 'medical_exam', 'transfer', 'termination', 'observation']),
+    date: z.string().min(4),
+    title: z.string().min(2).max(200),
+    description: z.string().max(1000).optional(),
+    badge: z.string().max(50).optional(),
+    severity: z.enum(['normal', 'warning', 'danger', 'success']).optional(),
+    authorName: z.string().max(150).optional(),
+    metadata: z.record(z.string(), z.any()).optional(),
+  })
+  .strict();
+
+export const transferEmployeeSchema = z
+  .object({
+    newEstablishmentId: z.string().optional(),
+    newSectorId: z.string().optional().nullable(),
+    newPositionId: z.string().optional().nullable(),
+    newShift: z.enum(['morning', 'afternoon', 'night', 'rotating', 'custom']).optional(),
+    effectiveDate: z.string().optional(),
+    reason: z.string().min(2).max(500),
+  })
+  .strict();
+
+export const terminateEmployeeSchema = z
+  .object({
+    terminationDate: z.string().min(4),
+    terminationReason: z.string().min(2).max(500),
+  })
+  .strict();
+

@@ -694,4 +694,123 @@ Responde únicamente en formato JSON con la estructura:
   }
 );
 
+/**
+ * 8. POST /api/suggest-hazards-controls (Cost: 2 credits)
+ */
+router.post(
+  "/suggest-hazards-controls",
+  requireAiCredits("SUGGESTIONS"),
+  async (req: CreditGuardedRequest, res) => {
+    try {
+      const { taskDescription, environment } = req.body;
+      const promptText = `Actúa como especialista en Higiene y Seguridad Laboral.
+Analiza la siguiente tarea: "${taskDescription}" en el entorno: "${environment}".
+Sugiere peligros potenciales y controles preventivos (Jerarquía de Controles).
+Responde en formato JSON: { "hazards": [...], "controls": [...] }`;
+
+      const response = await generateContentWithRetry({
+        model: "gemini-2.5-flash",
+        contents: promptText,
+        config: { responseMimeType: "application/json" },
+        operationType: "SUGGESTIONS",
+      });
+
+      const result = JSON.parse(response.text || "{}");
+      const creditResult = req.creditContext?.commit("Sugerencia riesgos/controles");
+
+      return res.json({ ...result, creditsRemaining: creditResult?.remainingCredits });
+    } catch (error: any) {
+        const publicError = mapToGeminiPublicError(error);
+        return res.status(publicError.status).json({ error: publicError.code, message: publicError.message });
+    }
+  }
+);
+
+/**
+ * 9. POST /api/extract-expiry (Cost: 2 credits)
+ */
+router.post(
+  "/extract-expiry",
+  requireAiCredits("OCR"),
+  async (req: CreditGuardedRequest, res) => {
+    try {
+      const { documentText } = req.body;
+      const promptText = `Extrae fechas de vencimiento de este texto: "${documentText}".
+Responde en formato JSON: { "dates": [{ "date": "YYYY-MM-DD", "description": "..." }] }`;
+
+      const response = await generateContentWithRetry({
+        model: "gemini-2.5-flash",
+        contents: promptText,
+        config: { responseMimeType: "application/json" },
+        operationType: "OCR",
+      });
+
+      const result = JSON.parse(response.text || "{}");
+      const creditResult = req.creditContext?.commit("Extracción vencimientos");
+
+      return res.json({ ...result, creditsRemaining: creditResult?.remainingCredits });
+    } catch (error: any) {
+        const publicError = mapToGeminiPublicError(error);
+        return res.status(publicError.status).json({ error: publicError.code, message: publicError.message });
+    }
+  }
+);
+
+/**
+ * 10. POST /api/generate-draft (Cost: 2 credits)
+ */
+router.post(
+  "/generate-draft",
+  requireAiCredits("DRAFTING"),
+  async (req: CreditGuardedRequest, res) => {
+    try {
+      const { topic, notes } = req.body;
+      const promptText = `Genera un borrador técnico profesional para: "${topic}" basado en: "${notes}".
+Formato: Título, Introducción, Cuerpo, Conclusión.`;
+
+      const response = await generateContentWithRetry({
+        model: "gemini-2.5-flash",
+        contents: promptText,
+        operationType: "DRAFTING",
+      });
+
+      const creditResult = req.creditContext?.commit("Generación borrador");
+      return res.json({ draft: response.text, creditsRemaining: creditResult?.remainingCredits });
+    } catch (error: any) {
+        const publicError = mapToGeminiPublicError(error);
+        return res.status(publicError.status).json({ error: publicError.code, message: publicError.message });
+    }
+  }
+);
+
+/**
+ * 11. POST /api/generate-action-plan (Cost: 2 credits)
+ */
+router.post(
+  "/generate-action-plan",
+  requireAiCredits("PLANNING"),
+  async (req: CreditGuardedRequest, res) => {
+    try {
+      const { finding } = req.body;
+      const promptText = `Crea un plan de acción para este hallazgo: "${finding}".
+Formato JSON: { "actions": [{ "action": "...", "responsible": "...", "deadline": "..." }] }`;
+
+      const response = await generateContentWithRetry({
+        model: "gemini-2.5-flash",
+        contents: promptText,
+        config: { responseMimeType: "application/json" },
+        operationType: "PLANNING",
+      });
+
+      const result = JSON.parse(response.text || "{}");
+      const creditResult = req.creditContext?.commit("Generación plan acción");
+      return res.json({ ...result, creditsRemaining: creditResult?.remainingCredits });
+    } catch (error: any) {
+        const publicError = mapToGeminiPublicError(error);
+        return res.status(publicError.status).json({ error: publicError.code, message: publicError.message });
+    }
+  }
+);
+
 export default router;
+

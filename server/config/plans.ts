@@ -68,7 +68,10 @@ export type OperationCostType =
   | 'IMAGE_ANALYSIS'
   | 'INSPECTOR_IA'
   | 'SUMMARY'
-  | 'CHECKLIST';
+  | 'CHECKLIST'
+  | 'SUGGESTIONS'
+  | 'DRAFTING'
+  | 'PLANNING';
 
 export const OPERATION_CREDIT_COSTS: Record<OperationCostType, number> = {
   CHAT_RAG: 1,
@@ -78,4 +81,7 @@ export const OPERATION_CREDIT_COSTS: Record<OperationCostType, number> = {
   OCR: 3,
   IMAGE_ANALYSIS: 4,
   INSPECTOR_IA: 5,
+  SUGGESTIONS: 2,
+  DRAFTING: 2,
+  PLANNING: 2,
 };

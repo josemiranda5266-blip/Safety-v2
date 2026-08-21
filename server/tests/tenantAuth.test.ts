@@ -1,7 +1,7 @@
 process.env.IS_RUNNING_TESTS = "true";
 import { saveOrganization, saveMembership, clearStore, getOrganizations, getAllMemberships, getAuthorizationRepository, setAuthorizationRepository, initializeAuthorizationRepository } from "../authorization/store";
 import { resolveAuthorizationContext } from "../authorization/context";
-import { canAccessCompany, canAccessEstablishment, canAccessEmployee, hasPermission } from "../authorization/guards";
+import { canAccessCompany, canAccessEstablishment, canAccessSector, canAccessPosition, canAccessEmployee, hasPermission } from "../authorization/guards";
 import { requireAuth, requireTenantContext, TenantRequest } from "../authorization/middleware";
 import { extractAuthUser, AuthenticatedRequest } from "../middleware/auth";
 import { MockAuthVerifier } from "../auth/mockAuthVerifier";
@@ -13,6 +13,8 @@ import { createCompanySchema } from "../authorization/validation";
 import { AuthorizationContext } from "../authorization/types";
 import * as companyService from "../services/companyService";
 import * as establishmentService from "../services/establishmentService";
+import * as sectorService from "../services/sectorService";
+import * as positionService from "../services/positionService";
 import * as employeeService from "../services/employeeService";
 import { setAdminFirestoreForTesting, setAdminStorageBucketForTesting } from "../auth/firestoreAdmin";
 import { requireAiCredits, CreditGuardedRequest } from "../middleware/creditGatekeeper";
@@ -24,7 +26,7 @@ import {
   sanitizeMembership,
 } from "../authorization/firestoreRepository";
 import { InMemoryAuthorizationRepository } from "../authorization/repository";
-import { Organization, Membership, Company, Establishment, Employee, PlatformUserRole } from "../../src/types/tenant";
+import { Organization, Membership, Company, Establishment, Sector, Position, Employee, PlatformUserRole } from "../../src/types/tenant";
 import { Response } from "express";
 import { Firestore } from "firebase-admin/firestore";
 import express from "express";
@@ -4599,8 +4601,12 @@ export async function runAllTenantAuthTests(): Promise<{ total: number; passed: 
   v2App.use(extractAuthUser);
   const companyRoutesModule = (await import("../routes/companyRoutes")).default;
   const establishmentRoutesModule = (await import("../routes/establishmentRoutes")).default;
+  const sectorRoutesModule = (await import("../routes/sectorRoutes")).default;
+  const positionRoutesModule = (await import("../routes/positionRoutes")).default;
   v2App.use("/api/v2/companies", companyRoutesModule);
   v2App.use("/api/v2/establishments", establishmentRoutesModule);
+  v2App.use("/api/v2/sectors", sectorRoutesModule);
+  v2App.use("/api/v2/positions", positionRoutesModule);
 
   await runTest("AUDIT 6: Payload orgId diferente a JWT en POST -> ignorado/rechazado", async () => {
     await saveOrganization({
@@ -4700,6 +4706,306 @@ export async function runAllTenantAuthTests(): Promise<{ total: number; passed: 
     // Verificar que el orgId sigue intacto en base de datos
     const fetched = await companyService.getCompanyById(compA1.id, "org_alpha");
     assert(fetched?.orgId === "org_alpha", "orgId permaneció inmutable");
+  });
+
+  // ==========================================
+  // FASE 1: SECTOR & POSITION MULTI-TENANT TESTS
+  // ==========================================
+
+  await runTest("FASE 1: Sector CRUD y validación multi-tenant", async () => {
+    // Asegurar organizaciones y membresías
+    await saveOrganization({
+      id: "org_alpha",
+      name: "Consultora H&S Alpha",
+      ownerUid: "user_owner_a",
+      plan: "pro",
+      planStatus: "active",
+      contactEmail: "admin@alpha.com",
+      createdAt: now,
+    });
+    await saveMembership({
+      id: "mem_member_a",
+      orgId: "org_alpha",
+      userId: "user_member_a",
+      userEmail: "pro@alpha.com",
+      role: "member",
+      active: true,
+      invitedAt: now,
+    });
+    await saveOrganization({
+      id: "org_beta",
+      name: "Consultora H&S Beta",
+      ownerUid: "user_owner_b",
+      plan: "pro_plus",
+      planStatus: "active",
+      contactEmail: "admin@beta.com",
+      createdAt: now,
+    });
+    await saveMembership({
+      id: "mem_owner_b",
+      orgId: "org_beta",
+      userId: "user_owner_b",
+      userEmail: "owner@beta.com",
+      role: "owner",
+      active: true,
+      invitedAt: now,
+    });
+
+    // 1. Crear Sector en Org Alpha
+    const sec1 = await sectorService.createSector({
+      id: "sec_test_1",
+      establishmentId: "est_a1",
+      companyId: "comp_a1",
+      orgId: "org_alpha",
+      name: "Taller de Tornería y Fresado",
+      description: "Sector mecanizado pesado",
+      noiseLevelEstimatedDBA: 88,
+      requiresSpecificPPE: true,
+    });
+
+    assert(sec1.id === "sec_test_1", "Sector creado con ID correcto");
+    assert(sec1.orgId === "org_alpha", "Sector tiene orgId autoritativo");
+
+    // 2. Obtener sector por ID con validación de tenant
+    const fetchedOrgAlpha = await sectorService.getSectorById("sec_test_1", "org_alpha");
+    assert(fetchedOrgAlpha !== undefined, "Sector encontrado en Org Alpha");
+
+    // 3. Fall-closed: no accesible desde Org Beta
+    const fetchedOrgBeta = await sectorService.getSectorById("sec_test_1", "org_beta");
+    assert(fetchedOrgBeta === undefined, "Sector inaccesible desde Org Beta (Fail-Closed)");
+
+    // 4. Actualizar sector (inmutabilidad de orgId y companyId)
+    const updated = await sectorService.updateSector("sec_test_1", {
+      name: "Taller de Tornería y CNC",
+      noiseLevelEstimatedDBA: 85,
+    } as any, "org_alpha");
+
+    assert(updated?.name === "Taller de Tornería y CNC", "Nombre de sector actualizado");
+    assert(updated?.noiseLevelEstimatedDBA === 85, "Nivel de ruido actualizado");
+    assert(updated?.orgId === "org_alpha", "orgId permaneció intacto");
+    assert(updated?.companyId === "comp_a1", "companyId permaneció intacto");
+
+    // 5. Guard canAccessSector
+    const contextAlpha = await resolveAuthorizationContext("user_member_a", "pro@alpha.com", "org_alpha");
+    const contextBeta = await resolveAuthorizationContext("user_owner_b", "owner@beta.com", "org_beta");
+    assert(canAccessSector(contextAlpha!, updated!, "sector:read") === true, "contextAlpha puede leer sector");
+    assert(canAccessSector(contextBeta!, updated!, "sector:read") === false, "contextBeta rechazado");
+  });
+
+  await runTest("FASE 1: Position CRUD y validación de jerarquía y multi-tenant", async () => {
+    // 1. Crear Position en Org Alpha
+    const pos1 = await positionService.createPosition({
+      id: "pos_test_1",
+      sectorId: "sec_test_1",
+      establishmentId: "est_a1",
+      companyId: "comp_a1",
+      orgId: "org_alpha",
+      title: "Operador de Torno Paralelo",
+      description: "Operaciones de desbaste y roscado",
+      standardRequiredPPEIds: ["ppe_glasses", "ppe_earmuffs", "ppe_steel_boots"],
+      requiresAnnualAudiometry: true,
+      requiresRespiratoryProtection: false,
+    });
+
+    assert(pos1.id === "pos_test_1", "Puesto creado con ID correcto");
+    assert(pos1.orgId === "org_alpha", "Puesto tiene orgId autoritativo");
+    assert(pos1.requiresAnnualAudiometry === true, "Audiometría anual requerida");
+
+    // 2. Obtener puesto por ID
+    const fetchedAlpha = await positionService.getPositionById("pos_test_1", "org_alpha");
+    assert(fetchedAlpha !== undefined, "Puesto encontrado en Org Alpha");
+
+    // 3. Fail-Closed desde Org Beta
+    const fetchedBeta = await positionService.getPositionById("pos_test_1", "org_beta");
+    assert(fetchedBeta === undefined, "Puesto inaccesible desde Org Beta");
+
+    // 4. Guard canAccessPosition
+    const contextAlpha = await resolveAuthorizationContext("user_member_a", "pro@alpha.com", "org_alpha");
+    const contextBeta = await resolveAuthorizationContext("user_owner_b", "owner@beta.com", "org_beta");
+    assert(canAccessPosition(contextAlpha!, pos1, "position:read") === true, "contextAlpha puede leer puesto");
+    assert(canAccessPosition(contextBeta!, pos1, "position:read") === false, "contextBeta rechazado");
+  });
+
+  await runTest("FASE 1: API REST /api/v2/sectors - Creación, Jerarquía y Bloqueo Cross-Tenant", async () => {
+    // Asegurar empresa y establecimiento en la base de datos de test
+    await companyService.createCompany({
+      id: "comp_fase1_a",
+      orgId: "org_alpha",
+      legalName: "Industrias Metalúrgicas Fase 1 SA",
+      cuit: "30-71234567-9",
+    });
+    await establishmentService.createEstablishment({
+      id: "est_fase1_a",
+      companyId: "comp_fase1_a",
+      orgId: "org_alpha",
+      name: "Planta Industrial Principal",
+      address: "Av. Industrial 1234",
+      city: "Rosario",
+      province: "Santa Fe",
+    });
+
+    // Crear sector mediante API
+    const req = {
+      method: "POST",
+      url: "/api/v2/sectors",
+      headers: {
+        authorization: "Bearer valid_token_member_a",
+        "x-org-id": "org_alpha",
+        "content-type": "application/json",
+      },
+      body: {
+        companyId: "comp_fase1_a",
+        establishmentId: "est_fase1_a",
+        name: "Sector Soldadura y Calderería",
+        description: "Cabinas de soldadura MIG/MAG",
+        requiresSpecificPPE: true,
+        noiseLevelEstimatedDBA: 92,
+      },
+    };
+    const res = createMockResponse();
+    await new Promise<void>((resolve) => {
+      res.onEnd = resolve;
+      (v2App as any).handle(req as any, res as any, () => resolve());
+    });
+
+    assert(res.statusCode === 201, `Sector creado exitosamente via API (status: ${res.statusCode})`);
+    const sectorData = res.jsonData?.sector as any;
+    assert(sectorData?.name === "Sector Soldadura y Calderería", "Nombre de sector coincide");
+    assert(sectorData?.orgId === "org_alpha", "orgId asignado en servidor");
+
+    const createdSectorId = sectorData?.id;
+
+    // Intento de acceso cross-tenant desde Org Beta a este sector
+    const reqCross = {
+      method: "GET",
+      url: `/api/v2/sectors/${createdSectorId}`,
+      headers: {
+        authorization: "Bearer valid_token_owner_b",
+        "x-org-id": "org_beta",
+      },
+    };
+    const resCross = createMockResponse();
+    await new Promise<void>((resolve) => {
+      resCross.onEnd = resolve;
+      (v2App as any).handle(reqCross as any, resCross as any, () => resolve());
+    });
+
+    assert(resCross.statusCode === 404, `Intento cross-tenant a Sector devuelve 404 Fail-Closed (status: ${resCross.statusCode})`);
+  });
+
+  await runTest("FASE 1: API REST /api/v2/positions - Jerarquía Empresa-Establecimiento-Sector", async () => {
+    // Crear segunda empresa en org_alpha para probar mismatch
+    await companyService.createCompany({
+      id: "comp_fase1_b",
+      orgId: "org_alpha",
+      legalName: "Empresa Secundaria Fase 1 SA",
+      cuit: "30-79999999-9",
+    });
+
+    // 1. Intento de crear puesto con mismatch de establecimiento/empresa
+    const reqMismatch = {
+      method: "POST",
+      url: "/api/v2/positions",
+      headers: {
+        authorization: "Bearer valid_token_member_a",
+        "x-org-id": "org_alpha",
+        "content-type": "application/json",
+      },
+      body: {
+        companyId: "comp_fase1_b", // comp_fase1_b no es la empresa padre de est_fase1_a
+        establishmentId: "est_fase1_a",
+        sectorId: "sec_test_1",
+        title: "Soldador TIG",
+      },
+    };
+    const resMismatch = createMockResponse();
+    await new Promise<void>((resolve) => {
+      resMismatch.onEnd = resolve;
+      (v2App as any).handle(reqMismatch as any, resMismatch as any, () => resolve());
+    });
+
+    assert(resMismatch.statusCode === 400, `Rechaza mismatch entre establecimiento y empresa (status: ${resMismatch.statusCode})`);
+
+    // Crear un sector bajo est_fase1_a para la prueba válida de puesto
+    const sectorFase1 = await sectorService.createSector({
+      id: "sec_fase1_pos_test",
+      establishmentId: "est_fase1_a",
+      companyId: "comp_fase1_a",
+      orgId: "org_alpha",
+      name: "Sector Montaje Especial",
+    });
+
+    // 2. Creación válida de puesto
+    const reqValid = {
+      method: "POST",
+      url: "/api/v2/positions",
+      headers: {
+        authorization: "Bearer valid_token_member_a",
+        "x-org-id": "org_alpha",
+        "content-type": "application/json",
+      },
+      body: {
+        companyId: "comp_fase1_a",
+        establishmentId: "est_fase1_a",
+        sectorId: sectorFase1.id,
+        title: "Soldador MIG/MAG Certificado",
+        description: "Trabajo en atmósfera controlada",
+        standardRequiredPPEIds: ["ppe_helmet", "ppe_leather_apron", "ppe_gloves"],
+        requiresRespiratoryProtection: true,
+        requiresAnnualAudiometry: true,
+      },
+    };
+    const resValid = createMockResponse();
+    await new Promise<void>((resolve) => {
+      resValid.onEnd = resolve;
+      (v2App as any).handle(reqValid as any, resValid as any, () => resolve());
+    });
+
+    assert(resValid.statusCode === 201, `Puesto creado exitosamente (status: ${resValid.statusCode})`);
+    const posData = resValid.jsonData?.position as any;
+    assert(posData?.title === "Soldador MIG/MAG Certificado", "Título coincide");
+    assert(posData?.requiresRespiratoryProtection === true, "Protección respiratoria registrada");
+  });
+
+  await runTest("FASE 1: assignedCompanyIds Restricción Granular en Sectores y Puestos", async () => {
+    // Usuario restringido solo a comp_a1
+    const contextRestricted: AuthorizationContext = {
+      userId: "user_restricted",
+      userEmail: "restricted@alpha.com",
+      orgId: "org_alpha",
+      membershipId: "mem_restricted",
+      membershipRole: "member",
+      assignedCompanyIds: ["comp_a1"],
+    };
+
+    // Sector de comp_a1 es accesible
+    const sectorComp1: Sector = {
+      id: "sec_comp1",
+      establishmentId: "est_a1",
+      companyId: "comp_a1",
+      orgId: "org_alpha",
+      name: "Sector A1",
+      createdAt: now,
+    };
+    assert(canAccessSector(contextRestricted, sectorComp1, "sector:read") === true, "Acceso a sector de comp_a1 permitido");
+
+    // Sector de comp_a2 es DENEGADO
+    const sectorComp2: Sector = {
+      id: "sec_comp2",
+      establishmentId: "est_a2",
+      companyId: "comp_a2",
+      orgId: "org_alpha",
+      name: "Sector A2",
+      createdAt: now,
+    };
+    assert(canAccessSector(contextRestricted, sectorComp2, "sector:read") === false, "Acceso a sector de comp_a2 denegado");
+
+    // Contexto con DENY ALL (assignedCompanyIds: [])
+    const contextDenyAll: AuthorizationContext = {
+      ...contextRestricted,
+      assignedCompanyIds: [],
+    };
+    assert(canAccessSector(contextDenyAll, sectorComp1, "sector:read") === false, "DENY ALL deniega sectorComp1");
   });
 
   const passed = testResults.filter((r) => r.passed).length;

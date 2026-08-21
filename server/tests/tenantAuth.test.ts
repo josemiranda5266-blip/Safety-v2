@@ -13,6 +13,7 @@ import { AuthorizationContext } from "../authorization/types";
 import * as companyService from "../services/companyService";
 import * as establishmentService from "../services/establishmentService";
 import * as employeeService from "../services/employeeService";
+import { requireAiCredits, CreditGuardedRequest } from "../middleware/creditGatekeeper";
 import { Organization, Membership, Company, Establishment, Employee, PlatformUserRole } from "../../src/types/tenant";
 import { Response } from "express";
 
@@ -846,6 +847,175 @@ export async function runAllTenantAuthTests(): Promise<{ total: number; passed: 
     assert(repo.organizations.getById("org_alpha")?.id === "org_alpha", "Organization repository getById funciona");
     assert(repo.memberships.getByOrgAndUser("org_alpha", "user_owner_a")?.role === "owner", "Membership repository getByOrgAndUser funciona");
   });
+
+  // TEST 42: IA sin token → 401
+  await runTest("TEST 42: IA sin token → 401", async () => {
+    const req = {
+      headers: {},
+      body: { question: "¿Qué norma aplica a extintores?" },
+    } as unknown as CreditGuardedRequest;
+
+    await extractAuthUser(req, {} as Response, () => {});
+    const res = createMockResponse();
+    let nextCalled = false;
+
+    // Chain: requireAuth -> requireAiCredits
+    requireAuth(req, res as unknown as Response, () => {
+      requireAiCredits("CHAT_RAG")(req, res as unknown as Response, () => {
+        nextCalled = true;
+      });
+    });
+
+    assert(!nextCalled, "Petición a IA sin token no debe avanzar");
+    assert(res.statusCode === 401, "IA sin token debe responder 401");
+  });
+
+  // TEST 43: IA con token inválido → 401
+  await runTest("TEST 43: IA con token inválido → 401", async () => {
+    const req = {
+      headers: {
+        authorization: "Bearer invalid_ai_token_12345",
+      },
+      body: { question: "Consulta de prueba" },
+    } as unknown as CreditGuardedRequest;
+
+    await extractAuthUser(req, {} as Response, () => {});
+    const res = createMockResponse();
+    let nextCalled = false;
+
+    requireAuth(req, res as unknown as Response, () => {
+      requireAiCredits("CHAT_RAG")(req, res as unknown as Response, () => {
+        nextCalled = true;
+      });
+    });
+
+    assert(!nextCalled, "Petición a IA con token inválido no debe avanzar");
+    assert(res.statusCode === 401, "IA con token inválido debe responder 401");
+  });
+
+  // TEST 44: IA con token expirado → 401
+  await runTest("TEST 44: IA con token expirado → 401", async () => {
+    const req = {
+      headers: {
+        authorization: "Bearer mock_token_expired",
+      },
+      body: { imageBase64: "base64data", mimeType: "image/jpeg" },
+    } as unknown as CreditGuardedRequest;
+
+    await extractAuthUser(req, {} as Response, () => {});
+    const res = createMockResponse();
+    let nextCalled = false;
+
+    requireAuth(req, res as unknown as Response, () => {
+      requireAiCredits("IMAGE_ANALYSIS")(req, res as unknown as Response, () => {
+        nextCalled = true;
+      });
+    });
+
+    assert(!nextCalled, "Petición a IA con token expirado no debe avanzar");
+    assert(res.statusCode === 401, "IA con token expirado debe responder 401");
+  });
+
+  // TEST 45: IA con x-user-id sin token → 401
+  await runTest("TEST 45: IA con x-user-id sin token → 401", async () => {
+    const origEnv = process.env.NODE_ENV;
+    const origDev = process.env.AUTH_DEV_MODE;
+    try {
+      process.env.NODE_ENV = "production";
+      process.env.AUTH_DEV_MODE = "false";
+
+      const req = {
+        headers: {
+          "x-user-id": "user_owner_a",
+        },
+        body: { documentText: "Texto normativo" },
+      } as unknown as CreditGuardedRequest;
+
+      await extractAuthUser(req, {} as Response, () => {});
+      const res = createMockResponse();
+      let nextCalled = false;
+
+      requireAuth(req, res as unknown as Response, () => {
+        requireAiCredits("SUMMARY")(req, res as unknown as Response, () => {
+          nextCalled = true;
+        });
+      });
+
+      assert(!nextCalled, "x-user-id en IA sin token debe ser bloqueado");
+      assert(res.statusCode === 401, "IA con x-user-id sin token debe responder 401");
+    } finally {
+      process.env.NODE_ENV = origEnv;
+      process.env.AUTH_DEV_MODE = origDev;
+    }
+  });
+
+  // TEST 46: IA con x-forwarded-for sin token → 401
+  await runTest("TEST 46: IA con x-forwarded-for sin token → 401", async () => {
+    const req = {
+      headers: {
+        "x-forwarded-for": "10.0.0.1",
+      },
+      body: { category: "Extintores" },
+    } as unknown as CreditGuardedRequest;
+
+    await extractAuthUser(req, {} as Response, () => {});
+    const res = createMockResponse();
+    let nextCalled = false;
+
+    requireAuth(req, res as unknown as Response, () => {
+      requireAiCredits("CHECKLIST")(req, res as unknown as Response, () => {
+        nextCalled = true;
+      });
+    });
+
+    assert(!nextCalled, "IP/x-forwarded-for en IA no autentica");
+    assert(res.statusCode === 401, "IA con x-forwarded-for sin token debe responder 401");
+  });
+
+  // TEST 47: Usuario autenticado continúa exitosamente hasta creditGatekeeper
+  await runTest("TEST 47: Usuario autenticado continúa exitosamente hasta creditGatekeeper", async () => {
+    const req = {
+      headers: {
+        authorization: "Bearer valid_token_owner_a",
+      },
+      body: { question: "¿Qué EPP se requiere en altura?" },
+    } as unknown as CreditGuardedRequest;
+
+
+    await extractAuthUser(req, {} as Response, () => {});
+    const res = createMockResponse();
+    let reachedOperation = false;
+
+    requireAuth(req, res as unknown as Response, () => {
+      requireAiCredits("CHAT_RAG")(req, res as unknown as Response, () => {
+        reachedOperation = true;
+      });
+    });
+
+    assert(reachedOperation, "Usuario autenticado debe superar requireAuth y creditGatekeeper");
+    assert(req.creditContext !== undefined, "CreditContext debe quedar adjunto en el request");
+    assert(req.creditContext?.uid === "user_owner_a", "CreditContext debe pertenecer al UID autenticado");
+  });
+
+  // TEST 48: creditGatekeeper sin identidad → fail-closed 401
+  await runTest("TEST 48: creditGatekeeper sin identidad → fail-closed 401", () => {
+    const unauthenticatedReq = {
+      headers: {},
+      userUid: undefined,
+      identity: undefined,
+    } as unknown as CreditGuardedRequest;
+
+    const res = createMockResponse();
+    let nextCalled = false;
+
+    requireAiCredits("CHAT_RAG")(unauthenticatedReq, res as unknown as Response, () => {
+      nextCalled = true;
+    });
+
+    assert(!nextCalled, "creditGatekeeper nunca debe permitir usuarios anónimos");
+    assert(res.statusCode === 401, "creditGatekeeper debe responder 401 cuando no hay identidad");
+  });
+
 
   const passed = testResults.filter((r) => r.passed).length;
   const failed = testResults.filter((r) => !r.passed).length;

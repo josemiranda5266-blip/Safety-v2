@@ -16,7 +16,16 @@ export interface CreditGuardedRequest extends AuthenticatedRequest {
 
 export function requireAiCredits(operationType: OperationCostType) {
   return (req: CreditGuardedRequest, res: Response, next: NextFunction) => {
-    const uid = req.userUid || "anonymous_user";
+    // Strict authentication guard: credit checks require an authentic, verified user identity
+    if (!req.identity || !req.userUid) {
+      return res.status(401).json({
+        error: "No autenticado",
+        code: "UNAUTHENTICATED",
+        message: "Se requiere un token de autenticación válido para acceder a las operaciones de IA.",
+      });
+    }
+
+    const uid = req.userUid;
     const { allowed, cost, availableCredits, profile } = checkUserCredits(uid, operationType);
 
     if (!allowed) {
@@ -49,3 +58,4 @@ export function requireAiCredits(operationType: OperationCostType) {
     next();
   };
 }
+

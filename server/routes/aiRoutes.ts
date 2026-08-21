@@ -6,13 +6,15 @@ import {
   validateImagePayload,
   validateComparisonPayload,
 } from "../middleware/payloadValidator";
+import { requireAuth } from "../authorization/middleware";
 import { generateContentWithRetry, Type } from "../services/gemini";
 
 const router = Router();
 
-// Apply AI rate limiter and concurrency guard across all AI routes
+// Apply AI rate limiter, concurrency guard, and mandatory verified auth across all AI routes
 router.use(aiEndpointsLimiter);
 router.use(concurrencyLimiter(3));
+router.use(requireAuth);
 
 /**
  * 1. POST /api/chat-rag (Cost: 1 credit)

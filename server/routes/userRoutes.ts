@@ -1,5 +1,6 @@
 import { Router, Response } from "express";
 import { AuthenticatedRequest } from "../middleware/auth";
+import { requireAuth } from "../authorization/middleware";
 import {
   getOrCreateUserProfile,
   updateUserPlan,
@@ -10,7 +11,7 @@ import { PLAN_CONFIG, UserPlan } from "../config/plans";
 const router = Router();
 
 /**
- * GET /api/plans - Public plan catalog
+ * GET /api/user/plans - Public plan catalog (or /api/plans)
  */
 router.get("/plans", (_req, res) => {
   res.json({
@@ -19,10 +20,10 @@ router.get("/plans", (_req, res) => {
 });
 
 /**
- * GET /api/user/profile - Current user profile & AI credit state
+ * GET /api/user/profile - Current user profile & AI credit state (Protected)
  */
-router.get("/profile", (req: AuthenticatedRequest, res: Response) => {
-  const uid = req.userUid || "anonymous_user";
+router.get("/profile", requireAuth, (req: AuthenticatedRequest, res: Response) => {
+  const uid = req.userUid!;
   const profile = getOrCreateUserProfile(uid);
   const planInfo = PLAN_CONFIG[profile.plan] || PLAN_CONFIG.free;
 
@@ -38,10 +39,10 @@ router.get("/profile", (req: AuthenticatedRequest, res: Response) => {
 });
 
 /**
- * POST /api/user/change-plan - Upgrade or switch user subscription plan
+ * POST /api/user/change-plan - Upgrade or switch user subscription plan (Protected)
  */
-router.post("/change-plan", (req: AuthenticatedRequest, res: Response) => {
-  const uid = req.userUid || "anonymous_user";
+router.post("/change-plan", requireAuth, (req: AuthenticatedRequest, res: Response) => {
+  const uid = req.userUid!;
   const { plan } = req.body as { plan: UserPlan };
 
   if (!plan || !PLAN_CONFIG[plan]) {
@@ -67,12 +68,13 @@ router.post("/change-plan", (req: AuthenticatedRequest, res: Response) => {
 });
 
 /**
- * GET /api/user/transactions - Audit history of AI credits usage
+ * GET /api/user/transactions - Audit history of AI credits usage (Protected)
  */
-router.get("/transactions", (req: AuthenticatedRequest, res: Response) => {
-  const uid = req.userUid || "anonymous_user";
+router.get("/transactions", requireAuth, (req: AuthenticatedRequest, res: Response) => {
+  const uid = req.userUid!;
   const transactions = getUserTransactions(uid);
   res.json({ transactions });
 });
 
 export default router;
+

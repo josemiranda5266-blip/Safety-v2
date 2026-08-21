@@ -1,55 +1,54 @@
 import { Organization, Membership } from "../../src/types/tenant";
+import {
+  AuthorizationRepository,
+  InMemoryAuthorizationRepository,
+} from "./repository";
 
-// In-memory persistent stores for Organization and Membership backend authority
-const organizationsStore = new Map<string, Organization>();
-const membershipsStore = new Map<string, Membership>();
+// Default in-memory repository instance for Phase 2
+// In Phase 3, this can be swapped with FirestoreAuthorizationRepository without modifying consumers
+let currentAuthRepository: AuthorizationRepository = new InMemoryAuthorizationRepository();
+
+export function getAuthorizationRepository(): AuthorizationRepository {
+  return currentAuthRepository;
+}
+
+export function setAuthorizationRepository(repo: AuthorizationRepository): void {
+  currentAuthRepository = repo;
+}
 
 export function getOrganization(orgId: string): Organization | undefined {
-  return organizationsStore.get(orgId);
+  return currentAuthRepository.organizations.getById(orgId);
 }
 
 export function saveOrganization(org: Organization): Organization {
-  organizationsStore.set(org.id, org);
-  return org;
+  return currentAuthRepository.organizations.save(org);
 }
 
 export function getMembership(orgId: string, userId: string): Membership | undefined {
-  for (const membership of membershipsStore.values()) {
-    if (membership.orgId === orgId && membership.userId === userId && membership.active) {
-      return membership;
-    }
-  }
-  return undefined;
+  return currentAuthRepository.memberships.getByOrgAndUser(orgId, userId);
 }
 
 export function getMembershipById(membershipId: string): Membership | undefined {
-  return membershipsStore.get(membershipId);
+  return currentAuthRepository.memberships.getById(membershipId);
 }
 
 export function getMembershipsByUser(userId: string): Membership[] {
-  const list: Membership[] = [];
-  for (const m of membershipsStore.values()) {
-    if (m.userId === userId && m.active) {
-      list.push(m);
-    }
-  }
-  return list;
+  return currentAuthRepository.memberships.getByUser(userId);
 }
 
 export function saveMembership(membership: Membership): Membership {
-  membershipsStore.set(membership.id, membership);
-  return membership;
+  return currentAuthRepository.memberships.save(membership);
 }
 
 export function getOrganizations(): Organization[] {
-  return Array.from(organizationsStore.values());
+  return currentAuthRepository.organizations.getAll();
 }
 
 export function getAllMemberships(): Membership[] {
-  return Array.from(membershipsStore.values());
+  return currentAuthRepository.memberships.getAll();
 }
 
 export function clearStore(): void {
-  organizationsStore.clear();
-  membershipsStore.clear();
+  currentAuthRepository.clear();
 }
+

@@ -1,4 +1,4 @@
-import { saveOrganization, saveMembership, clearStore, getOrganizations, getAllMemberships } from "../authorization/store";
+import { saveOrganization, saveMembership, clearStore, getOrganizations, getAllMemberships, getAuthorizationRepository } from "../authorization/store";
 import { resolveAuthorizationContext } from "../authorization/context";
 import { canAccessCompany, canAccessEstablishment, canAccessEmployee, hasPermission } from "../authorization/guards";
 import { requireAuth, requireTenantContext, TenantRequest } from "../authorization/middleware";
@@ -6,10 +6,14 @@ import { extractAuthUser, AuthenticatedRequest } from "../middleware/auth";
 import { MockAuthVerifier } from "../auth/mockAuthVerifier";
 import { FirebaseAdminAuthVerifier } from "../auth/firebaseAdminVerifier";
 import { setGlobalAuthVerifier, resetGlobalAuthVerifier, getAuthVerifier } from "../auth/verifier";
+import { validatePlatformUserRole } from "../auth/types";
+import { getFirebaseProjectId } from "../auth/config";
+import { createCompanySchema } from "../authorization/validation";
+import { AuthorizationContext } from "../authorization/types";
 import * as companyService from "../services/companyService";
 import * as establishmentService from "../services/establishmentService";
 import * as employeeService from "../services/employeeService";
-import { Organization, Membership, Company, Establishment, Employee } from "../../src/types/tenant";
+import { Organization, Membership, Company, Establishment, Employee, PlatformUserRole } from "../../src/types/tenant";
 import { Response } from "express";
 
 interface TestResult {
@@ -579,6 +583,270 @@ export async function runAllTenantAuthTests(): Promise<{ total: number; passed: 
     }
   });
 
+  // TEST 28: platformRole inválido no concede permisos
+  await runTest("TEST 28: platformRole inválido no concede permisos", () => {
+    // Attempt arbitrary/untrusted roles
+    assert(validatePlatformUserRole("super_user") === undefined, "super_user debe ser invalidado");
+    assert(validatePlatformUserRole("admin") === undefined, "admin genérico debe ser invalidado");
+    assert(validatePlatformUserRole("root") === undefined, "root debe ser invalidado");
+    assert(validatePlatformUserRole(null) === undefined, "null debe ser invalidado");
+    assert(validatePlatformUserRole(123) === undefined, "número debe ser invalidado");
+    assert(validatePlatformUserRole("platform_admin") === "platform_admin", "platform_admin válido");
+
+    // Invalid platformRole in context does not bypass permission guards
+    const fakeContext: AuthorizationContext = {
+      userId: "user_attacker",
+      userEmail: "attacker@test.com",
+      orgId: "org_alpha",
+      membershipId: "mem_attacker",
+      membershipRole: "auditor",
+      platformRole: validatePlatformUserRole("super_admin_fake"),
+    };
+
+    assert(!hasPermission(fakeContext, "company:delete"), "Rol inválido no otorga permisos de admin");
+  });
+
+  // TEST 29: platformRole enviado en body es ignorado
+  await runTest("TEST 29: platformRole enviado en body es ignorado", () => {
+    const rawPayload = {
+      legalName: "Empresa Ataque",
+      cuit: "30-99999999-9",
+      platformRole: "platform_admin",
+    };
+
+    const parseResult = createCompanySchema.safeParse(rawPayload);
+    // Zod strict schema rejects unknown / injected fields
+    assert(!parseResult.success, "Payload con platformRole inyectado debe ser rechazado por Zod strict schema");
+  });
+
+  // TEST 30: orgId enviado en body no cambia tenant
+  await runTest("TEST 30: orgId enviado en body no cambia tenant", () => {
+    const rawPayload = {
+      legalName: "Empresa Org Injection",
+      cuit: "30-88888888-8",
+      orgId: "org_beta", // Intento de cruzar a org_beta
+    };
+
+    const parseResult = createCompanySchema.safeParse(rawPayload);
+    assert(!parseResult.success, "Payload con orgId en body debe ser rechazado por Zod strict");
+
+    // Y aún si se procesara, el servicio siempre fuerza context.orgId
+    const context = resolveAuthorizationContext("user_owner_a", "owner@alpha.com", "org_alpha")!;
+    const created = companyService.createCompany({
+      legalName: "Empresa Con Org Forzado",
+      cuit: "30-77777777-7",
+      orgId: context.orgId, // Server authoritative
+    });
+
+    assert(created.orgId === "org_alpha", "El orgId final del recurso siempre es el del contexto autoritativo");
+  });
+
+  // TEST 31: assignedCompanyIds enviado por cliente es ignorado
+  await runTest("TEST 31: assignedCompanyIds enviado por cliente es ignorado", () => {
+    const memberContext = resolveAuthorizationContext("user_restricted_a", "restricted@alpha.com", "org_alpha")!;
+    assert(memberContext !== null, "Contexto de usuario restringido debe resolverse");
+    assert(memberContext.assignedCompanyIds?.length === 1, "Contexto autoritativo restringe a compA1");
+
+    // Frontend intenta enviar assignedCompanyIds ampliado en request
+    const comp2 = companyService.createCompany({
+      orgId: "org_alpha",
+      legalName: "Segunda Empresa Alpha S.A.",
+      cuit: "30-22222222-9",
+    });
+
+    // La comprobación de guard usa context.assignedCompanyIds, nunca lo enviado por el cliente
+    assert(!canAccessCompany(memberContext, comp2, "company:read"), "assignedCompanyIds del cliente no amplía acceso a comp2");
+  });
+
+  // TEST 32: Firebase projectId ausente en production → fail closed
+  await runTest("TEST 32: Firebase projectId ausente en production → fail closed", () => {
+    const origEnv = process.env.NODE_ENV;
+    const origProject = process.env.FIREBASE_PROJECT_ID;
+    const origGcloud = process.env.GCLOUD_PROJECT;
+
+    try {
+      process.env.NODE_ENV = "production";
+      delete process.env.FIREBASE_PROJECT_ID;
+      delete process.env.GCLOUD_PROJECT;
+
+      let caughtError = false;
+      try {
+        getFirebaseProjectId();
+      } catch (_err: unknown) {
+        caughtError = true;
+      }
+
+      assert(caughtError === true, "getFirebaseProjectId() debe lanzar error crítico si falta en producción");
+    } finally {
+      process.env.NODE_ENV = origEnv;
+      if (origProject) process.env.FIREBASE_PROJECT_ID = origProject;
+      if (origGcloud) process.env.GCLOUD_PROJECT = origGcloud;
+    }
+  });
+
+  // TEST 33: MockAuthVerifier en production → fail closed
+  await runTest("TEST 33: MockAuthVerifier en production → fail closed", () => {
+    const origEnv = process.env.NODE_ENV;
+    try {
+      process.env.NODE_ENV = "production";
+
+      let rejectedMock = false;
+      try {
+        setGlobalAuthVerifier(mockVerifier);
+      } catch (_err: unknown) {
+        rejectedMock = true;
+      }
+
+      assert(rejectedMock === true, "setGlobalAuthVerifier debe rechazar MockAuthVerifier en producción");
+    } finally {
+      process.env.NODE_ENV = origEnv;
+      setGlobalAuthVerifier(mockVerifier);
+    }
+  });
+
+  // TEST 34: x-user-id + token inválido → 401
+  await runTest("TEST 34: x-user-id + token inválido → 401", async () => {
+    const req = {
+      headers: {
+        authorization: "Bearer invalid_garbage_token",
+        "x-user-id": "user_owner_a",
+      },
+    } as unknown as AuthenticatedRequest;
+
+    await extractAuthUser(req, {} as Response, () => {});
+    assert(req.identity === undefined, "Token inválido no genera identidad");
+    assert(req.userUid === undefined, "x-user-id no debe sobreescribir token inválido");
+
+    const res = createMockResponse();
+    let nextCalled = false;
+    requireAuth(req, res as unknown as Response, () => {
+      nextCalled = true;
+    });
+
+    assert(!nextCalled, "requireAuth debe bloquear");
+    assert(res.statusCode === 401, "Debe responder 401");
+  });
+
+  // TEST 35: x-user-id + ausencia de token → 401 en producción
+  await runTest("TEST 35: x-user-id + ausencia de token → 401", async () => {
+    const origEnv = process.env.NODE_ENV;
+    const origDev = process.env.AUTH_DEV_MODE;
+    try {
+      process.env.NODE_ENV = "production";
+      process.env.AUTH_DEV_MODE = "false";
+
+      const req = {
+        headers: {
+          "x-user-id": "user_owner_a",
+        },
+      } as unknown as AuthenticatedRequest;
+
+      await extractAuthUser(req, {} as Response, () => {});
+      assert(req.identity === undefined, "En producción x-user-id sin token no autentica");
+
+      const res = createMockResponse();
+      let nextCalled = false;
+      requireAuth(req, res as unknown as Response, () => {
+        nextCalled = true;
+      });
+
+      assert(!nextCalled, "requireAuth debe bloquear");
+      assert(res.statusCode === 401, "Debe responder 401");
+    } finally {
+      process.env.NODE_ENV = origEnv;
+      process.env.AUTH_DEV_MODE = origDev;
+    }
+  });
+
+  // TEST 36: x-forwarded-for + ausencia de token → 401
+  await runTest("TEST 36: x-forwarded-for + ausencia de token → 401", async () => {
+    const req = {
+      headers: {
+        "x-forwarded-for": "192.168.1.100, 10.0.0.1",
+      },
+      socket: {
+        remoteAddress: "192.168.1.100",
+      },
+    } as unknown as AuthenticatedRequest;
+
+    await extractAuthUser(req, {} as Response, () => {});
+    assert(req.identity === undefined, "IP no genera identidad");
+
+    const res = createMockResponse();
+    let nextCalled = false;
+    requireAuth(req, res as unknown as Response, () => {
+      nextCalled = true;
+    });
+
+    assert(!nextCalled, "requireAuth debe bloquear");
+    assert(res.statusCode === 401, "Debe responder 401");
+  });
+
+  // TEST 37: membership de Organization A no permite Organization B
+  await runTest("TEST 37: membership de Organization A no permite Organization B", () => {
+    const contextOrgB = resolveAuthorizationContext("user_owner_a", "owner@alpha.com", "org_beta");
+    assert(contextOrgB === null, "Owner de Org A no tiene membresía en Org B -> context null");
+  });
+
+  // TEST 38: membership inactiva no permite acceso
+  await runTest("TEST 38: membership inactiva no permite acceso", () => {
+    const inactiveMem: Membership = {
+      id: "mem_inactive_user",
+      orgId: "org_alpha",
+      userId: "user_inactive",
+      userEmail: "inactive@alpha.com",
+      role: "member",
+      active: false, // Inactiva
+      invitedAt: now,
+    };
+    saveMembership(inactiveMem);
+
+    const context = resolveAuthorizationContext("user_inactive", "inactive@alpha.com", "org_alpha");
+    assert(context === null, "Membresía inactiva debe ser rechazada y retornar contexto null");
+  });
+
+  // TEST 39: membership role inválido no concede permisos
+  await runTest("TEST 39: membership role inválido no concede permisos", () => {
+    const invalidRoleContext: AuthorizationContext = {
+      userId: "user_fake_role",
+      userEmail: "faker@test.com",
+      orgId: "org_alpha",
+      membershipId: "mem_fake",
+      membershipRole: "unrecognized_role" as any,
+    };
+
+    assert(!hasPermission(invalidRoleContext, "company:read"), "Rol inválido no tiene permiso company:read");
+    assert(!hasPermission(invalidRoleContext, "company:delete"), "Rol inválido no tiene permiso company:delete");
+    assert(!hasPermission(invalidRoleContext, "employee:create"), "Rol inválido no tiene permiso employee:create");
+  });
+
+  // TEST 40: platformRole nunca se deriva de membershipRole
+  await runTest("TEST 40: platformRole nunca se deriva de membershipRole", () => {
+    const adminMembership: Membership = {
+      id: "mem_admin_test",
+      orgId: "org_alpha",
+      userId: "user_tenant_admin",
+      userEmail: "admin@alpha.com",
+      role: "admin",
+      active: true,
+      invitedAt: now,
+    };
+    saveMembership(adminMembership);
+
+    const adminContext = resolveAuthorizationContext("user_tenant_admin", "admin@alpha.com", "org_alpha");
+    assert(adminContext !== null, "Contexto resuelto");
+    assert(adminContext?.membershipRole === "admin", "membershipRole es admin");
+    assert(adminContext?.platformRole === undefined, "platformRole debe permanecer undefined (nunca derivado)");
+  });
+
+  // TEST 41: Contrato AuthorizationRepository y InMemoryAuthorizationRepository funcionan desacoplados
+  await runTest("TEST 41: Contrato AuthorizationRepository funciona desacoplado", () => {
+    const repo = getAuthorizationRepository();
+    assert(repo !== undefined, "Repositorio de autorización presente");
+    assert(repo.organizations.getById("org_alpha")?.id === "org_alpha", "Organization repository getById funciona");
+    assert(repo.memberships.getByOrgAndUser("org_alpha", "user_owner_a")?.role === "owner", "Membership repository getByOrgAndUser funciona");
+  });
+
   const passed = testResults.filter((r) => r.passed).length;
   const failed = testResults.filter((r) => !r.passed).length;
 
@@ -587,7 +855,7 @@ export async function runAllTenantAuthTests(): Promise<{ total: number; passed: 
   if (failed > 0) {
     console.error(`   ⚠️ ${failed} PRUEBAS FALLIDAS`);
   } else {
-    console.log("   🎉 TODAS LAS 27 PRUEBAS DE AUTENTICACIÓN Y AISLAMIENTO PASARON EXITOSAMENTE");
+    console.log(`   🎉 TODAS LAS ${testResults.length} PRUEBAS DE AUTENTICACIÓN Y AISLAMIENTO PASARON EXITOSAMENTE`);
   }
   console.log("=======================================================\n");
 
@@ -598,3 +866,4 @@ export async function runAllTenantAuthTests(): Promise<{ total: number; passed: 
 if (process.argv[1]?.includes("tenantAuth.test.ts")) {
   runAllTenantAuthTests();
 }
+

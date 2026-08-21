@@ -1,7 +1,7 @@
 import { getApps, initializeApp, App } from "firebase-admin/app";
 import { getAuth } from "firebase-admin/auth";
-import { AuthVerifier, AuthenticatedIdentity } from "./types";
-import { PlatformUserRole } from "../../src/types/tenant";
+import { AuthVerifier, AuthenticatedIdentity, validatePlatformUserRole } from "./types";
+import { getFirebaseProjectId } from "./config";
 
 let firebaseAdminApp: App | null = null;
 
@@ -12,10 +12,8 @@ function getFirebaseAdminApp(): App {
       firebaseAdminApp = existingApps[0];
     } else {
       // In Google Cloud Run and standard GCP environments, Application Default Credentials (ADC) are used automatically.
-      const projectId =
-        process.env.FIREBASE_PROJECT_ID ||
-        process.env.GCLOUD_PROJECT ||
-        "ai-studio-safetyia-f7213253-86cf-449b-8822-f4afb5c24a1e";
+      // In production, getFirebaseProjectId() strictly fails closed if FIREBASE_PROJECT_ID is missing.
+      const projectId = getFirebaseProjectId();
       firebaseAdminApp = initializeApp({
         projectId,
       });
@@ -24,6 +22,14 @@ function getFirebaseAdminApp(): App {
   return firebaseAdminApp;
 }
 
+/**
+ * Production Firebase Auth ID Token Verifier.
+ * 
+ * SECURITY ARCHITECTURE NOTE:
+ * platform_admin and other platform-level roles are governed exclusively by Firebase Auth Custom Claims
+ * provisioned via server-side administrative operations (e.g. setCustomUserClaims).
+ * They cannot be granted, requested, or altered by normal client requests or within organization scopes.
+ */
 export class FirebaseAdminAuthVerifier implements AuthVerifier {
   async verifyIdToken(token: string): Promise<AuthenticatedIdentity> {
     if (!token || typeof token !== "string" || token.trim() === "") {
@@ -35,13 +41,16 @@ export class FirebaseAdminAuthVerifier implements AuthVerifier {
       const auth = getAuth(app);
       const decoded = await auth.verifyIdToken(token.trim(), true);
 
+      // Strict runtime validation of platformRole claim: never blindly cast
+      const validatedPlatformRole = validatePlatformUserRole(decoded.platformRole);
+
       const identity: AuthenticatedIdentity = {
         uid: decoded.uid,
         email: decoded.email,
         emailVerified: decoded.email_verified,
         tokenIssuedAt: decoded.iat,
         tokenExpiration: decoded.exp,
-        platformRole: (decoded.platformRole as PlatformUserRole) || undefined,
+        platformRole: validatedPlatformRole,
         customClaims: decoded,
       };
 
@@ -52,3 +61,4 @@ export class FirebaseAdminAuthVerifier implements AuthVerifier {
     }
   }
 }
+

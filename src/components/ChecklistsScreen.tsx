@@ -3,6 +3,8 @@ import { CheckSquare, Sparkles, Download, Check, X, Minus, User, MapPin, Calenda
 import { ChecklistInspection, ChecklistItem, InspectionStatus } from '../types/safety';
 import { db } from '../services/db';
 import { exportChecklistPDF } from '../services/pdfExporter';
+import { PROFESSIONAL_TEMPLATES } from '../data/professionalTemplates';
+import { trackEvent } from '../utils/analytics';
 
 const CATEGORIES = [
   { name: 'Extintores', icon: '🧯', norm: 'Dec. 351/79 Cap 18 - IRAM 3517' },
@@ -30,7 +32,40 @@ export const ChecklistsScreen: React.FC = () => {
     setIsGenerating(true);
 
     try {
-      // Find default relevant text from local DB for context
+      // Check if preconfigured professional template exists
+      const matchTemplate = PROFESSIONAL_TEMPLATES.find(
+        (t) => t.category.toLowerCase() === categoryName.toLowerCase()
+      );
+
+      if (matchTemplate) {
+        const newInspection: ChecklistInspection = {
+          id: `chk_${Date.now()}`,
+          templateId: matchTemplate.id,
+          title: matchTemplate.title,
+          category: categoryName,
+          inspectorName: inspectorName || 'Auditor SySAT',
+          location: location || 'Planta Principal',
+          date: new Date().toLocaleDateString('es-AR'),
+          items: matchTemplate.items.map((item) => ({
+            id: item.id,
+            aspect: item.aspect,
+            normativeRef: item.normativeRef,
+            guidance: item.guidance,
+            status: item.defaultStatus || ('cumple' as InspectionStatus),
+            notes: '',
+          })),
+          overallObservations: 'Inspección de rutina completada sin novedades críticas.',
+        };
+
+        setActiveInspection(newInspection);
+        db.saveChecklist(newInspection);
+        setSavedChecklists(db.getChecklists());
+        trackEvent('ai_query_submitted', { category: categoryName, source: 'template_instant' });
+        setIsGenerating(false);
+        return;
+      }
+
+      // Fallback to AI generator for other categories
       const relevantChunks = db.searchRelevantChunks(categoryName, 3);
       const normsText = relevantChunks.map((c) => `${c.docTitle}: ${c.text}`).join('\n');
 
@@ -58,6 +93,7 @@ export const ChecklistsScreen: React.FC = () => {
       setActiveInspection(newInspection);
       db.saveChecklist(newInspection);
       setSavedChecklists(db.getChecklists());
+      trackEvent('ai_query_submitted', { category: categoryName, source: 'template_ai' });
     } catch (err: any) {
       alert('Error generando lista: ' + err.message);
     } finally {

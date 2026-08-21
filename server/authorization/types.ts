@@ -27,7 +27,12 @@ export type Permission =
   | "compliance:read"
   // AI & Auditor permissions
   | "ai:use"
-  | "auditor:read";
+  | "auditor:read"
+  // Document permissions
+  | "document:create"
+  | "document:read"
+  | "document:update"
+  | "document:delete";
 
 export interface AuthorizationContext {
   userId: string;
@@ -65,6 +70,10 @@ export const MEMBERSHIP_ROLE_PERMISSIONS: Record<MembershipRole, Permission[]> =
     "compliance:read",
     "ai:use",
     "auditor:read",
+    "document:create",
+    "document:read",
+    "document:update",
+    "document:delete",
   ],
   admin: [
     "organization:read",
@@ -88,6 +97,10 @@ export const MEMBERSHIP_ROLE_PERMISSIONS: Record<MembershipRole, Permission[]> =
     "compliance:read",
     "ai:use",
     "auditor:read",
+    "document:create",
+    "document:read",
+    "document:update",
+    "document:delete",
   ],
   member: [
     "organization:read",
@@ -105,6 +118,9 @@ export const MEMBERSHIP_ROLE_PERMISSIONS: Record<MembershipRole, Permission[]> =
     "inspection:update",
     "compliance:read",
     "ai:use",
+    "document:create",
+    "document:read",
+    "document:update",
   ],
   auditor: [
     "organization:read",
@@ -114,5 +130,6 @@ export const MEMBERSHIP_ROLE_PERMISSIONS: Record<MembershipRole, Permission[]> =
     "inspection:read",
     "compliance:read",
     "auditor:read",
+    "document:read",
   ],
 };

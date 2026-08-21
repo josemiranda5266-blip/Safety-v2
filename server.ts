@@ -10,6 +10,7 @@ import userRoutes from "./server/routes/userRoutes";
 import companyRoutes from "./server/routes/companyRoutes";
 import establishmentRoutes from "./server/routes/establishmentRoutes";
 import employeeRoutes from "./server/routes/employeeRoutes";
+import documentRoutes from "./server/routes/documentRoutes";
 import {
   initializeAuthorizationRepository,
   getAuthorizationRepository,
@@ -143,6 +144,7 @@ app.use("/api/user", userRoutes);
 app.use("/api/v2/companies", companyRoutes);
 app.use("/api/v2/establishments", establishmentRoutes);
 app.use("/api/v2/employees", employeeRoutes);
+app.use("/api/v2/documents", documentRoutes);
 
 // Vite Middleware for dev or static server in prod
 async function startServer() {

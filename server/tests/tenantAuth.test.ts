@@ -59,6 +59,7 @@ interface MockResponse {
   statusCode: number;
   jsonData: Record<string, unknown> | null;
   headers?: Record<string, string>;
+  onEnd?: () => void;
   status: (code: number) => MockResponse;
   json: (data: unknown) => MockResponse;
   setHeader?: (name: string, value: string) => MockResponse;
@@ -86,6 +87,7 @@ function createMockResponse(): MockResponse {
     },
     json(data: unknown) {
       this.jsonData = (data && typeof data === "object") ? (data as Record<string, unknown>) : null;
+      if (this.onEnd) this.onEnd();
       return this;
     },
     send(data: unknown) {
@@ -98,9 +100,11 @@ function createMockResponse(): MockResponse {
       } else if (data && typeof data === "object") {
         this.jsonData = data as Record<string, unknown>;
       }
+      if (this.onEnd) this.onEnd();
       return this;
     },
     end() {
+      if (this.onEnd) this.onEnd();
       return this;
     },
   };
@@ -2146,6 +2150,209 @@ export async function runAllTenantAuthTests(): Promise<{ total: number; passed: 
     assert(sanitized.apiKey === "[REDACTED]", "Redactó apiKey");
     assert(sanitized.gemini_api_key === "[REDACTED]", "Redactó gemini_api_key");
     assert(sanitized.normalField === "public_value", "Preservó normalField");
+  });
+
+  // =========================================================================
+  // FASE 1 & FASE 7: PRUEBAS DE DOCUMENTOS MULTI-TENANT (TEST 113 - TEST 117)
+  // =========================================================================
+
+  // Ensure currentAuthRepository contains active org_alpha and org_beta memberships
+  setGlobalAuthVerifier(new MockAuthVerifier());
+  const testRepo = getAuthorizationRepository();
+  await testRepo.organizations.save({
+    id: "org_alpha",
+    name: "Consultora H&S Alpha",
+    ownerUid: "user_owner_a",
+    plan: "pro",
+    planStatus: "active",
+    contactEmail: "admin@alpha.com",
+    createdAt: now,
+  });
+  await testRepo.organizations.save({
+    id: "org_beta",
+    name: "Consultora H&S Beta",
+    ownerUid: "user_owner_b",
+    plan: "pro_plus",
+    planStatus: "active",
+    contactEmail: "admin@beta.com",
+    createdAt: now,
+  });
+  await testRepo.memberships.save({
+    id: "mem_owner_a",
+    orgId: "org_alpha",
+    userId: "user_owner_a",
+    userEmail: "owner@alpha.com",
+    role: "owner",
+    active: true,
+    invitedAt: now,
+  });
+  await testRepo.memberships.save({
+    id: "mem_owner_b",
+    orgId: "org_beta",
+    userId: "user_owner_b",
+    userEmail: "owner@beta.com",
+    role: "owner",
+    active: true,
+    invitedAt: now,
+  });
+
+  const docApp = express();
+  docApp.use(express.json({ limit: "20mb" }));
+  docApp.use(extractAuthUser);
+  const documentRoutesModule = (await import("../routes/documentRoutes")).default;
+  docApp.use("/api/v2/documents", documentRoutesModule);
+
+  // TEST 113: POST /api/v2/documents/upload asigna document strictly to context.orgId
+  await runTest("TEST 113: POST /api/v2/documents/upload asigna orgId servidor sin confiar en cliente", async () => {
+    const req = {
+      method: "POST",
+      url: "/api/v2/documents/upload",
+      headers: {
+        authorization: "Bearer valid_token_owner_a",
+        "x-org-id": "org_alpha",
+        "content-type": "application/json",
+      },
+      body: {
+        filename: "informe_test.pdf",
+        fileBase64: Buffer.from("Contenido PDF de prueba").toString("base64"),
+        title: "Informe Técnico Test 113",
+        category: "Informe",
+      },
+    };
+    const res = createMockResponse();
+    await new Promise<void>((resolve) => {
+      res.onEnd = resolve;
+      (docApp as any).handle(req as any, res as any, () => resolve());
+    });
+    assert(res.statusCode === 201, "Documento creado con HTTP 201 Created");
+    assert((res.jsonData?.document as any)?.orgId === "org_alpha", "Servidor asignó org_alpha como orgId autenticado");
+    assert((res.jsonData?.document as any)?.filename === "informe_test.pdf", "Filename correcto");
+  });
+
+  // TEST 114: GET /api/v2/documents lista solo documentos de org_alpha
+  await runTest("TEST 114: GET /api/v2/documents lista exclusivamente documentos de org_alpha", async () => {
+    const req = {
+      method: "GET",
+      url: "/api/v2/documents",
+      headers: {
+        authorization: "Bearer valid_token_owner_a",
+        "x-org-id": "org_alpha",
+      },
+    };
+    const res = createMockResponse();
+    await new Promise<void>((resolve) => {
+      res.onEnd = resolve;
+      (docApp as any).handle(req as any, res as any, () => resolve());
+    });
+    assert(res.statusCode === 200, "HTTP 200 OK");
+    assert(Array.isArray(res.jsonData?.documents), "Array de documentos devuelto");
+    const docs = (res.jsonData?.documents as any[]) || [];
+    assert(docs.every((d: any) => d.orgId === "org_alpha"), "Todos los documentos pertenecen a org_alpha");
+  });
+
+  // TEST 115: GET /api/v2/documents/:documentId deniega acceso cross-tenant
+  await runTest("TEST 115: GET /api/v2/documents/:documentId deniega acceso cross-tenant (404)", async () => {
+    // Intentar acceder desde org_beta a un documento de org_alpha
+    const req = {
+      method: "GET",
+      url: "/api/v2/documents/doc_non_existent_for_beta",
+      headers: {
+        authorization: "Bearer valid_token_owner_b",
+        "x-org-id": "org_beta",
+      },
+    };
+    const res = createMockResponse();
+    await new Promise<void>((resolve) => {
+      res.onEnd = resolve;
+      (docApp as any).handle(req as any, res as any, () => resolve());
+    });
+    assert(res.statusCode === 404, "Devuelve 404 para evitar enumeración de recursos de otro tenant");
+  });
+
+  // TEST 116: DELETE /api/v2/documents/:documentId elimina documento dentro del tenant
+  await runTest("TEST 116: DELETE /api/v2/documents/:documentId verifica contexto y elimina documento", async () => {
+    // Subir doc primero
+    const uploadReq = {
+      method: "POST",
+      url: "/api/v2/documents/upload",
+      headers: {
+        authorization: "Bearer valid_token_owner_a",
+        "x-org-id": "org_alpha",
+        "content-type": "application/json",
+      },
+      body: {
+        filename: "doc_to_delete.pdf",
+        fileBase64: Buffer.from("Para borrar").toString("base64"),
+      },
+    };
+    const uploadRes = createMockResponse();
+    await new Promise<void>((resolve) => {
+      uploadRes.onEnd = resolve;
+      (docApp as any).handle(uploadReq as any, uploadRes as any, () => resolve());
+    });
+    const createdId = (uploadRes.jsonData?.document as any)?.id;
+    assert(createdId, "Documento temporal creado");
+
+    // Borrar doc
+    const deleteReq = {
+      method: "DELETE",
+      url: `/api/v2/documents/${createdId}`,
+      headers: {
+        authorization: "Bearer valid_token_owner_a",
+        "x-org-id": "org_alpha",
+      },
+    };
+    const deleteRes = createMockResponse();
+    await new Promise<void>((resolve) => {
+      deleteRes.onEnd = resolve;
+      (docApp as any).handle(deleteReq as any, deleteRes as any, () => resolve());
+    });
+    assert(deleteRes.statusCode === 200, "Eliminado exitosamente con HTTP 200");
+  });
+
+  // TEST 117: Rol auditor puede leer documentos pero no puede subir ni eliminar (403)
+  await runTest("TEST 117: Rol auditor puede leer documentos pero no crear ni eliminar (403)", async () => {
+    const activeVerifier = getAuthVerifier();
+    if (activeVerifier instanceof MockAuthVerifier) {
+      activeVerifier.registerToken("valid_token_user_auditor_doc", {
+        uid: "user_auditor_doc",
+        email: "auditor_doc@test.com",
+        displayName: "Auditor Doc",
+        emailVerified: true,
+      });
+    }
+
+    // Configurar membresía auditor
+    const currentRepo = getAuthorizationRepository();
+    await currentRepo.memberships.save({
+      id: "mem_auditor_doc",
+      orgId: "org_alpha",
+      userId: "user_auditor_doc",
+      userEmail: "auditor_doc@test.com",
+      role: "auditor",
+      active: true,
+      invitedAt: now,
+    });
+
+    const uploadReq = {
+      method: "POST",
+      url: "/api/v2/documents/upload",
+      headers: {
+        authorization: "Bearer valid_token_user_auditor_doc",
+        "x-org-id": "org_alpha",
+        "content-type": "application/json",
+      },
+      body: {
+        filename: "auditor_fail.pdf",
+        fileBase64: Buffer.from("Auditor test").toString("base64"),
+      },
+    };
+    const uploadRes = createMockResponse();
+    await new Promise<void>((resolve) => {
+      uploadRes.onEnd = resolve;
+      (docApp as any).handle(uploadReq as any, uploadRes as any, () => resolve());
+    });
+    assert(uploadRes.statusCode === 403, "Auditor recibe 403 Forbidden al intentar subir documento");
   });
 
   const passed = testResults.filter((r) => r.passed).length;

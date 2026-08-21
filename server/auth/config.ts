@@ -1,3 +1,6 @@
+import fs from "fs";
+import path from "path";
+
 /**
  * Centralized Firebase & Auth Configuration Manager for Safety IA V2.
  * 
@@ -15,7 +18,22 @@ export interface AuthConfig {
 export function getAuthConfig(): AuthConfig {
   const isProduction = process.env.NODE_ENV === "production";
   const authDevMode = process.env.AUTH_DEV_MODE === "true";
-  const firebaseProjectId = process.env.FIREBASE_PROJECT_ID || process.env.GCLOUD_PROJECT;
+  let firebaseProjectId = process.env.FIREBASE_PROJECT_ID || process.env.GCLOUD_PROJECT;
+
+  if (!firebaseProjectId && process.env.IS_RUNNING_TESTS !== "true") {
+    try {
+      const configPath = path.join(process.cwd(), "firebase-applet-config.json");
+      if (fs.existsSync(configPath)) {
+        const raw = fs.readFileSync(configPath, "utf-8");
+        const parsed = JSON.parse(raw);
+        if (parsed.projectId) {
+          firebaseProjectId = parsed.projectId;
+        }
+      }
+    } catch {
+      // ignore
+    }
+  }
 
   return {
     firebaseProjectId,

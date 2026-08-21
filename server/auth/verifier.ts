@@ -9,29 +9,38 @@ export function getAuthVerifier(): AuthVerifier {
   // Validate central configuration
   validateAuthConfig();
 
-  if (currentAuthVerifier) {
-    // Safety check: if in production, never allow non-FirebaseAdmin verifier unless testing bypass is active
-    if (process.env.NODE_ENV === "production" && !(currentAuthVerifier instanceof FirebaseAdminAuthVerifier)) {
-      if (process.env.BYPASS_PROD_VERIFIER_FOR_TESTING !== "true") {
+  const isProduction = process.env.NODE_ENV === "production";
+
+  if (isProduction) {
+    // Fail-Closed: check for any bypass or mock environment variables
+    for (const key of Object.keys(process.env)) {
+      const upperKey = key.toUpperCase();
+      if (upperKey.includes("BYPASS") || upperKey.includes("MOCK")) {
         throw new Error(
-          "CRITICAL SECURITY CONFIGURATION ERROR: Mock verifier detected in production environment. Refusing to operate."
+          `CRITICAL SECURITY VIOLATION: Production environment contains bypass or mock configuration variable: ${key}. Fail closed.`
         );
       }
+    }
+
+    if (currentAuthVerifier && !(currentAuthVerifier instanceof FirebaseAdminAuthVerifier)) {
+      throw new Error(
+        "CRITICAL SECURITY CONFIGURATION ERROR: Mock verifier detected in production environment. Refusing to operate."
+      );
+    }
+
+    if (!currentAuthVerifier) {
+      currentAuthVerifier = new FirebaseAdminAuthVerifier();
     }
     return currentAuthVerifier;
   }
 
-  const isProduction = process.env.NODE_ENV === "production";
+  if (currentAuthVerifier) {
+    return currentAuthVerifier;
+  }
+
   const authDevMode = process.env.AUTH_DEV_MODE === "true";
 
-  if (isProduction) {
-    if (authDevMode) {
-      throw new Error(
-        "CRITICAL SECURITY CONFIGURATION ERROR: AUTH_DEV_MODE cannot be enabled when NODE_ENV is production."
-      );
-    }
-    currentAuthVerifier = new FirebaseAdminAuthVerifier();
-  } else if (process.env.NODE_ENV === "test" || authDevMode) {
+  if (process.env.NODE_ENV === "test" || authDevMode) {
     currentAuthVerifier = new MockAuthVerifier();
   } else {
     // In local dev by default, attempt Firebase Admin
@@ -43,9 +52,7 @@ export function getAuthVerifier(): AuthVerifier {
 
 export function setGlobalAuthVerifier(verifier: AuthVerifier): void {
   if (process.env.NODE_ENV === "production" && !(verifier instanceof FirebaseAdminAuthVerifier)) {
-    if (process.env.BYPASS_PROD_VERIFIER_FOR_TESTING !== "true") {
-      throw new Error("CRITICAL SECURITY VIOLATION: Cannot set non-production AuthVerifier when NODE_ENV is production.");
-    }
+    throw new Error("CRITICAL SECURITY VIOLATION: Cannot set non-production AuthVerifier when NODE_ENV is production.");
   }
   currentAuthVerifier = verifier;
 }

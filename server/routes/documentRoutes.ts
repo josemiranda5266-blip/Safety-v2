@@ -120,7 +120,7 @@ router.post("/upload", requirePermission("document:create"), async (req: TenantR
     }
 
     const {
-      mimeType = "application/pdf",
+      mimeType,
       title,
       category,
       pageCount,

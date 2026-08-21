@@ -42,7 +42,21 @@ const ALLOWED_MIME_TYPES = new Set([
   "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
   "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
   "text/plain",
-  "application/octet-stream",
+]);
+
+const ALLOWED_CATEGORIES = new Set<CategoryType>([
+  "Ley",
+  "Decreto",
+  "Resolución SRT",
+  "Norma IRAM",
+  "Norma ISO",
+  "Manual",
+  "Procedimiento",
+  "Instructivo",
+  "Apunte",
+  "Formulario",
+  "Informe",
+  "Otro",
 ]);
 
 const MAX_FILE_SIZE_BYTES = 15 * 1024 * 1024; // 15MB
@@ -87,7 +101,7 @@ export function validateDocumentUpload(body: any): UploadValidationResult {
     return { valid: false, error: "Payload de solicitud inválido", code: "INVALID_PAYLOAD" };
   }
 
-  const { filename, fileBase64, mimeType, chunks, tags, title, category, summary, author, issuingOrganism } = body;
+  const { filename, fileBase64, mimeType, chunks, tags, title, category, pageCount, summary, author, issuingOrganism } = body;
 
   if (!filename || typeof filename !== "string" || filename.trim() === "") {
     return { valid: false, error: "El nombre de archivo (filename) es requerido", code: "MISSING_FILENAME" };
@@ -97,18 +111,28 @@ export function validateDocumentUpload(body: any): UploadValidationResult {
     return { valid: false, error: "El contenido Base64 (fileBase64) es requerido", code: "MISSING_FILE_BASE64" };
   }
 
-  // Base64 format validation
-  const cleanBase64 = fileBase64.replace(/\s/g, "");
-  const base64Regex = /^[A-Za-z0-9+/=]+$/;
-  if (!base64Regex.test(cleanBase64)) {
-    return { valid: false, error: "Contenido Base64 con formato inválido", code: "INVALID_BASE64" };
+  // Base64 validation: size before decoding
+  const MAX_BASE64_LENGTH = Math.ceil(MAX_FILE_SIZE_BYTES * 4 / 3) + 4;
+  if (fileBase64.length > MAX_BASE64_LENGTH) {
+    return { valid: false, error: "El tamaño del contenido Base64 supera el límite de 15MB", code: "FILE_TOO_LARGE" };
+  }
+
+  // Base64 format and characters validation (no internal spaces, strict format and padding)
+  const base64Regex = /^(?:[A-Za-z0-9+/]{4})*(?:[A-Za-z0-9+/]{2}==|[A-Za-z0-9+/]{3}=)?$/;
+  if (!base64Regex.test(fileBase64)) {
+    return { valid: false, error: "Contenido Base64 con formato o caracteres inválidos (debe tener padding correcto y sin espacios)", code: "INVALID_BASE64" };
   }
 
   let fileBuffer: Buffer;
   try {
-    fileBuffer = Buffer.from(cleanBase64, "base64");
+    fileBuffer = Buffer.from(fileBase64, "base64");
   } catch {
     return { valid: false, error: "Error decodificando contenido Base64", code: "INVALID_BASE64" };
+  }
+
+  // Check reversible encoding
+  if (fileBuffer.toString("base64") !== fileBase64) {
+    return { valid: false, error: "La decodificación Base64 no es perfectamente reversible", code: "INVALID_BASE64" };
   }
 
   // File size validation
@@ -134,13 +158,88 @@ export function validateDocumentUpload(body: any): UploadValidationResult {
   }
 
   // MIME type validation
-  const cleanMime = (mimeType || "").toLowerCase().trim();
-  if (cleanMime && !ALLOWED_MIME_TYPES.has(cleanMime)) {
+  if (!mimeType || typeof mimeType !== "string" || mimeType.trim() === "") {
+    return { valid: false, error: "El tipo MIME (mimeType) es requerido y no puede ser inferido", code: "MISSING_MIME_TYPE" };
+  }
+
+  const cleanMime = mimeType.toLowerCase().trim();
+  if (!ALLOWED_MIME_TYPES.has(cleanMime)) {
     return {
       valid: false,
-      error: `Tipo MIME no permitido (${cleanMime})`,
+      error: `Tipo MIME no permitido o no soportado (${cleanMime}). El tipo application/octet-stream no está permitido.`,
       code: "INVALID_MIME_TYPE",
     };
+  }
+
+  // Extension and MIME must match strictly
+  let mimeMatchesExtension = false;
+  if (ext === ".pdf" && cleanMime === "application/pdf") {
+    mimeMatchesExtension = true;
+  } else if (ext === ".docx" && cleanMime === "application/vnd.openxmlformats-officedocument.wordprocessingml.document") {
+    mimeMatchesExtension = true;
+  } else if (ext === ".xlsx" && cleanMime === "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet") {
+    mimeMatchesExtension = true;
+  } else if (ext === ".txt" && cleanMime === "text/plain") {
+    mimeMatchesExtension = true;
+  }
+
+  if (!mimeMatchesExtension) {
+    return {
+      valid: false,
+      error: `La extensión del archivo (${ext}) y el tipo MIME (${cleanMime}) no coinciden`,
+      code: "MIME_EXTENSION_MISMATCH",
+    };
+  }
+
+  // Magic Bytes Validation
+  if (ext === ".pdf") {
+    // PDF Magic bytes: %PDF (0x25 0x50 0x44 0x46)
+    if (fileBuffer.length < 4 ||
+        fileBuffer[0] !== 0x25 ||
+        fileBuffer[1] !== 0x50 ||
+        fileBuffer[2] !== 0x44 ||
+        fileBuffer[3] !== 0x46) {
+      return {
+        valid: false,
+        error: "El archivo PDF no tiene la firma de bytes mágicos correcta (%PDF)",
+        code: "INVALID_MAGIC_BYTES",
+      };
+    }
+  } else if (ext === ".docx" || ext === ".xlsx") {
+    // DOCX/XLSX ZIP signature: PK (0x50 0x4b 0x03 0x04)
+    if (fileBuffer.length < 4 ||
+        fileBuffer[0] !== 0x50 ||
+        fileBuffer[1] !== 0x4b ||
+        fileBuffer[2] !== 0x03 ||
+        fileBuffer[3] !== 0x04) {
+      return {
+        valid: false,
+        error: "El archivo no tiene la firma ZIP correcta para documentos DOCX/XLSX (PK)",
+        code: "INVALID_MAGIC_BYTES",
+      };
+    }
+  }
+
+  // PageCount validation
+  if (pageCount !== undefined) {
+    if (typeof pageCount !== "number" || isNaN(pageCount) || !isFinite(pageCount) || pageCount < 1 || !Number.isInteger(pageCount) || pageCount > 10000) {
+      return {
+        valid: false,
+        error: "El campo pageCount debe ser un número entero válido entre 1 y 10000. No se permiten objetos, arrays, NaN o Infinity.",
+        code: "INVALID_PAGE_COUNT",
+      };
+    }
+  }
+
+  // Category validation
+  if (category !== undefined) {
+    if (typeof category !== "string" || !ALLOWED_CATEGORIES.has(category as CategoryType)) {
+      return {
+        valid: false,
+        error: `Categoría inválida (${category}). Las categorías permitidas son Ley, Decreto, Resolución SRT, Norma IRAM, Norma ISO, Manual, Procedimiento, Instructivo, Apunte, Formulario, Informe, Otro`,
+        code: "INVALID_CATEGORY",
+      };
+    }
   }
 
   // Metadata field length validations
@@ -287,6 +386,7 @@ export async function createDocument(params: {
   }));
 
   let storageUploadSuccess = false;
+  let metadataCreatedSuccess = false;
 
   // 1. Upload physical file to Storage
   try {
@@ -313,7 +413,9 @@ export async function createDocument(params: {
   try {
     const db = getAdminFirestore();
     const docRef = db.collection("organizations").doc(orgId).collection("documents").doc(documentId);
+    
     await docRef.set(record);
+    metadataCreatedSuccess = true;
 
     if (sanitizedChunks.length > 0) {
       const batch = db.batch();
@@ -324,6 +426,19 @@ export async function createDocument(params: {
       await batch.commit();
     }
   } catch (firestoreErr: any) {
+    // Transactional Rollback: Clean up any partially created Firestore metadata or chunks
+    if (metadataCreatedSuccess) {
+      try {
+        const db = getAdminFirestore();
+        const docRef = db.collection("organizations").doc(orgId).collection("documents").doc(documentId);
+        
+        // Delete metadata
+        await docRef.delete();
+      } catch {
+        // Suppress secondary cleanup errors
+      }
+    }
+
     // Transactional Rollback: Delete file from Storage if Firestore write failed
     if (storageUploadSuccess) {
       try {
@@ -416,34 +531,13 @@ export async function deleteDocument(orgId: string, documentId: string): Promise
     return false;
   }
 
-  // 1. Delete Firestore Metadata & Chunks
-  try {
-    const db = getAdminFirestore();
-    const docRef = db.collection("organizations").doc(orgId).collection("documents").doc(documentId);
+  let storageDeleted = false;
 
-    // Delete chunks subcollection
-    const chunksSnap = await docRef.collection("chunks").get();
-    if (!chunksSnap.empty) {
-      const batch = db.batch();
-      chunksSnap.docs.forEach((doc) => batch.delete(doc.ref));
-      await batch.commit();
-    }
-
-    await docRef.delete();
-  } catch (e: any) {
-    if (isProduction) {
-      console.error("[DocumentService] Error al eliminar metadata en Firestore en producción:", e.message);
-      const infraErr: any = new Error("Error de infraestructura al eliminar documento");
-      infraErr.code = "INFRASTRUCTURE_ERROR";
-      infraErr.status = 503;
-      throw infraErr;
-    }
-  }
-
-  // 2. Delete original object in Storage
+  // 1. Delete original object in Storage first
   try {
     const bucket = getAdminStorageBucket();
     await bucket.file(existingDoc.storagePath).delete();
+    storageDeleted = true;
   } catch (e: any) {
     if (isProduction) {
       console.error("[DocumentService] Error al eliminar archivo en Storage en producción:", e.message);
@@ -451,6 +545,36 @@ export async function deleteDocument(orgId: string, documentId: string): Promise
       infraErr.code = "INFRASTRUCTURE_ERROR";
       infraErr.status = 503;
       throw infraErr;
+    }
+    // In dev/test environment, assume delete succeeded if we use fallback stores
+    storageDeleted = true;
+  }
+
+  // 2. Delete Firestore Metadata & Chunks upon successful Storage deletion
+  if (storageDeleted) {
+    try {
+      const db = getAdminFirestore();
+      const docRef = db.collection("organizations").doc(orgId).collection("documents").doc(documentId);
+
+      // Delete chunks subcollection
+      const chunksSnap = await docRef.collection("chunks").get();
+      if (!chunksSnap.empty) {
+        const batch = db.batch();
+        chunksSnap.docs.forEach((doc) => batch.delete(doc.ref));
+        await batch.commit();
+      }
+
+      await docRef.delete();
+    } catch (e: any) {
+      if (isProduction) {
+        console.error(
+          `[CRITICAL INCONSISTENCY] El archivo físico se eliminó de Storage (path: ${existingDoc.storagePath}), pero falló la eliminación de metadata/chunks en Firestore para el documento ${documentId}. Error: ${e.message}`
+        );
+        const infraErr: any = new Error("Error de infraestructura al eliminar documento de la base de datos (Firestore)");
+        infraErr.code = "INFRASTRUCTURE_ERROR";
+        infraErr.status = 503;
+        throw infraErr;
+      }
     }
   }
 

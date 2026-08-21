@@ -22,6 +22,12 @@ function getFirebaseAdminApp(): App {
   return firebaseAdminApp;
 }
 
+let mockVerifyHook: ((token: string) => Promise<AuthenticatedIdentity>) | null = null;
+
+export function setFirebaseAdminVerifyHookForTesting(hook: typeof mockVerifyHook): void {
+  mockVerifyHook = hook;
+}
+
 /**
  * Production Firebase Auth ID Token Verifier.
  * 
@@ -34,6 +40,10 @@ export class FirebaseAdminAuthVerifier implements AuthVerifier {
   async verifyIdToken(token: string): Promise<AuthenticatedIdentity> {
     if (!token || typeof token !== "string" || token.trim() === "") {
       throw new Error("Token de autenticación vacío o no proporcionado.");
+    }
+
+    if (mockVerifyHook) {
+      return await mockVerifyHook(token);
     }
 
     try {

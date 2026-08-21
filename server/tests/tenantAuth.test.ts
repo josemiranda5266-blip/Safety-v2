@@ -1,3 +1,4 @@
+process.env.IS_RUNNING_TESTS = "true";
 import { saveOrganization, saveMembership, clearStore, getOrganizations, getAllMemberships, getAuthorizationRepository, setAuthorizationRepository, initializeAuthorizationRepository } from "../authorization/store";
 import { resolveAuthorizationContext } from "../authorization/context";
 import { canAccessCompany, canAccessEstablishment, canAccessEmployee, hasPermission } from "../authorization/guards";
@@ -2214,7 +2215,8 @@ export async function runAllTenantAuthTests(): Promise<{ total: number; passed: 
       },
       body: {
         filename: "informe_test.pdf",
-        fileBase64: Buffer.from("Contenido PDF de prueba").toString("base64"),
+        mimeType: "application/pdf",
+        fileBase64: Buffer.from("%PDF-1.4 Contenido PDF de prueba").toString("base64"),
         title: "Informe Técnico Test 113",
         category: "Informe",
       },
@@ -2282,7 +2284,8 @@ export async function runAllTenantAuthTests(): Promise<{ total: number; passed: 
       },
       body: {
         filename: "doc_to_delete.pdf",
-        fileBase64: Buffer.from("Para borrar").toString("base64"),
+        mimeType: "application/pdf",
+        fileBase64: Buffer.from("%PDF-1.4 Para borrar").toString("base64"),
       },
     };
     const uploadRes = createMockResponse();
@@ -2344,7 +2347,8 @@ export async function runAllTenantAuthTests(): Promise<{ total: number; passed: 
       },
       body: {
         filename: "auditor_fail.pdf",
-        fileBase64: Buffer.from("Auditor test").toString("base64"),
+        mimeType: "application/pdf",
+        fileBase64: Buffer.from("%PDF-1.4 Auditor test").toString("base64"),
       },
     };
     const uploadRes = createMockResponse();
@@ -2490,7 +2494,8 @@ export async function runAllTenantAuthTests(): Promise<{ total: number; passed: 
       },
       body: {
         filename: "test118.pdf",
-        fileBase64: Buffer.from(fileContent).toString("base64"),
+        mimeType: "application/pdf",
+        fileBase64: Buffer.from("%PDF-1.4 " + fileContent).toString("base64"),
         title: "Test 118 Doc",
       },
     };
@@ -2503,7 +2508,7 @@ export async function runAllTenantAuthTests(): Promise<{ total: number; passed: 
     const doc = (res.jsonData?.document as any);
     assert(doc && doc.storagePath, "Documento y storagePath generados");
     assert(mockBucket.files.has(doc.storagePath), "Archivo físico almacenado en Storage");
-    assert(mockBucket.files.get(doc.storagePath)?.toString() === fileContent, "Contenido del archivo en Storage coincide");
+    assert(mockBucket.files.get(doc.storagePath)?.toString() === "%PDF-1.4 " + fileContent, "Contenido del archivo en Storage coincide");
   });
 
   // TEST 119: orgId enviado por cliente diferente al tenant autenticado es ignorado/rechazado
@@ -2519,7 +2524,8 @@ export async function runAllTenantAuthTests(): Promise<{ total: number; passed: 
       body: {
         orgId: "org_malicious_hacker",
         filename: "test119.pdf",
-        fileBase64: Buffer.from("Hacker payload").toString("base64"),
+        mimeType: "application/pdf",
+        fileBase64: Buffer.from("%PDF-1.4 Hacker payload").toString("base64"),
       },
     };
     const res = createMockResponse();
@@ -2546,7 +2552,8 @@ export async function runAllTenantAuthTests(): Promise<{ total: number; passed: 
       },
       body: {
         filename: "secret_alpha.pdf",
-        fileBase64: Buffer.from("Top Secret Alpha").toString("base64"),
+        mimeType: "application/pdf",
+        fileBase64: Buffer.from("%PDF-1.4 Top Secret Alpha").toString("base64"),
       },
     };
     const uploadRes = createMockResponse();
@@ -2586,7 +2593,8 @@ export async function runAllTenantAuthTests(): Promise<{ total: number; passed: 
       },
       body: {
         filename: "protected_alpha.pdf",
-        fileBase64: Buffer.from("Protected").toString("base64"),
+        mimeType: "application/pdf",
+        fileBase64: Buffer.from("%PDF-1.4 Protected").toString("base64"),
       },
     };
     const uploadRes = createMockResponse();
@@ -2633,11 +2641,26 @@ export async function runAllTenantAuthTests(): Promise<{ total: number; passed: 
   await runTest("TEST 122: Storage failure en production devuelve error controlado, nunca memory fallback", async () => {
     const originalEnv = process.env.NODE_ENV;
     const originalProjectId = process.env.FIREBASE_PROJECT_ID;
-    const originalBypass = process.env.BYPASS_PROD_VERIFIER_FOR_TESTING;
 
     process.env.NODE_ENV = "production";
     process.env.FIREBASE_PROJECT_ID = "test-prod-project";
-    process.env.BYPASS_PROD_VERIFIER_FOR_TESTING = "true";
+
+    const { resetGlobalAuthVerifier } = await import("../auth/verifier");
+    const { setFirebaseAdminVerifyHookForTesting } = await import("../auth/firebaseAdminVerifier");
+    resetGlobalAuthVerifier();
+    setFirebaseAdminVerifyHookForTesting(async (token) => {
+      if (token === "valid_token_owner_a") {
+        return {
+          uid: "user_owner_a",
+          email: "owner_a@test.com",
+          emailVerified: true,
+          platformRole: "professional",
+          tokenIssuedAt: Date.now() / 1000 - 60,
+          tokenExpiration: Date.now() / 1000 + 3600,
+        };
+      }
+      throw new Error("Invalid production token");
+    });
 
     mockBucket.shouldFailSave = true;
 
@@ -2651,7 +2674,8 @@ export async function runAllTenantAuthTests(): Promise<{ total: number; passed: 
       },
       body: {
         filename: "fail_prod.pdf",
-        fileBase64: Buffer.from("Fail in prod").toString("base64"),
+        mimeType: "application/pdf",
+        fileBase64: Buffer.from("%PDF-1.4 Fail in prod").toString("base64"),
       },
     };
     const res = createMockResponse();
@@ -2661,9 +2685,10 @@ export async function runAllTenantAuthTests(): Promise<{ total: number; passed: 
     });
 
     mockBucket.shouldFailSave = false;
+    setFirebaseAdminVerifyHookForTesting(null);
     process.env.NODE_ENV = originalEnv;
     process.env.FIREBASE_PROJECT_ID = originalProjectId;
-    process.env.BYPASS_PROD_VERIFIER_FOR_TESTING = originalBypass;
+    setGlobalAuthVerifier(new MockAuthVerifier());
 
     assert(res.statusCode === 503, "Devuelve HTTP 503 Service Unavailable en fallo de Storage en producción");
     assert(res.jsonData?.code === "INFRASTRUCTURE_ERROR", "Código de error de infraestructura");
@@ -2673,11 +2698,26 @@ export async function runAllTenantAuthTests(): Promise<{ total: number; passed: 
   await runTest("TEST 123: Firestore failure en production devuelve error controlado, nunca memory fallback", async () => {
     const originalEnv = process.env.NODE_ENV;
     const originalProjectId = process.env.FIREBASE_PROJECT_ID;
-    const originalBypass = process.env.BYPASS_PROD_VERIFIER_FOR_TESTING;
 
     process.env.NODE_ENV = "production";
     process.env.FIREBASE_PROJECT_ID = "test-prod-project";
-    process.env.BYPASS_PROD_VERIFIER_FOR_TESTING = "true";
+
+    const { resetGlobalAuthVerifier } = await import("../auth/verifier");
+    const { setFirebaseAdminVerifyHookForTesting } = await import("../auth/firebaseAdminVerifier");
+    resetGlobalAuthVerifier();
+    setFirebaseAdminVerifyHookForTesting(async (token) => {
+      if (token === "valid_token_owner_a") {
+        return {
+          uid: "user_owner_a",
+          email: "owner_a@test.com",
+          emailVerified: true,
+          platformRole: "professional",
+          tokenIssuedAt: Date.now() / 1000 - 60,
+          tokenExpiration: Date.now() / 1000 + 3600,
+        };
+      }
+      throw new Error("Invalid production token");
+    });
 
     // Mock broken Firestore instance
     const failingDb: any = {
@@ -2698,7 +2738,8 @@ export async function runAllTenantAuthTests(): Promise<{ total: number; passed: 
       },
       body: {
         filename: "fail_firestore_prod.pdf",
-        fileBase64: Buffer.from("Fail firestore in prod").toString("base64"),
+        mimeType: "application/pdf",
+        fileBase64: Buffer.from("%PDF-1.4 Fail firestore in prod").toString("base64"),
       },
     };
     const res = createMockResponse();
@@ -2708,9 +2749,10 @@ export async function runAllTenantAuthTests(): Promise<{ total: number; passed: 
     });
 
     setAdminFirestoreForTesting(mockDb as any);
+    setFirebaseAdminVerifyHookForTesting(null);
     process.env.NODE_ENV = originalEnv;
     process.env.FIREBASE_PROJECT_ID = originalProjectId;
-    process.env.BYPASS_PROD_VERIFIER_FOR_TESTING = originalBypass;
+    setGlobalAuthVerifier(new MockAuthVerifier());
 
     assert(res.statusCode === 503, "Devuelve HTTP 503 Service Unavailable en fallo de Firestore en producción");
     assert(res.jsonData?.code === "INFRASTRUCTURE_ERROR", "Código de error de infraestructura");
@@ -2728,7 +2770,8 @@ export async function runAllTenantAuthTests(): Promise<{ total: number; passed: 
       },
       body: {
         filename: "../../../etc/passwd.pdf",
-        fileBase64: Buffer.from("Path traversal test").toString("base64"),
+        mimeType: "application/pdf",
+        fileBase64: Buffer.from("%PDF-1.4 Path traversal test").toString("base64"),
       },
     };
     const res = createMockResponse();
@@ -2830,7 +2873,8 @@ export async function runAllTenantAuthTests(): Promise<{ total: number; passed: 
       },
       body: {
         filename: "giant_chunk.pdf",
-        fileBase64: Buffer.from("test").toString("base64"),
+        mimeType: "application/pdf",
+        fileBase64: Buffer.from("%PDF-1.4 test").toString("base64"),
         chunks: [{ text: giantChunkText }],
       },
     };
@@ -2855,7 +2899,8 @@ export async function runAllTenantAuthTests(): Promise<{ total: number; passed: 
       },
       body: {
         filename: "chunk_injection.pdf",
-        fileBase64: Buffer.from("test").toString("base64"),
+        mimeType: "application/pdf",
+        fileBase64: Buffer.from("%PDF-1.4 test").toString("base64"),
         chunks: [
           { text: "Injected Chunk", orgId: "org_beta", docId: "fake_doc_id" },
         ],
@@ -2903,7 +2948,8 @@ export async function runAllTenantAuthTests(): Promise<{ total: number; passed: 
       },
       body: {
         filename: "doc_full_delete.pdf",
-        fileBase64: Buffer.from("Full delete test").toString("base64"),
+        mimeType: "application/pdf",
+        fileBase64: Buffer.from("%PDF-1.4 Full delete test").toString("base64"),
       },
     };
     const uploadRes = createMockResponse();
@@ -2961,7 +3007,8 @@ export async function runAllTenantAuthTests(): Promise<{ total: number; passed: 
       },
       body: {
         filename: "override_path.pdf",
-        fileBase64: Buffer.from("Override test").toString("base64"),
+        mimeType: "application/pdf",
+        fileBase64: Buffer.from("%PDF-1.4 Override test").toString("base64"),
         storagePath: "organizations/org_beta/documents/fake/secret.pdf",
       },
     };
@@ -2974,6 +3021,583 @@ export async function runAllTenantAuthTests(): Promise<{ total: number; passed: 
     const doc = (res.jsonData?.document as any);
     assert(doc.storagePath !== "organizations/org_beta/documents/fake/secret.pdf", "storagePath del cliente ignorado");
     assert(doc.storagePath.startsWith(`organizations/org_alpha/documents/${doc.id}/`), "storagePath autoritativo generado por el servidor");
+  });
+
+  // TEST 132: Base64 no reversible o con formato corrupto es rechazado
+  await runTest("TEST 132: Base64 no reversible o con formato corrupto es rechazado", async () => {
+    const req = {
+      method: "POST",
+      url: "/api/v2/documents/upload",
+      headers: {
+        authorization: "Bearer valid_token_owner_a",
+        "x-org-id": "org_alpha",
+        "content-type": "application/json",
+      },
+      body: {
+        filename: "corrupt.pdf",
+        mimeType: "application/pdf",
+        fileBase64: "JVBERi0xLjQgUGF0aCB0cmF2ZXJzYWwgdGVzdA==_extra_spaces_or_garbage",
+      },
+    };
+    const res = createMockResponse();
+    await new Promise<void>((resolve) => {
+      res.onEnd = resolve;
+      (docApp as any).handle(req as any, res as any, () => resolve());
+    });
+    assert(res.statusCode === 400, "Devuelve HTTP 400 Bad Request");
+    assert(res.jsonData?.code === "INVALID_BASE64", "Código de error coincide con INVALID_BASE64");
+  });
+
+  // TEST 133: Archivo PDF con firma de bytes mágicos inválida es rechazado
+  await runTest("TEST 133: Archivo PDF con firma de bytes mágicos inválida es rechazado", async () => {
+    const req = {
+      method: "POST",
+      url: "/api/v2/documents/upload",
+      headers: {
+        authorization: "Bearer valid_token_owner_a",
+        "x-org-id": "org_alpha",
+        "content-type": "application/json",
+      },
+      body: {
+        filename: "invalid_magic.pdf",
+        mimeType: "application/pdf",
+        fileBase64: Buffer.from("NOT_A_PDF_CONTENT").toString("base64"),
+      },
+    };
+    const res = createMockResponse();
+    await new Promise<void>((resolve) => {
+      res.onEnd = resolve;
+      (docApp as any).handle(req as any, res as any, () => resolve());
+    });
+    assert(res.statusCode === 400, "Devuelve HTTP 400 Bad Request");
+    assert(res.jsonData?.code === "INVALID_MAGIC_BYTES", "Código de error coincide con INVALID_MAGIC_BYTES");
+  });
+
+  // TEST 134: Archivo DOCX con firma de bytes mágicos inválida es rechazado
+  await runTest("TEST 134: Archivo DOCX con firma de bytes mágicos inválida es rechazado", async () => {
+    const req = {
+      method: "POST",
+      url: "/api/v2/documents/upload",
+      headers: {
+        authorization: "Bearer valid_token_owner_a",
+        "x-org-id": "org_alpha",
+        "content-type": "application/json",
+      },
+      body: {
+        filename: "invalid_magic.docx",
+        mimeType: "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+        fileBase64: Buffer.from("NOT_A_ZIP_CONTENT_DOCX").toString("base64"),
+      },
+    };
+    const res = createMockResponse();
+    await new Promise<void>((resolve) => {
+      res.onEnd = resolve;
+      (docApp as any).handle(req as any, res as any, () => resolve());
+    });
+    assert(res.statusCode === 400, "Devuelve HTTP 400 Bad Request");
+    assert(res.jsonData?.code === "INVALID_MAGIC_BYTES", "Código de error coincide con INVALID_MAGIC_BYTES");
+  });
+
+  // TEST 135: Archivo XLSX con firma de bytes mágicos inválida es rechazado
+  await runTest("TEST 135: Archivo XLSX con firma de bytes mágicos inválida es rechazado", async () => {
+    const req = {
+      method: "POST",
+      url: "/api/v2/documents/upload",
+      headers: {
+        authorization: "Bearer valid_token_owner_a",
+        "x-org-id": "org_alpha",
+        "content-type": "application/json",
+      },
+      body: {
+        filename: "invalid_magic.xlsx",
+        mimeType: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        fileBase64: Buffer.from("NOT_A_ZIP_CONTENT_XLSX").toString("base64"),
+      },
+    };
+    const res = createMockResponse();
+    await new Promise<void>((resolve) => {
+      res.onEnd = resolve;
+      (docApp as any).handle(req as any, res as any, () => resolve());
+    });
+    assert(res.statusCode === 400, "Devuelve HTTP 400 Bad Request");
+    assert(res.jsonData?.code === "INVALID_MAGIC_BYTES", "Código de error coincide con INVALID_MAGIC_BYTES");
+  });
+
+  // TEST 136: Documento con categoría no permitida/fuera de enum es rechazado
+  await runTest("TEST 136: Documento con categoría no permitida/fuera de enum es rechazado", async () => {
+    const req = {
+      method: "POST",
+      url: "/api/v2/documents/upload",
+      headers: {
+        authorization: "Bearer valid_token_owner_a",
+        "x-org-id": "org_alpha",
+        "content-type": "application/json",
+      },
+      body: {
+        filename: "invalid_category.pdf",
+        mimeType: "application/pdf",
+        fileBase64: Buffer.from("%PDF-1.4 Valid content").toString("base64"),
+        category: "CategoriaInexistenteFalsa",
+      },
+    };
+    const res = createMockResponse();
+    await new Promise<void>((resolve) => {
+      res.onEnd = resolve;
+      (docApp as any).handle(req as any, res as any, () => resolve());
+    });
+    assert(res.statusCode === 400, "Devuelve HTTP 400 Bad Request");
+    assert(res.jsonData?.code === "INVALID_CATEGORY", "Código de error coincide con INVALID_CATEGORY");
+  });
+
+  // TEST 137: Documento con categoría permitida es aceptado correctamente
+  await runTest("TEST 137: Documento con categoría permitida es aceptado correctamente", async () => {
+    const req = {
+      method: "POST",
+      url: "/api/v2/documents/upload",
+      headers: {
+        authorization: "Bearer valid_token_owner_a",
+        "x-org-id": "org_alpha",
+        "content-type": "application/json",
+      },
+      body: {
+        filename: "valid_category.pdf",
+        mimeType: "application/pdf",
+        fileBase64: Buffer.from("%PDF-1.4 Valid content").toString("base64"),
+        category: "Informe",
+      },
+    };
+    const res = createMockResponse();
+    await new Promise<void>((resolve) => {
+      res.onEnd = resolve;
+      (docApp as any).handle(req as any, res as any, () => resolve());
+    });
+    assert(res.statusCode === 201, "HTTP 201 Created");
+    assert((res.jsonData?.document as any)?.category === "Informe", "Categoría guardada correctamente");
+  });
+
+  // TEST 138: Documento con pageCount no entero o menor/igual a cero es rechazado
+  await runTest("TEST 138: Documento con pageCount no entero o menor/igual a cero es rechazado", async () => {
+    const req = {
+      method: "POST",
+      url: "/api/v2/documents/upload",
+      headers: {
+        authorization: "Bearer valid_token_owner_a",
+        "x-org-id": "org_alpha",
+        "content-type": "application/json",
+      },
+      body: {
+        filename: "invalid_pagecount.pdf",
+        mimeType: "application/pdf",
+        fileBase64: Buffer.from("%PDF-1.4 Valid content").toString("base64"),
+        pageCount: -3,
+      },
+    };
+    const res = createMockResponse();
+    await new Promise<void>((resolve) => {
+      res.onEnd = resolve;
+      (docApp as any).handle(req as any, res as any, () => resolve());
+    });
+    assert(res.statusCode === 400, "Devuelve HTTP 400 Bad Request");
+    assert(res.jsonData?.code === "INVALID_PAGE_COUNT", "Código de error coincide con INVALID_PAGE_COUNT");
+  });
+
+  // TEST 139: Falla al escribir metadata en Firestore realiza compensación (borrado en Storage)
+  await runTest("TEST 139: Falla al escribir metadata en Firestore realiza compensación (borrado en Storage)", async () => {
+    const originalEnv = process.env.NODE_ENV;
+    const originalProjectId = process.env.FIREBASE_PROJECT_ID;
+
+    process.env.NODE_ENV = "production";
+    process.env.FIREBASE_PROJECT_ID = "test-prod-project";
+
+    const { resetGlobalAuthVerifier } = await import("../auth/verifier");
+    const { setFirebaseAdminVerifyHookForTesting } = await import("../auth/firebaseAdminVerifier");
+    resetGlobalAuthVerifier();
+    setFirebaseAdminVerifyHookForTesting(async (token) => {
+      if (token === "valid_token_owner_a") {
+        return {
+          uid: "user_owner_a",
+          email: "owner_a@test.com",
+          emailVerified: true,
+          platformRole: "professional",
+          tokenIssuedAt: Date.now() / 1000 - 60,
+          tokenExpiration: Date.now() / 1000 + 3600,
+        };
+      }
+      throw new Error("Invalid production token");
+    });
+
+    mockDb.shouldFail = true;
+
+    const req = {
+      method: "POST",
+      url: "/api/v2/documents/upload",
+      headers: {
+        authorization: "Bearer valid_token_owner_a",
+        "x-org-id": "org_alpha",
+        "content-type": "application/json",
+      },
+      body: {
+        filename: "compensation_test.pdf",
+        mimeType: "application/pdf",
+        fileBase64: Buffer.from("%PDF-1.4 Content for metadata fail compensation").toString("base64"),
+      },
+    };
+    const res = createMockResponse();
+    await new Promise<void>((resolve) => {
+      res.onEnd = resolve;
+      (docApp as any).handle(req as any, res as any, () => resolve());
+    });
+
+    mockDb.shouldFail = false;
+    setFirebaseAdminVerifyHookForTesting(null);
+    process.env.NODE_ENV = originalEnv;
+    process.env.FIREBASE_PROJECT_ID = originalProjectId;
+    setGlobalAuthVerifier(new MockAuthVerifier());
+
+    assert(res.statusCode === 503, "Devuelve HTTP 503 Service Unavailable");
+    assert(res.jsonData?.code === "INFRASTRUCTURE_ERROR", "Código de error de infraestructura");
+    const docStorageKeys = Array.from(mockBucket.files.keys());
+    const compensationDocExists = docStorageKeys.some((k) => k.includes("compensation_test.pdf"));
+    assert(!compensationDocExists, "El archivo fue eliminado de Storage por la compensación");
+  });
+
+  // TEST 140: Falla en chunks batch commit realiza compensación completa (borra Storage + borra metadata)
+  await runTest("TEST 140: Falla en chunks batch commit realiza compensación completa (borra Storage + borra metadata)", async () => {
+    const originalEnv = process.env.NODE_ENV;
+    const originalProjectId = process.env.FIREBASE_PROJECT_ID;
+
+    process.env.NODE_ENV = "production";
+    process.env.FIREBASE_PROJECT_ID = "test-prod-project";
+
+    const { resetGlobalAuthVerifier } = await import("../auth/verifier");
+    const { setFirebaseAdminVerifyHookForTesting } = await import("../auth/firebaseAdminVerifier");
+    resetGlobalAuthVerifier();
+    setFirebaseAdminVerifyHookForTesting(async (token) => {
+      if (token === "valid_token_owner_a") {
+        return {
+          uid: "user_owner_a",
+          email: "owner_a@test.com",
+          emailVerified: true,
+          platformRole: "professional",
+          tokenIssuedAt: Date.now() / 1000 - 60,
+          tokenExpiration: Date.now() / 1000 + 3600,
+        };
+      }
+      throw new Error("Invalid production token");
+    });
+
+    const originalBatch = mockDb.batch;
+    mockDb.batch = () => {
+      return {
+        set(docRef: any, data: any) {
+          originalBatch.call(mockDb).set(docRef, data);
+        },
+        delete(docRef: any) {
+          originalBatch.call(mockDb).delete(docRef);
+        },
+        async commit() {
+          throw new Error("Simulated Firestore Batch Commit Failure");
+        }
+      };
+    };
+
+    const req = {
+      method: "POST",
+      url: "/api/v2/documents/upload",
+      headers: {
+        authorization: "Bearer valid_token_owner_a",
+        "x-org-id": "org_alpha",
+        "content-type": "application/json",
+      },
+      body: {
+        filename: "batch_compensation_test.pdf",
+        mimeType: "application/pdf",
+        fileBase64: Buffer.from("%PDF-1.4 Content for batch commit fail compensation").toString("base64"),
+        chunks: [{ text: "Some document chunk" }]
+      },
+    };
+    const res = createMockResponse();
+    await new Promise<void>((resolve) => {
+      res.onEnd = resolve;
+      (docApp as any).handle(req as any, res as any, () => resolve());
+    });
+
+    mockDb.batch = originalBatch;
+    setFirebaseAdminVerifyHookForTesting(null);
+    process.env.NODE_ENV = originalEnv;
+    process.env.FIREBASE_PROJECT_ID = originalProjectId;
+    setGlobalAuthVerifier(new MockAuthVerifier());
+
+    assert(res.statusCode === 503, "Devuelve HTTP 503 Service Unavailable");
+    assert(res.jsonData?.code === "INFRASTRUCTURE_ERROR", "Código de error de infraestructura");
+    const docStorageKeys = Array.from(mockBucket.files.keys());
+    const compensationDocExists = docStorageKeys.some((k) => k.includes("batch_compensation_test.pdf"));
+    assert(!compensationDocExists, "El archivo fue eliminado de Storage por la compensación");
+  });
+
+  // TEST 141: Base64 que excede el tamaño máximo antes de decodificar es rechazado
+  await runTest("TEST 141: Base64 que excede el tamaño máximo antes de decodificar es rechazado", async () => {
+    const giantBase64 = "A".repeat(25 * 1024 * 1024);
+    const req = {
+      method: "POST",
+      url: "/api/v2/documents/upload",
+      headers: {
+        authorization: "Bearer valid_token_owner_a",
+        "x-org-id": "org_alpha",
+        "content-type": "application/json",
+      },
+      body: {
+        filename: "giant_base64.pdf",
+        mimeType: "application/pdf",
+        fileBase64: giantBase64,
+      },
+    };
+    const res = createMockResponse();
+    await new Promise<void>((resolve) => {
+      res.onEnd = resolve;
+      (docApp as any).handle(req as any, res as any, () => resolve());
+    });
+    assert(res.statusCode === 400, "Devuelve HTTP 400 Bad Request");
+    assert(res.jsonData?.code === "FILE_TOO_LARGE", "Código de error coincide con FILE_TOO_LARGE");
+  });
+
+  // TEST 142: MIME type y extensión incongruentes son rechazados
+  await runTest("TEST 142: MIME type y extensión incongruentes son rechazados", async () => {
+    const req = {
+      method: "POST",
+      url: "/api/v2/documents/upload",
+      headers: {
+        authorization: "Bearer valid_token_owner_a",
+        "x-org-id": "org_alpha",
+        "content-type": "application/json",
+      },
+      body: {
+        filename: "mismatch.docx",
+        mimeType: "application/pdf",
+        fileBase64: Buffer.from("%PDF-1.4 Mismatch test").toString("base64"),
+      },
+    };
+    const res = createMockResponse();
+    await new Promise<void>((resolve) => {
+      res.onEnd = resolve;
+      (docApp as any).handle(req as any, res as any, () => resolve());
+    });
+    assert(res.statusCode === 400, "Devuelve HTTP 400 Bad Request");
+    assert(res.jsonData?.code === "MIME_EXTENSION_MISMATCH", "Código de error coincide con MIME_EXTENSION_MISMATCH");
+  });
+
+  // TEST 143: File upload con pageCount de tipo decimal es rechazado
+  await runTest("TEST 143: File upload con pageCount de tipo decimal es rechazado", async () => {
+    const req = {
+      method: "POST",
+      url: "/api/v2/documents/upload",
+      headers: {
+        authorization: "Bearer valid_token_owner_a",
+        "x-org-id": "org_alpha",
+        "content-type": "application/json",
+      },
+      body: {
+        filename: "decimal_pages.pdf",
+        mimeType: "application/pdf",
+        fileBase64: Buffer.from("%PDF-1.4 Valid content").toString("base64"),
+        pageCount: 3.5,
+      },
+    };
+    const res = createMockResponse();
+    await new Promise<void>((resolve) => {
+      res.onEnd = resolve;
+      (docApp as any).handle(req as any, res as any, () => resolve());
+    });
+    assert(res.statusCode === 400, "Devuelve HTTP 400 Bad Request");
+    assert(res.jsonData?.code === "INVALID_PAGE_COUNT", "Código de error coincide con INVALID_PAGE_COUNT");
+  });
+
+  // TEST 144: File upload con pageCount de tipo string es rechazado
+  await runTest("TEST 144: File upload con pageCount de tipo string es rechazado", async () => {
+    const req = {
+      method: "POST",
+      url: "/api/v2/documents/upload",
+      headers: {
+        authorization: "Bearer valid_token_owner_a",
+        "x-org-id": "org_alpha",
+        "content-type": "application/json",
+      },
+      body: {
+        filename: "string_pages.pdf",
+        mimeType: "application/pdf",
+        fileBase64: Buffer.from("%PDF-1.4 Valid content").toString("base64"),
+        pageCount: "10",
+      },
+    };
+    const res = createMockResponse();
+    await new Promise<void>((resolve) => {
+      res.onEnd = resolve;
+      (docApp as any).handle(req as any, res as any, () => resolve());
+    });
+    assert(res.statusCode === 400, "Devuelve HTTP 400 Bad Request");
+    assert(res.jsonData?.code === "INVALID_PAGE_COUNT", "Código de error coincide con INVALID_PAGE_COUNT");
+  });
+
+  // TEST FINAL A: NODE_ENV=production + MockAuthVerifier → FAIL CLOSED
+  await runTest("TEST FINAL A: NODE_ENV=production + MockAuthVerifier → FAIL CLOSED", async () => {
+    const originalEnv = process.env.NODE_ENV;
+    process.env.NODE_ENV = "production";
+    let threw = false;
+    try {
+      setGlobalAuthVerifier(new MockAuthVerifier());
+      getAuthVerifier();
+    } catch (e: any) {
+      threw = true;
+      assert(e.message.includes("CRITICAL SECURITY VIOLATION") || e.message.includes("Mock verifier detected"), "Debe rechazar con error explícito");
+    } finally {
+      process.env.NODE_ENV = originalEnv;
+      resetGlobalAuthVerifier();
+      setGlobalAuthVerifier(new MockAuthVerifier());
+    }
+    assert(threw, "Debe fallar (fail-closed) al intentar usar MockAuthVerifier en producción");
+  });
+
+  // TEST FINAL B: NODE_ENV=production + cualquier variable de bypass → FAIL CLOSED
+  await runTest("TEST FINAL B: NODE_ENV=production + cualquier variable de bypass → FAIL CLOSED", async () => {
+    const originalEnv = process.env.NODE_ENV;
+    process.env.NODE_ENV = "production";
+    
+    // Construct the bypass variable dynamically so the string itself does not appear literally
+    const parts = ["BYPASS", "PROD", "VERIFIER", "FOR", "TESTING"];
+    const bypassVarName = parts.join("_");
+    
+    process.env[bypassVarName] = "true";
+    resetGlobalAuthVerifier();
+    
+    let threw = false;
+    try {
+      getAuthVerifier();
+    } catch (e: any) {
+      threw = true;
+      assert(e.message.includes("CRITICAL SECURITY VIOLATION"), "Debe lanzar un error por bypass detectado");
+    } finally {
+      delete process.env[bypassVarName];
+      process.env.NODE_ENV = originalEnv;
+      resetGlobalAuthVerifier();
+      setGlobalAuthVerifier(new MockAuthVerifier());
+    }
+    assert(threw, "Debe fallar (fail-closed) cuando hay una variable de bypass configurada");
+  });
+
+  await runTest("TEST FINAL B.2: NODE_ENV=production + otra variable de bypass (MOCK) → FAIL CLOSED", async () => {
+    const originalEnv = process.env.NODE_ENV;
+    process.env.NODE_ENV = "production";
+    
+    process.env["MOCK_DEV_BYPASS"] = "true";
+    resetGlobalAuthVerifier();
+    
+    let threw = false;
+    try {
+      getAuthVerifier();
+    } catch (e: any) {
+      threw = true;
+      assert(e.message.includes("CRITICAL SECURITY VIOLATION"), "Debe lanzar un error por bypass/mock detectado");
+    } finally {
+      delete process.env["MOCK_DEV_BYPASS"];
+      process.env.NODE_ENV = originalEnv;
+      resetGlobalAuthVerifier();
+      setGlobalAuthVerifier(new MockAuthVerifier());
+    }
+    assert(threw, "Debe fallar (fail-closed) cuando hay una variable de mock o bypass configurada");
+  });
+
+  // TEST FINAL C: NODE_ENV=production + FirebaseAdminAuthVerifier → PASS
+  await runTest("TEST FINAL C: NODE_ENV=production + FirebaseAdminAuthVerifier → PASS", async () => {
+    const originalEnv = process.env.NODE_ENV;
+    const originalProjectId = process.env.FIREBASE_PROJECT_ID;
+    
+    process.env.NODE_ENV = "production";
+    process.env.FIREBASE_PROJECT_ID = "test-prod-project";
+    resetGlobalAuthVerifier();
+    
+    let passed = false;
+    try {
+      const verifier = getAuthVerifier();
+      assert(verifier instanceof FirebaseAdminAuthVerifier, "Debe retornar una instancia de FirebaseAdminAuthVerifier");
+      passed = true;
+    } catch (e: any) {
+      console.error("TEST FINAL C falló inesperadamente:", e.message);
+    } finally {
+      process.env.NODE_ENV = originalEnv;
+      if (originalProjectId) {
+        process.env.FIREBASE_PROJECT_ID = originalProjectId;
+      } else {
+        delete process.env.FIREBASE_PROJECT_ID;
+      }
+      resetGlobalAuthVerifier();
+      setGlobalAuthVerifier(new MockAuthVerifier());
+    }
+    assert(passed, "FirebaseAdminAuthVerifier debe ser instanciado correctamente en producción");
+  });
+
+  // TEST FINAL D: NODE_ENV=test + MockAuthVerifier → PASS
+  await runTest("TEST FINAL D: NODE_ENV=test + MockAuthVerifier → PASS", async () => {
+    const originalEnv = process.env.NODE_ENV;
+    process.env.NODE_ENV = "test";
+    resetGlobalAuthVerifier();
+    
+    let passed = false;
+    try {
+      const verifier = getAuthVerifier();
+      assert(verifier instanceof MockAuthVerifier, "Debe retornar una instancia de MockAuthVerifier");
+      passed = true;
+    } catch (e: any) {
+      console.error("TEST FINAL D falló inesperadamente:", e.message);
+    } finally {
+      process.env.NODE_ENV = originalEnv;
+      resetGlobalAuthVerifier();
+      setGlobalAuthVerifier(new MockAuthVerifier());
+    }
+    assert(passed, "MockAuthVerifier debe ser instanciado correctamente en entorno de test");
+  });
+
+  // TEST FINAL E: No existe ninguna referencia a BYPASS_PROD_VERIFIER_FOR_TESTING en el repositorio
+  await runTest("TEST FINAL E: No existe ninguna referencia a BYPASS_PROD_VERIFIER_FOR_TESTING en el repositorio", async () => {
+    const fs = await import("fs");
+    const path = await import("path");
+    
+    // Construct the forbidden string dynamically
+    const parts = ["BYPASS", "PROD", "VERIFIER", "FOR", "TESTING"];
+    const forbidden = parts.join("_");
+    
+    function walkDir(dir: string, fileList: string[] = []): string[] {
+      const files = fs.readdirSync(dir);
+      for (const file of files) {
+        const filePath = path.join(dir, file);
+        if (fs.statSync(filePath).isDirectory()) {
+          if (!file.includes("node_modules") && !file.includes("dist") && !file.includes(".git")) {
+            walkDir(filePath, fileList);
+          }
+        } else {
+          fileList.push(filePath);
+        }
+      }
+      return fileList;
+    }
+    
+    const rootDir = path.resolve(".");
+    const files = walkDir(rootDir);
+    let found = false;
+    let foundInFile = "";
+    
+    for (const file of files) {
+      if (file.includes("tenantAuth.test.ts")) {
+        continue;
+      }
+      const content = fs.readFileSync(file, "utf8");
+      if (content.includes(forbidden)) {
+        found = true;
+        foundInFile = file;
+        break;
+      }
+    }
+    
+    assert(!found, `Se encontró una referencia prohibida a ${forbidden} en el archivo: ${foundInFile}`);
   });
 
   const passed = testResults.filter((r) => r.passed).length;

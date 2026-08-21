@@ -18,20 +18,26 @@ export interface AuthConfig {
 export function getAuthConfig(): AuthConfig {
   const isProduction = process.env.NODE_ENV === "production";
   const authDevMode = process.env.AUTH_DEV_MODE === "true";
-  let firebaseProjectId = process.env.FIREBASE_PROJECT_ID || process.env.GCLOUD_PROJECT;
+  let firebaseProjectId: string | undefined = undefined;
 
-  if (!firebaseProjectId && process.env.IS_RUNNING_TESTS !== "true") {
-    try {
-      const configPath = path.join(process.cwd(), "firebase-applet-config.json");
-      if (fs.existsSync(configPath)) {
-        const raw = fs.readFileSync(configPath, "utf-8");
-        const parsed = JSON.parse(raw);
-        if (parsed.projectId) {
-          firebaseProjectId = parsed.projectId;
+  if (isProduction) {
+    firebaseProjectId = process.env.FIREBASE_PROJECT_ID;
+  } else {
+    firebaseProjectId = process.env.FIREBASE_PROJECT_ID || process.env.GCLOUD_PROJECT;
+
+    if (!firebaseProjectId && process.env.IS_RUNNING_TESTS !== "true") {
+      try {
+        const configPath = path.join(process.cwd(), "firebase-applet-config.json");
+        if (fs.existsSync(configPath)) {
+          const raw = fs.readFileSync(configPath, "utf-8");
+          const parsed = JSON.parse(raw);
+          if (parsed.projectId) {
+            firebaseProjectId = parsed.projectId;
+          }
         }
+      } catch {
+        // ignore
       }
-    } catch {
-      // ignore
     }
   }
 
@@ -48,7 +54,7 @@ export function getFirebaseProjectId(): string {
   if (config.isProduction) {
     if (!config.firebaseProjectId || config.firebaseProjectId.trim() === "") {
       throw new Error(
-        "CRITICAL SECURITY CONFIGURATION ERROR: FIREBASE_PROJECT_ID (or GCLOUD_PROJECT) environment variable is strictly required in production mode. Fail closed."
+        "CRITICAL SECURITY CONFIGURATION ERROR: FIREBASE_PROJECT_ID environment variable is strictly required in production mode. Fail closed."
       );
     }
     return config.firebaseProjectId.trim();

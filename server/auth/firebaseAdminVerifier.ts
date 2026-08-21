@@ -25,6 +25,9 @@ function getFirebaseAdminApp(): App {
 let mockVerifyHook: ((token: string) => Promise<AuthenticatedIdentity>) | null = null;
 
 export function setFirebaseAdminVerifyHookForTesting(hook: typeof mockVerifyHook): void {
+  if (process.env.NODE_ENV === "production") {
+    throw new Error("CRITICAL SECURITY ERROR: setFirebaseAdminVerifyHookForTesting is strictly forbidden in production environments.");
+  }
   mockVerifyHook = hook;
 }
 
@@ -43,6 +46,9 @@ export class FirebaseAdminAuthVerifier implements AuthVerifier {
     }
 
     if (mockVerifyHook) {
+      if (process.env.NODE_ENV === "production") {
+        throw new Error("CRITICAL SECURITY ERROR: Firebase verification mock hooks are strictly forbidden in production environments.");
+      }
       return await mockVerifyHook(token);
     }
 

@@ -404,7 +404,7 @@ export async function runAllTenantAuthTests(): Promise<{ total: number; passed: 
   // ==========================================
 
   // TEST 1: Fail-closed verifier in production without Project ID
-  await runTest("TEST 1: Fallo cerrado en producción sin Project ID", () => {
+  await runTest("TEST 1: Fallo cerrado en producción sin Project ID (General)", () => {
     const originalEnv = process.env.NODE_ENV;
     const originalProjectId = process.env.FIREBASE_PROJECT_ID;
     const originalGcloud = process.env.GCLOUD_PROJECT;
@@ -425,7 +425,243 @@ export async function runAllTenantAuthTests(): Promise<{ total: number; passed: 
     } finally {
       process.env.NODE_ENV = originalEnv;
       if (originalProjectId) process.env.FIREBASE_PROJECT_ID = originalProjectId;
+      else delete process.env.FIREBASE_PROJECT_ID;
       if (originalGcloud) process.env.GCLOUD_PROJECT = originalGcloud;
+      else delete process.env.GCLOUD_PROJECT;
+    }
+  });
+
+  // TEST 1.1: production + FIREBASE_PROJECT_ID válido → PASS (Test A)
+  await runTest("TEST 1.1: production + FIREBASE_PROJECT_ID válido -> PASS", () => {
+    const originalEnv = process.env.NODE_ENV;
+    const originalProjectId = process.env.FIREBASE_PROJECT_ID;
+    const originalGcloud = process.env.GCLOUD_PROJECT;
+
+    try {
+      process.env.NODE_ENV = "production";
+      process.env.FIREBASE_PROJECT_ID = "production-real-project-id";
+      delete process.env.GCLOUD_PROJECT;
+
+      const projectId = getFirebaseProjectId();
+      assert(projectId === "production-real-project-id", "Debe retornar el ID de proyecto configurado");
+    } finally {
+      process.env.NODE_ENV = originalEnv;
+      if (originalProjectId) process.env.FIREBASE_PROJECT_ID = originalProjectId;
+      else delete process.env.FIREBASE_PROJECT_ID;
+      if (originalGcloud) process.env.GCLOUD_PROJECT = originalGcloud;
+      else delete process.env.GCLOUD_PROJECT;
+    }
+  });
+
+  // TEST 1.2: production + FIREBASE_PROJECT_ID ausente + GCLOUD_PROJECT presente → FAIL (Test B)
+  await runTest("TEST 1.2: production + FIREBASE_PROJECT_ID ausente + GCLOUD_PROJECT presente -> FAIL", () => {
+    const originalEnv = process.env.NODE_ENV;
+    const originalProjectId = process.env.FIREBASE_PROJECT_ID;
+    const originalGcloud = process.env.GCLOUD_PROJECT;
+
+    try {
+      process.env.NODE_ENV = "production";
+      delete process.env.FIREBASE_PROJECT_ID;
+      process.env.GCLOUD_PROJECT = "bypass-using-gcloud";
+
+      let threw = false;
+      try {
+        getFirebaseProjectId();
+      } catch (err: unknown) {
+        threw = true;
+        assert((err as Error).message.includes("CRITICAL SECURITY CONFIGURATION ERROR"), "Error message contains security flag");
+      }
+      assert(threw, "Debe lanzar error crítico en producción aun con GCLOUD_PROJECT configurado");
+    } finally {
+      process.env.NODE_ENV = originalEnv;
+      if (originalProjectId) process.env.FIREBASE_PROJECT_ID = originalProjectId;
+      else delete process.env.FIREBASE_PROJECT_ID;
+      if (originalGcloud) process.env.GCLOUD_PROJECT = originalGcloud;
+      else delete process.env.GCLOUD_PROJECT;
+    }
+  });
+
+  // TEST 1.3: production + FIREBASE_PROJECT_ID ausente + firebase-applet-config.json presente → FAIL (Test C)
+  await runTest("TEST 1.3: production + FIREBASE_PROJECT_ID ausente + firebase-applet-config.json presente -> FAIL", () => {
+    const originalEnv = process.env.NODE_ENV;
+    const originalProjectId = process.env.FIREBASE_PROJECT_ID;
+    const originalGcloud = process.env.GCLOUD_PROJECT;
+
+    try {
+      process.env.NODE_ENV = "production";
+      delete process.env.FIREBASE_PROJECT_ID;
+      delete process.env.GCLOUD_PROJECT;
+
+      let threw = false;
+      try {
+        getFirebaseProjectId();
+      } catch (err: unknown) {
+        threw = true;
+        assert((err as Error).message.includes("CRITICAL SECURITY CONFIGURATION ERROR"), "Error message contains security flag");
+      }
+      assert(threw, "Debe lanzar error crítico en producción sin leer firebase-applet-config.json como fallback");
+    } finally {
+      process.env.NODE_ENV = originalEnv;
+      if (originalProjectId) process.env.FIREBASE_PROJECT_ID = originalProjectId;
+      else delete process.env.FIREBASE_PROJECT_ID;
+      if (originalGcloud) process.env.GCLOUD_PROJECT = originalGcloud;
+      else delete process.env.GCLOUD_PROJECT;
+    }
+  });
+
+  // TEST 1.4: development/test + fallback existente → PASS (Test D)
+  await runTest("TEST 1.4: development/test + fallback existente -> PASS", () => {
+    const originalEnv = process.env.NODE_ENV;
+    const originalProjectId = process.env.FIREBASE_PROJECT_ID;
+    const originalGcloud = process.env.GCLOUD_PROJECT;
+    const originalIsRunningTests = process.env.IS_RUNNING_TESTS;
+
+    try {
+      process.env.NODE_ENV = "development";
+      delete process.env.FIREBASE_PROJECT_ID;
+      process.env.GCLOUD_PROJECT = "fallback-gcloud-project";
+      process.env.IS_RUNNING_TESTS = "true";
+
+      const projectId = getFirebaseProjectId();
+      assert(projectId === "fallback-gcloud-project", "En desarrollo, debe permitir usar GCLOUD_PROJECT");
+    } finally {
+      process.env.NODE_ENV = originalEnv;
+      if (originalProjectId) process.env.FIREBASE_PROJECT_ID = originalProjectId;
+      else delete process.env.FIREBASE_PROJECT_ID;
+      if (originalGcloud) process.env.GCLOUD_PROJECT = originalGcloud;
+      else delete process.env.GCLOUD_PROJECT;
+      if (originalIsRunningTests) process.env.IS_RUNNING_TESTS = originalIsRunningTests;
+      else delete process.env.IS_RUNNING_TESTS;
+    }
+  });
+
+  // TEST 1.5: NODE_ENV=production + IS_RUNNING_TESTS ausente -> FAIL (Test A)
+  await runTest("TEST 1.5: NODE_ENV=production + IS_RUNNING_TESTS ausente -> FAIL", async () => {
+    const originalEnv = process.env.NODE_ENV;
+    const originalIsRunningTests = process.env.IS_RUNNING_TESTS;
+    const { setFirebaseAdminVerifyHookForTesting } = await import("../auth/firebaseAdminVerifier");
+
+    try {
+      process.env.NODE_ENV = "production";
+      delete process.env.IS_RUNNING_TESTS;
+
+      let threw = false;
+      try {
+        setFirebaseAdminVerifyHookForTesting(() => { return Promise.resolve({} as any); });
+      } catch (err: unknown) {
+        threw = true;
+        assert((err as Error).message.includes("CRITICAL SECURITY ERROR"), "Mensaje de error de seguridad crítico esperado");
+      }
+      assert(threw, "Debe rechazar la configuración del hook de pruebas en un entorno de producción real");
+    } finally {
+      process.env.NODE_ENV = originalEnv;
+      if (originalIsRunningTests) process.env.IS_RUNNING_TESTS = originalIsRunningTests;
+      else delete process.env.IS_RUNNING_TESTS;
+    }
+  });
+
+  // TEST 1.6: NODE_ENV=production + IS_RUNNING_TESTS=true -> FAIL (Test B)
+  await runTest("TEST 1.6: NODE_ENV=production + IS_RUNNING_TESTS=true -> FAIL", async () => {
+    const originalEnv = process.env.NODE_ENV;
+    const originalIsRunningTests = process.env.IS_RUNNING_TESTS;
+    const { setFirebaseAdminVerifyHookForTesting } = await import("../auth/firebaseAdminVerifier");
+
+    try {
+      process.env.NODE_ENV = "production";
+      process.env.IS_RUNNING_TESTS = "true";
+
+      let threw = false;
+      try {
+        setFirebaseAdminVerifyHookForTesting(() => { return Promise.resolve({} as any); });
+      } catch (err: unknown) {
+        threw = true;
+        assert((err as Error).message.includes("CRITICAL SECURITY ERROR"), "Mensaje de error de seguridad crítico esperado");
+      }
+      assert(threw, "Debe rechazar el test hook en producción incluso si IS_RUNNING_TESTS es true");
+    } finally {
+      process.env.NODE_ENV = originalEnv;
+      if (originalIsRunningTests) process.env.IS_RUNNING_TESTS = originalIsRunningTests;
+      else delete process.env.IS_RUNNING_TESTS;
+    }
+  });
+
+  // TEST 1.7: NODE_ENV=test + IS_RUNNING_TESTS=true -> PASS (Test C)
+  await runTest("TEST 1.7: NODE_ENV=test + IS_RUNNING_TESTS=true -> PASS", async () => {
+    const originalEnv = process.env.NODE_ENV;
+    const originalIsRunningTests = process.env.IS_RUNNING_TESTS;
+    const { setFirebaseAdminVerifyHookForTesting } = await import("../auth/firebaseAdminVerifier");
+
+    try {
+      process.env.NODE_ENV = "test";
+      process.env.IS_RUNNING_TESTS = "true";
+
+      let threw = false;
+      try {
+        setFirebaseAdminVerifyHookForTesting(async (token) => {
+          return {
+            uid: "test_suite_uid",
+            email: "test@suite.com",
+            emailVerified: true,
+            platformRole: "professional",
+            tokenIssuedAt: Date.now() / 1000,
+            tokenExpiration: Date.now() / 1000 + 3600,
+          };
+        });
+      } catch {
+        threw = true;
+      }
+      assert(!threw, "Debe permitir configurar el hook de pruebas en modo test con IS_RUNNING_TESTS");
+      
+      const verifier = new FirebaseAdminAuthVerifier();
+      const identity = await verifier.verifyIdToken("test_token");
+      assert(identity.uid === "test_suite_uid", "Debe ejecutar el hook con éxito en modo test");
+    } finally {
+      process.env.IS_RUNNING_TESTS = "true";
+      setFirebaseAdminVerifyHookForTesting(null);
+
+      process.env.NODE_ENV = originalEnv;
+      if (originalIsRunningTests) process.env.IS_RUNNING_TESTS = originalIsRunningTests;
+      else delete process.env.IS_RUNNING_TESTS;
+    }
+  });
+
+  // TEST 1.8: NODE_ENV=development + IS_RUNNING_TESTS=true -> PASS (Test D)
+  await runTest("TEST 1.8: NODE_ENV=development + IS_RUNNING_TESTS=true -> PASS", async () => {
+    const originalEnv = process.env.NODE_ENV;
+    const originalIsRunningTests = process.env.IS_RUNNING_TESTS;
+    const { setFirebaseAdminVerifyHookForTesting } = await import("../auth/firebaseAdminVerifier");
+
+    try {
+      process.env.NODE_ENV = "development";
+      process.env.IS_RUNNING_TESTS = "true";
+
+      let threw = false;
+      try {
+        setFirebaseAdminVerifyHookForTesting(async (token) => {
+          return {
+            uid: "test_dev_uid",
+            email: "test@dev.com",
+            emailVerified: true,
+            platformRole: "professional",
+            tokenIssuedAt: Date.now() / 1000,
+            tokenExpiration: Date.now() / 1000 + 3600,
+          };
+        });
+      } catch {
+        threw = true;
+      }
+      assert(!threw, "Debe permitir configurar el hook de pruebas en modo desarrollo con IS_RUNNING_TESTS");
+      
+      const verifier = new FirebaseAdminAuthVerifier();
+      const identity = await verifier.verifyIdToken("dev_token");
+      assert(identity.uid === "test_dev_uid", "Debe ejecutar el hook con éxito en modo desarrollo");
+    } finally {
+      process.env.IS_RUNNING_TESTS = "true";
+      setFirebaseAdminVerifyHookForTesting(null);
+
+      process.env.NODE_ENV = originalEnv;
+      if (originalIsRunningTests) process.env.IS_RUNNING_TESTS = originalIsRunningTests;
+      else delete process.env.IS_RUNNING_TESTS;
     }
   });
 
@@ -2646,9 +2882,11 @@ export async function runAllTenantAuthTests(): Promise<{ total: number; passed: 
     process.env.FIREBASE_PROJECT_ID = "test-prod-project";
 
     const { resetGlobalAuthVerifier } = await import("../auth/verifier");
-    const { setFirebaseAdminVerifyHookForTesting } = await import("../auth/firebaseAdminVerifier");
+    const { FirebaseAdminAuthVerifier } = await import("../auth/firebaseAdminVerifier");
     resetGlobalAuthVerifier();
-    setFirebaseAdminVerifyHookForTesting(async (token) => {
+
+    const originalVerify = FirebaseAdminAuthVerifier.prototype.verifyIdToken;
+    FirebaseAdminAuthVerifier.prototype.verifyIdToken = async function(token: string) {
       if (token === "valid_token_owner_a") {
         return {
           uid: "user_owner_a",
@@ -2660,7 +2898,7 @@ export async function runAllTenantAuthTests(): Promise<{ total: number; passed: 
         };
       }
       throw new Error("Invalid production token");
-    });
+    };
 
     mockBucket.shouldFailSave = true;
 
@@ -2685,7 +2923,7 @@ export async function runAllTenantAuthTests(): Promise<{ total: number; passed: 
     });
 
     mockBucket.shouldFailSave = false;
-    setFirebaseAdminVerifyHookForTesting(null);
+    FirebaseAdminAuthVerifier.prototype.verifyIdToken = originalVerify;
     process.env.NODE_ENV = originalEnv;
     process.env.FIREBASE_PROJECT_ID = originalProjectId;
     setGlobalAuthVerifier(new MockAuthVerifier());
@@ -2694,7 +2932,7 @@ export async function runAllTenantAuthTests(): Promise<{ total: number; passed: 
     assert(res.jsonData?.code === "INFRASTRUCTURE_ERROR", "Código de error de infraestructura");
   });
 
-  // TEST 123: Firestore failure en production devuelve error controlled, nunca memory fallback
+  // TEST 123: Firestore failure en production devuelve error controlado, nunca memory fallback
   await runTest("TEST 123: Firestore failure en production devuelve error controlado, nunca memory fallback", async () => {
     const originalEnv = process.env.NODE_ENV;
     const originalProjectId = process.env.FIREBASE_PROJECT_ID;
@@ -2703,9 +2941,11 @@ export async function runAllTenantAuthTests(): Promise<{ total: number; passed: 
     process.env.FIREBASE_PROJECT_ID = "test-prod-project";
 
     const { resetGlobalAuthVerifier } = await import("../auth/verifier");
-    const { setFirebaseAdminVerifyHookForTesting } = await import("../auth/firebaseAdminVerifier");
+    const { FirebaseAdminAuthVerifier } = await import("../auth/firebaseAdminVerifier");
     resetGlobalAuthVerifier();
-    setFirebaseAdminVerifyHookForTesting(async (token) => {
+
+    const originalVerify = FirebaseAdminAuthVerifier.prototype.verifyIdToken;
+    FirebaseAdminAuthVerifier.prototype.verifyIdToken = async function(token: string) {
       if (token === "valid_token_owner_a") {
         return {
           uid: "user_owner_a",
@@ -2717,7 +2957,7 @@ export async function runAllTenantAuthTests(): Promise<{ total: number; passed: 
         };
       }
       throw new Error("Invalid production token");
-    });
+    };
 
     // Mock broken Firestore instance
     const failingDb: any = {
@@ -2749,7 +2989,7 @@ export async function runAllTenantAuthTests(): Promise<{ total: number; passed: 
     });
 
     setAdminFirestoreForTesting(mockDb as any);
-    setFirebaseAdminVerifyHookForTesting(null);
+    FirebaseAdminAuthVerifier.prototype.verifyIdToken = originalVerify;
     process.env.NODE_ENV = originalEnv;
     process.env.FIREBASE_PROJECT_ID = originalProjectId;
     setGlobalAuthVerifier(new MockAuthVerifier());
@@ -3210,9 +3450,11 @@ export async function runAllTenantAuthTests(): Promise<{ total: number; passed: 
     process.env.FIREBASE_PROJECT_ID = "test-prod-project";
 
     const { resetGlobalAuthVerifier } = await import("../auth/verifier");
-    const { setFirebaseAdminVerifyHookForTesting } = await import("../auth/firebaseAdminVerifier");
+    const { FirebaseAdminAuthVerifier } = await import("../auth/firebaseAdminVerifier");
     resetGlobalAuthVerifier();
-    setFirebaseAdminVerifyHookForTesting(async (token) => {
+
+    const originalVerify = FirebaseAdminAuthVerifier.prototype.verifyIdToken;
+    FirebaseAdminAuthVerifier.prototype.verifyIdToken = async function(token: string) {
       if (token === "valid_token_owner_a") {
         return {
           uid: "user_owner_a",
@@ -3224,7 +3466,7 @@ export async function runAllTenantAuthTests(): Promise<{ total: number; passed: 
         };
       }
       throw new Error("Invalid production token");
-    });
+    };
 
     mockDb.shouldFail = true;
 
@@ -3249,7 +3491,7 @@ export async function runAllTenantAuthTests(): Promise<{ total: number; passed: 
     });
 
     mockDb.shouldFail = false;
-    setFirebaseAdminVerifyHookForTesting(null);
+    FirebaseAdminAuthVerifier.prototype.verifyIdToken = originalVerify;
     process.env.NODE_ENV = originalEnv;
     process.env.FIREBASE_PROJECT_ID = originalProjectId;
     setGlobalAuthVerifier(new MockAuthVerifier());
@@ -3270,9 +3512,11 @@ export async function runAllTenantAuthTests(): Promise<{ total: number; passed: 
     process.env.FIREBASE_PROJECT_ID = "test-prod-project";
 
     const { resetGlobalAuthVerifier } = await import("../auth/verifier");
-    const { setFirebaseAdminVerifyHookForTesting } = await import("../auth/firebaseAdminVerifier");
+    const { FirebaseAdminAuthVerifier } = await import("../auth/firebaseAdminVerifier");
     resetGlobalAuthVerifier();
-    setFirebaseAdminVerifyHookForTesting(async (token) => {
+
+    const originalVerify = FirebaseAdminAuthVerifier.prototype.verifyIdToken;
+    FirebaseAdminAuthVerifier.prototype.verifyIdToken = async function(token: string) {
       if (token === "valid_token_owner_a") {
         return {
           uid: "user_owner_a",
@@ -3284,7 +3528,7 @@ export async function runAllTenantAuthTests(): Promise<{ total: number; passed: 
         };
       }
       throw new Error("Invalid production token");
-    });
+    };
 
     const originalBatch = mockDb.batch;
     mockDb.batch = () => {
@@ -3323,7 +3567,7 @@ export async function runAllTenantAuthTests(): Promise<{ total: number; passed: 
     });
 
     mockDb.batch = originalBatch;
-    setFirebaseAdminVerifyHookForTesting(null);
+    FirebaseAdminAuthVerifier.prototype.verifyIdToken = originalVerify;
     process.env.NODE_ENV = originalEnv;
     process.env.FIREBASE_PROJECT_ID = originalProjectId;
     setGlobalAuthVerifier(new MockAuthVerifier());

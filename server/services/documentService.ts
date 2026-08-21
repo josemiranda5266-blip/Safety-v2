@@ -520,6 +520,7 @@ export async function renewDocumentVersion(params: {
   issueDate?: string;
   expirationDate?: string;
   changeNotes?: string;
+  assignedCompanyIds?: string[];
 }): Promise<ProfessionalDocument> {
   const {
     orgId,
@@ -532,9 +533,10 @@ export async function renewDocumentVersion(params: {
     issueDate,
     expirationDate,
     changeNotes = "Renovación periódica",
+    assignedCompanyIds,
   } = params;
 
-  const existingDoc = await getDocumentById(orgId, documentId, true);
+  const existingDoc = await getDocumentById(orgId, documentId, true, assignedCompanyIds);
   if (!existingDoc) {
     const notFoundErr: any = new Error("Documento no encontrado");
     notFoundErr.status = 404;
@@ -632,9 +634,10 @@ export async function renewDocumentVersion(params: {
 export async function updateDocumentMetadata(
   orgId: string,
   documentId: string,
-  updates: Partial<Pick<ProfessionalDocument, 'title' | 'category' | 'subCategory' | 'documentNumber' | 'issueDate' | 'expirationDate' | 'responsibleName' | 'issuingOrganism' | 'status' | 'notes' | 'tags' | 'summary'>>
+  updates: Partial<Pick<ProfessionalDocument, 'title' | 'category' | 'subCategory' | 'documentNumber' | 'issueDate' | 'expirationDate' | 'responsibleName' | 'issuingOrganism' | 'status' | 'notes' | 'tags' | 'summary'>>,
+  assignedCompanyIds?: string[]
 ): Promise<ProfessionalDocument> {
-  const existingDoc = await getDocumentById(orgId, documentId, true);
+  const existingDoc = await getDocumentById(orgId, documentId, true, assignedCompanyIds);
   if (!existingDoc) {
     const notFoundErr: any = new Error("Documento no encontrado");
     notFoundErr.status = 404;
@@ -717,15 +720,18 @@ export async function listDocuments(
   let enriched = docs.map((doc) => enrichDocumentWithExpiration(doc));
 
   // Scoped consultant filtering (BOLA / IDOR protection)
-  if (assignedCompanyIds && assignedCompanyIds.length > 0) {
+  if (assignedCompanyIds !== undefined) {
+    if (assignedCompanyIds.length === 0) {
+      return [];
+    }
     const allowed = new Set(assignedCompanyIds);
     enriched = enriched.filter((d) => {
       // If doc is company-specific, companyId must be in allowed list
       if (d.companyId) {
         return allowed.has(d.companyId);
       }
-      // If org-wide without specific company, allowed only if user has access to org
-      return true;
+      // If org-wide without specific company, restricted users shouldn't see it
+      return false;
     });
   }
 
@@ -823,9 +829,22 @@ export async function getDocumentById(
   }
 
   // Scoped consultant check (BOLA)
-  if (assignedCompanyIds && assignedCompanyIds.length > 0 && docRecord.companyId) {
-    if (!assignedCompanyIds.includes(docRecord.companyId)) {
+  if (assignedCompanyIds !== undefined) {
+    if (assignedCompanyIds.length === 0) {
+      const accessErr: any = new Error("Acceso denegado: no tiene empresas asignadas");
+      accessErr.status = 403;
+      accessErr.code = "FORBIDDEN_NO_COMPANIES";
+      throw accessErr;
+    }
+    if (docRecord.companyId && !assignedCompanyIds.includes(docRecord.companyId)) {
       const accessErr: any = new Error("Acceso denegado: documento fuera del alcance de empresa asignada");
+      accessErr.status = 403;
+      accessErr.code = "FORBIDDEN_COMPANY_SCOPE";
+      throw accessErr;
+    }
+    if (!docRecord.companyId) {
+      // If doc has no companyId but user is restricted to specific companies, they shouldn't access org-wide docs.
+      const accessErr: any = new Error("Acceso denegado: documento org-wide no accesible por consultor restringido");
       accessErr.status = 403;
       accessErr.code = "FORBIDDEN_COMPANY_SCOPE";
       throw accessErr;
@@ -1125,8 +1144,18 @@ export async function getDocumentCalendarEvents(
   return events;
 }
 
-export async function getDocumentChunks(orgId: string, documentId: string): Promise<DocChunk[]> {
+export async function getDocumentChunks(
+  orgId: string,
+  documentId: string,
+  assignedCompanyIds?: string[]
+): Promise<DocChunk[]> {
   const isProduction = process.env.NODE_ENV === "production";
+
+  // Enforce company isolation before returning chunks
+  const existingDoc = await getDocumentById(orgId, documentId, true, assignedCompanyIds);
+  if (!existingDoc) {
+    return []; // Return empty chunks if the document is not accessible or doesn't exist
+  }
 
   try {
     const db = getAdminFirestore();

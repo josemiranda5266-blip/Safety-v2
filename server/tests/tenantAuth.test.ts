@@ -2486,7 +2486,7 @@ export async function runAllTenantAuthTests(): Promise<{ total: number; passed: 
       (docApp as any).handle(req as any, res as any, () => resolve());
     });
     if (res.statusCode !== 201) {
-       console.error("Test 113 failed. Status:", res.statusCode, "Body:", res.jsonData || res.body);
+       console.error("Test 113 failed. Status:", res.statusCode, "Body:", res.jsonData);
     }
     assert(res.statusCode === 201, "Documento creado con HTTP 201 Created");
     assert((res.jsonData?.document as any)?.orgId === "org_alpha", "Servidor asignó org_alpha como orgId autenticado");
@@ -3149,7 +3149,7 @@ export async function runAllTenantAuthTests(): Promise<{ total: number; passed: 
       (docApp as any).handle(req as any, res as any, () => resolve());
     });
     if (res.statusCode !== 400) {
-       console.error("Test 128 failed. Status:", res.statusCode, "Body:", res.jsonData || res.body);
+       console.error("Test 128 failed. Status:", res.statusCode, "Body:", res.jsonData);
     }
     assert(res.statusCode === 400, "Rechaza con HTTP 400 Bad Request");
     assert(res.jsonData?.code === "CHUNK_TOO_LARGE", "Código de error CHUNK_TOO_LARGE");

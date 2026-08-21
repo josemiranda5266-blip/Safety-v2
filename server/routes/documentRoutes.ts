@@ -153,7 +153,7 @@ router.get("/:documentId", requirePermission("document:read"), async (req: Tenan
       return;
     }
 
-    const chunks = await getDocumentChunks(context.orgId, documentId);
+    const chunks = await getDocumentChunks(context.orgId, documentId, context.assignedCompanyIds);
 
     res.json({ document, chunks });
   } catch (err: any) {
@@ -242,7 +242,14 @@ router.post("/upload", requirePermission("document:create"), async (req: TenantR
     } = req.body;
 
     // Validate Scoped Consultant permissions
-    if (context.assignedCompanyIds && context.assignedCompanyIds.length > 0 && companyId) {
+    if (context.assignedCompanyIds !== undefined) {
+      if (!companyId) {
+        res.status(403).json({
+          error: "Los consultores con permisos restringidos deben especificar una empresa para subir documentos",
+          code: "FORBIDDEN_COMPANY_SCOPE",
+        });
+        return;
+      }
       if (!context.assignedCompanyIds.includes(companyId)) {
         res.status(403).json({
           error: "No tiene permisos para subir documentos a la empresa especificada",
@@ -328,7 +335,7 @@ router.put("/:documentId", requirePermission("document:create"), async (req: Ten
       notes,
       tags,
       summary,
-    });
+    }, context.assignedCompanyIds);
 
     res.json({
       message: "Metadatos de documento actualizados",
@@ -375,6 +382,7 @@ router.post("/:documentId/renew", requirePermission("document:create"), async (r
       issueDate,
       expirationDate,
       changeNotes,
+      assignedCompanyIds: context.assignedCompanyIds,
     });
 
     res.json({

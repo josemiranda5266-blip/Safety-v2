@@ -1156,6 +1156,19 @@ export class LocalSafetyDB {
     this.initSeedData();
   }
 
+  /**
+   * Helper to construct authenticated headers using Firebase ID Token.
+   * x-user-id is retained for context compatibility, but backend strictly verifies the Bearer ID Token.
+   */
+  private async getAuthHeaders(): Promise<Record<string, string>> {
+    const user = await ensureAuth();
+    const token = await user.getIdToken();
+    return {
+      'x-user-id': user.uid,
+      'Authorization': `Bearer ${token}`,
+    };
+  }
+
   // User Profile & Freemium Credits Engine
   public async getUserProfile(): Promise<UserProfile> {
     try {
@@ -1169,11 +1182,9 @@ export class LocalSafetyDB {
       }
 
       // Fetch from backend authority
+      const headers = await this.getAuthHeaders();
       const res = await fetch('/api/user/profile', {
-        headers: {
-          'x-user-id': user.uid,
-          'Authorization': `Bearer ${user.uid}`,
-        },
+        headers,
       });
 
       if (res.ok) {
@@ -1216,13 +1227,12 @@ export class LocalSafetyDB {
   }
 
   public async changeUserPlan(plan: UserPlan): Promise<UserProfile> {
-    const user = await ensureAuth();
+    const headers = await this.getAuthHeaders();
     const res = await fetch('/api/user/change-plan', {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
-        'x-user-id': user.uid,
-        'Authorization': `Bearer ${user.uid}`,
+        ...headers,
       },
       body: JSON.stringify({ plan }),
     });
@@ -1238,13 +1248,12 @@ export class LocalSafetyDB {
   }
 
   public async callAiApi<T>(endpoint: string, payload: any): Promise<T> {
-    const user = await ensureAuth();
+    const headers = await this.getAuthHeaders();
     const response = await fetch(endpoint, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
-        'x-user-id': user.uid,
-        'Authorization': `Bearer ${user.uid}`,
+        ...headers,
       },
       body: JSON.stringify(payload),
     });

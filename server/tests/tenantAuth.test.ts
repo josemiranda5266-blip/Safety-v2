@@ -25,6 +25,9 @@ import { InMemoryAuthorizationRepository } from "../authorization/repository";
 import { Organization, Membership, Company, Establishment, Employee, PlatformUserRole } from "../../src/types/tenant";
 import { Response } from "express";
 import { Firestore } from "firebase-admin/firestore";
+import express from "express";
+import userRoutes from "../routes/userRoutes";
+import { getOrCreateUserProfile } from "../services/creditService";
 
 interface TestResult {
   name: string;
@@ -55,20 +58,49 @@ async function runTest(name: string, fn: () => void | Promise<void>) {
 interface MockResponse {
   statusCode: number;
   jsonData: Record<string, unknown> | null;
+  headers?: Record<string, string>;
   status: (code: number) => MockResponse;
   json: (data: unknown) => MockResponse;
+  setHeader?: (name: string, value: string) => MockResponse;
+  getHeader?: (name: string) => string | undefined;
+  send?: (data: unknown) => MockResponse;
+  end?: () => MockResponse;
 }
 
 function createMockResponse(): MockResponse {
   const res: MockResponse = {
     statusCode: 200,
     jsonData: null,
+    headers: {},
+    setHeader(name: string, val: string) {
+      if (!this.headers) this.headers = {};
+      this.headers[name.toLowerCase()] = val;
+      return this;
+    },
+    getHeader(name: string) {
+      return this.headers ? this.headers[name.toLowerCase()] : undefined;
+    },
     status(code: number) {
       this.statusCode = code;
       return this;
     },
     json(data: unknown) {
       this.jsonData = (data && typeof data === "object") ? (data as Record<string, unknown>) : null;
+      return this;
+    },
+    send(data: unknown) {
+      if (typeof data === "string") {
+        try {
+          this.jsonData = JSON.parse(data);
+        } catch {
+          this.jsonData = { raw: data };
+        }
+      } else if (data && typeof data === "object") {
+        this.jsonData = data as Record<string, unknown>;
+      }
+      return this;
+    },
+    end() {
       return this;
     },
   };
@@ -1576,6 +1608,306 @@ export async function runAllTenantAuthTests(): Promise<{ total: number; passed: 
     assert(mem !== undefined, "Membership válida aceptada");
     assert(mem?.role === "admin", "Role admin correcto");
     assert(mem?.active === true, "Active boolean true correcto");
+  });
+
+  // =========================================================================
+  // FASE 4.1: PRUEBAS PARA HALLAZGOS H-01 Y H-02
+  // =========================================================================
+
+  const testUserApp = express();
+  testUserApp.use(express.json());
+  testUserApp.use(extractAuthUser);
+  testUserApp.use("/api/user", userRoutes);
+
+  // TEST 89: H-01: Usuario autenticado intenta cambiar a plan 'pro' → 403 PLAN_CHANGE_NOT_ALLOWED
+  await runTest("TEST 89: H-01 — Usuario autenticado intenta cambiar a 'pro' → 403 PLAN_CHANGE_NOT_ALLOWED", async () => {
+    const req = {
+      method: "POST",
+      url: "/api/user/change-plan",
+      headers: {
+        authorization: "Bearer valid_token_owner_a",
+        "content-type": "application/json",
+      },
+      body: { plan: "pro" },
+    };
+    const res = createMockResponse();
+    await new Promise<void>((resolve) => {
+      (testUserApp as any).handle(req as any, res as any, () => resolve());
+      setImmediate(resolve);
+    });
+    assert(res.statusCode === 403, "Devuelve HTTP 403 Forbidden");
+    assert(res.jsonData?.error === "PLAN_CHANGE_NOT_ALLOWED", "Código de error PLAN_CHANGE_NOT_ALLOWED");
+  });
+
+  // TEST 90: H-01: Usuario autenticado intenta cambiar a plan 'pro_plus' → 403 PLAN_CHANGE_NOT_ALLOWED
+  await runTest("TEST 90: H-01 — Usuario autenticado intenta cambiar a 'pro_plus' → 403 PLAN_CHANGE_NOT_ALLOWED", async () => {
+    const req = {
+      method: "POST",
+      url: "/api/user/change-plan",
+      headers: {
+        authorization: "Bearer valid_token_owner_a",
+        "content-type": "application/json",
+      },
+      body: { plan: "pro_plus" },
+    };
+    const res = createMockResponse();
+    await new Promise<void>((resolve) => {
+      (testUserApp as any).handle(req as any, res as any, () => resolve());
+      setImmediate(resolve);
+    });
+    assert(res.statusCode === 403, "Devuelve HTTP 403 Forbidden");
+    assert(res.jsonData?.error === "PLAN_CHANGE_NOT_ALLOWED", "Código de error PLAN_CHANGE_NOT_ALLOWED");
+  });
+
+  // TEST 91: H-01: Inyección de campos sensibles (role, platformRole, monthlyCredits, etc.) con 'pro' → rechazado 403 sin modificar nada
+  await runTest("TEST 91: H-01 — Inyección de campos sensibles con 'pro' → rechazado 403 sin modif. de perfil", async () => {
+    const req = {
+      method: "POST",
+      url: "/api/user/change-plan",
+      headers: {
+        authorization: "Bearer valid_token_owner_a",
+        "content-type": "application/json",
+      },
+      body: {
+        plan: "pro",
+        role: "admin",
+        platformRole: "platform_admin",
+        monthlyCredits: 999999,
+        creditsUsed: 0,
+        assignedCompanyIds: ["*"],
+        orgId: "org_hacked",
+        planStatus: "active",
+      },
+    };
+    const res = createMockResponse();
+    await new Promise<void>((resolve) => {
+      (testUserApp as any).handle(req as any, res as any, () => resolve());
+      setImmediate(resolve);
+    });
+    assert(res.statusCode === 403, "Rechaza con 403");
+    
+    // Verificar que el perfil no fue alterado
+    const profile = getOrCreateUserProfile("user_owner_a");
+    assert(profile.plan === "free", "El plan se mantiene en 'free'");
+    assert(profile.role === "professional", "El rol permanece sin elevación");
+    assert(profile.monthlyCredits === 20, "Los créditos no fueron alterados a 999999");
+  });
+
+  // TEST 92: H-01: Inyección de campos sensibles con 'free' → asigna 'free' pero ignora campos sensibles
+  await runTest("TEST 92: H-01 — Inyección de campos sensibles con 'free' → ignora campos sensibles", async () => {
+    const req = {
+      method: "POST",
+      url: "/api/user/change-plan",
+      headers: {
+        authorization: "Bearer valid_token_owner_a",
+        "content-type": "application/json",
+      },
+      body: {
+        plan: "free",
+        role: "admin",
+        platformRole: "platform_admin",
+        monthlyCredits: 999999,
+        creditsUsed: 0,
+        assignedCompanyIds: ["*"],
+        orgId: "org_hacked",
+        planStatus: "active",
+      },
+    };
+    const res = createMockResponse();
+    await new Promise<void>((resolve) => {
+      (testUserApp as any).handle(req as any, res as any, () => resolve());
+      setImmediate(resolve);
+    });
+    assert(res.statusCode === 200, "Acepta cambio a free");
+    const profile = getOrCreateUserProfile("user_owner_a");
+    assert(profile.plan === "free", "Plan es free");
+    assert(profile.role === "professional", "Role sigue siendo professional");
+    assert(profile.monthlyCredits === 20, "Créditos son los estándar de free (20)");
+  });
+
+  // TEST 93: H-01: GET /api/user/profile continúa funcionando
+  await runTest("TEST 93: H-01 — GET /api/user/profile retorna perfil del usuario autenticado", async () => {
+    const req = {
+      method: "GET",
+      url: "/api/user/profile",
+      headers: {
+        authorization: "Bearer valid_token_owner_a",
+      },
+    };
+    const res = createMockResponse();
+    await new Promise<void>((resolve) => {
+      (testUserApp as any).handle(req as any, res as any, () => resolve());
+      setImmediate(resolve);
+    });
+    assert(res.statusCode === 200, "Retorna HTTP 200");
+    assert(res.jsonData?.profile !== undefined, "Objeto profile presente");
+    const prof = (res.jsonData as any).profile;
+    assert(prof.uid === "user_owner_a", "UID coincide");
+    assert(typeof prof.availableCredits === "number", "availableCredits es numérico");
+  });
+
+  // TEST 94: H-01: GET /api/user/transactions continúa funcionando
+  await runTest("TEST 94: H-01 — GET /api/user/transactions retorna historial de transacciones", async () => {
+    const req = {
+      method: "GET",
+      url: "/api/user/transactions",
+      headers: {
+        authorization: "Bearer valid_token_owner_a",
+      },
+    };
+    const res = createMockResponse();
+    await new Promise<void>((resolve) => {
+      (testUserApp as any).handle(req as any, res as any, () => resolve());
+      setImmediate(resolve);
+    });
+    assert(res.statusCode === 200, "Retorna HTTP 200");
+    assert(Array.isArray(res.jsonData?.transactions), "Array de transacciones devuelto");
+  });
+
+  // TEST 95: H-01: CreditGatekeeper verifica créditos correctamente
+  await runTest("TEST 95: H-01 — creditGatekeeper permite acceso si hay créditos y deniega 401 si no hay auth", async () => {
+    const reqAuth = {
+      userUid: "user_owner_a",
+      identity: { uid: "user_owner_a", email: "owner_a@test.com" },
+      headers: { authorization: "Bearer valid_token_owner_a" },
+    } as unknown as CreditGuardedRequest;
+    const resAuth = createMockResponse();
+    let nextCalled = false;
+    
+    const gatekeeperMiddleware = requireAiCredits("CHAT_RAG");
+    gatekeeperMiddleware(reqAuth, resAuth as unknown as Response, () => {
+      nextCalled = true;
+    });
+    assert(nextCalled, "creditGatekeeper permite acceso con créditos disponibles");
+
+    const reqNoAuth = {} as unknown as CreditGuardedRequest;
+    const resNoAuth = createMockResponse();
+    let nextNoAuthCalled = false;
+    gatekeeperMiddleware(reqNoAuth, resNoAuth as unknown as Response, () => {
+      nextNoAuthCalled = true;
+    });
+    assert(!nextNoAuthCalled, "creditGatekeeper bloquea sin autenticación");
+    assert(resNoAuth.statusCode === 401, "Devuelve 401 unauthenticated");
+  });
+
+  // TEST 96: H-02: Request protegido usando UID como Bearer (p. ej., Authorization: Bearer user_owner_a) → 401
+  await runTest("TEST 96: H-02 — Request con UID como Bearer (Authorization: Bearer user_owner_a) → 401", async () => {
+    const req = {
+      method: "GET",
+      url: "/api/user/profile",
+      headers: {
+        authorization: "Bearer user_owner_a",
+      },
+    };
+    const res = createMockResponse();
+    await new Promise<void>((resolve) => {
+      (testUserApp as any).handle(req as any, res as any, () => resolve());
+      setImmediate(resolve);
+    });
+    assert(res.statusCode === 401, "Rechaza con 401 ya que el UID no es un ID Token de Firebase");
+  });
+
+  // TEST 97: H-02: Request protegido utilizando Firebase ID Token válido → 200 OK
+  await runTest("TEST 97: H-02 — Request con Firebase ID Token válido → 200 OK", async () => {
+    const req = {
+      method: "GET",
+      url: "/api/user/profile",
+      headers: {
+        authorization: "Bearer valid_token_owner_a",
+      },
+    };
+    const res = createMockResponse();
+    await new Promise<void>((resolve) => {
+      (testUserApp as any).handle(req as any, res as any, () => resolve());
+      setImmediate(resolve);
+    });
+    assert(res.statusCode === 200, "Acepta token válido y responde 200");
+  });
+
+  // TEST 98: H-02: Request protegido con token inválido → 401
+  await runTest("TEST 98: H-02 — Request con token inválido → 401", async () => {
+    const req = {
+      method: "GET",
+      url: "/api/user/profile",
+      headers: {
+        authorization: "Bearer invalid_malformed_token_999",
+      },
+    };
+    const res = createMockResponse();
+    await new Promise<void>((resolve) => {
+      (testUserApp as any).handle(req as any, res as any, () => resolve());
+      setImmediate(resolve);
+    });
+    assert(res.statusCode === 401, "Devuelve 401 para token inválido");
+  });
+
+  // TEST 99: H-02: Request protegido con token expirado → 401
+  await runTest("TEST 99: H-02 — Request con token expirado → 401", async () => {
+    const req = {
+      method: "GET",
+      url: "/api/user/profile",
+      headers: {
+        authorization: "Bearer expired_token",
+      },
+    };
+    const res = createMockResponse();
+    await new Promise<void>((resolve) => {
+      (testUserApp as any).handle(req as any, res as any, () => resolve());
+      setImmediate(resolve);
+    });
+    assert(res.statusCode === 401, "Devuelve 401 para token expirado");
+  });
+
+  // TEST 100: H-02: Header x-user-id sin JWT → 401
+  await runTest("TEST 100: H-02 — Header x-user-id sin Authorization JWT → 401", async () => {
+    const req = {
+      method: "GET",
+      url: "/api/user/profile",
+      headers: {
+        "x-user-id": "user_owner_a",
+      },
+    };
+    const res = createMockResponse();
+    await new Promise<void>((resolve) => {
+      (testUserApp as any).handle(req as any, res as any, () => resolve());
+      setImmediate(resolve);
+    });
+    assert(res.statusCode === 401, "Header x-user-id no sustituye al JWT Bearer Token");
+  });
+
+  // TEST 101: H-02: Header x-forwarded-for sin JWT → 401
+  await runTest("TEST 101: H-02 — Header x-forwarded-for sin Authorization JWT → 401", async () => {
+    const req = {
+      method: "GET",
+      url: "/api/user/profile",
+      headers: {
+        "x-forwarded-for": "127.0.0.1",
+      },
+    };
+    const res = createMockResponse();
+    await new Promise<void>((resolve) => {
+      (testUserApp as any).handle(req as any, res as any, () => resolve());
+      setImmediate(resolve);
+    });
+    assert(res.statusCode === 401, "x-forwarded-for no otorga autenticación");
+  });
+
+  // TEST 102: H-02: Headers alternativos sin JWT no otorgan identidad → 401
+  await runTest("TEST 102: H-02 — Headers alternativos (x-custom-auth, etc.) sin JWT → 401", async () => {
+    const req = {
+      method: "GET",
+      url: "/api/user/profile",
+      headers: {
+        "x-custom-auth": "user_owner_a",
+        "x-api-key": "secret",
+      },
+    };
+    const res = createMockResponse();
+    await new Promise<void>((resolve) => {
+      (testUserApp as any).handle(req as any, res as any, () => resolve());
+      setImmediate(resolve);
+    });
+    assert(res.statusCode === 401, "Headers alternativos no otorgan identidad");
   });
 
   const passed = testResults.filter((r) => r.passed).length;

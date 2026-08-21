@@ -45,15 +45,23 @@ router.post("/change-plan", requireAuth, (req: AuthenticatedRequest, res: Respon
   const uid = req.userUid!;
   const { plan } = req.body as { plan: UserPlan };
 
-  if (!plan || !PLAN_CONFIG[plan]) {
+  // Fail-closed security rule: Users cannot self-grant premium plans ('pro', 'pro_plus')
+  if (plan === "pro" || plan === "pro_plus") {
+    return res.status(403).json({
+      error: "PLAN_CHANGE_NOT_ALLOWED",
+      message: "El cambio de plan requiere una suscripción o autorización válida.",
+    });
+  }
+
+  if (plan !== "free") {
     return res.status(400).json({
       error: "INVALID_PLAN",
       message: "Plan no válido. Opciones permitidas: 'free', 'pro', 'pro_plus'",
     });
   }
 
-  const updatedProfile = updateUserPlan(uid, plan);
-  const planInfo = PLAN_CONFIG[plan];
+  const updatedProfile = updateUserPlan(uid, "free");
+  const planInfo = PLAN_CONFIG["free"];
   const availableCredits = Math.max(0, updatedProfile.monthlyCredits - updatedProfile.creditsUsed);
 
   res.json({

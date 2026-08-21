@@ -1,0 +1,128 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    function isSignedIn() {
+      return request.auth != null;
+    }
+
+    function isOwner(userId) {
+      return isSignedIn() && request.auth.uid == userId;
+    }
+
+    function isExistingOwner() {
+      return isSignedIn() && resource.data.userId == request.auth.uid;
+    }
+
+    function isAdmin() {
+      return isSignedIn() && (
+        request.auth.token.role == 'admin' ||
+        (exists(/databases/$(database)/documents/users/$(request.auth.uid)) &&
+         get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'admin')
+      );
+    }
+
+    // Default deny
+    match /{document=**} {
+      allow read, write: if false;
+    }
+
+    // User profiles & Freemium plan integrity
+    match /users/{userId} {
+      allow read: if isOwner(userId) || isAdmin();
+      // Client can initialize free account, but cannot elevate role or credits
+      allow create: if isOwner(userId) &&
+        request.resource.data.keys().hasAll(['role', 'plan', 'createdAt']) &&
+        request.resource.data.role == 'professional' &&
+        request.resource.data.plan == 'free';
+      // Client cannot modify protected credit / subscription fields
+      allow update: if isAdmin() || (
+        isOwner(userId) &&
+        !request.resource.data.diff(resource.data).affectedKeys().hasAny(['role', 'plan', 'monthlyCredits', 'creditsUsed', 'billingPeriodStart', 'billingPeriodEnd'])
+      );
+      allow delete: if isAdmin();
+    }
+
+    // Documents
+    match /documents/{docId} {
+      allow read, delete: if isExistingOwner() || isAdmin();
+      allow create: if isSignedIn() && request.resource.data.userId == request.auth.uid;
+      allow update: if isExistingOwner() && request.resource.data.userId == request.auth.uid;
+    }
+
+    // Chunks
+    match /chunks/{chunkId} {
+      allow read, delete: if isExistingOwner() || isAdmin();
+      allow create: if isSignedIn() && request.resource.data.userId == request.auth.uid;
+      allow update: if isExistingOwner() && request.resource.data.userId == request.auth.uid;
+    }
+
+    // Favorites
+    match /favorites/{favId} {
+      allow read, delete: if isExistingOwner() || isAdmin();
+      allow create: if isSignedIn() && request.resource.data.userId == request.auth.uid;
+      allow update: if isExistingOwner() && request.resource.data.userId == request.auth.uid;
+    }
+
+    // Chat Sessions
+    match /chatSessions/{sessionId} {
+      allow read, delete: if isExistingOwner() || isAdmin();
+      allow create: if isSignedIn() && request.resource.data.userId == request.auth.uid;
+      allow update: if isExistingOwner() && request.resource.data.userId == request.auth.uid;
+    }
+
+    // Summaries
+    match /summaries/{summaryId} {
+      allow read, delete: if isExistingOwner() || isAdmin();
+      allow create: if isSignedIn() && request.resource.data.userId == request.auth.uid;
+      allow update: if isExistingOwner() && request.resource.data.userId == request.auth.uid;
+    }
+
+    // Checklists
+    match /checklists/{checklistId} {
+      allow read, delete: if isExistingOwner() || isAdmin();
+      allow create: if isSignedIn() && request.resource.data.userId == request.auth.uid;
+      allow update: if isExistingOwner() && request.resource.data.userId == request.auth.uid;
+    }
+
+    // Hazard Analyses
+    match /hazardAnalyses/{analysisId} {
+      allow read, delete: if isExistingOwner() || isAdmin();
+      allow create: if isSignedIn() && request.resource.data.userId == request.auth.uid;
+      allow update: if isExistingOwner() && request.resource.data.userId == request.auth.uid;
+    }
+
+    // Inspection Reports
+    match /inspectionReports/{reportId} {
+      allow read, delete: if isExistingOwner() || isAdmin();
+      allow create: if isSignedIn() && request.resource.data.userId == request.auth.uid;
+      allow update: if isExistingOwner() && request.resource.data.userId == request.auth.uid;
+    }
+
+    // RAG Logs
+    match /ragLogs/{logId} {
+      allow read, delete: if isExistingOwner() || isAdmin();
+      allow create: if isSignedIn() && request.resource.data.userId == request.auth.uid;
+      allow update: if isExistingOwner() && request.resource.data.userId == request.auth.uid;
+    }
+
+    // Document Comparisons
+    match /docComparisons/{compScopeId} {
+      allow read, delete: if isExistingOwner() || isAdmin();
+      allow create: if isSignedIn() && request.resource.data.userId == request.auth.uid;
+      allow update: if isExistingOwner() && request.resource.data.userId == request.auth.uid;
+    }
+
+    // Credit Transactions (Immutable audit trail)
+    match /creditTransactions/{txId} {
+      allow read: if isExistingOwner() || isAdmin();
+      allow write: if false; // Only written server-side
+    }
+
+    // Subscriptions
+    match /subscriptions/{subId} {
+      allow read: if isExistingOwner() || isAdmin();
+      allow write: if isAdmin(); // Managed server-side
+    }
+  }
+}

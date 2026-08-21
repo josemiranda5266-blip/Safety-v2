@@ -1,0 +1,11 @@
+{
+  "name": "Safety IA",
+  "description": "Asistente Inteligente de Higiene y Seguridad Laboral con base documental RAG, OCR, análisis visual de riesgos, resúmenes normativos y listas de control en PDF.",
+  "requestFramePermissions": [
+    "camera",
+    "microphone"
+  ],
+  "majorCapabilities": [
+    "MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"
+  ]
+}

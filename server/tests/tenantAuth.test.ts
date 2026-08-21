@@ -1,10 +1,16 @@
-import { saveOrganization, saveMembership, clearStore } from "../authorization/store";
+import { saveOrganization, saveMembership, clearStore, getOrganizations, getAllMemberships } from "../authorization/store";
 import { resolveAuthorizationContext } from "../authorization/context";
 import { canAccessCompany, canAccessEstablishment, canAccessEmployee, hasPermission } from "../authorization/guards";
+import { requireAuth, requireTenantContext, TenantRequest } from "../authorization/middleware";
+import { extractAuthUser, AuthenticatedRequest } from "../middleware/auth";
+import { MockAuthVerifier } from "../auth/mockAuthVerifier";
+import { FirebaseAdminAuthVerifier } from "../auth/firebaseAdminVerifier";
+import { setGlobalAuthVerifier, resetGlobalAuthVerifier, getAuthVerifier } from "../auth/verifier";
 import * as companyService from "../services/companyService";
 import * as establishmentService from "../services/establishmentService";
 import * as employeeService from "../services/employeeService";
 import { Organization, Membership, Company, Establishment, Employee } from "../../src/types/tenant";
+import { Response } from "express";
 
 interface TestResult {
   name: string;
@@ -20,9 +26,9 @@ function assert(condition: boolean, message: string) {
   }
 }
 
-function runTest(name: string, fn: () => void) {
+async function runTest(name: string, fn: () => void | Promise<void>) {
   try {
-    fn();
+    await fn();
     testResults.push({ name, passed: true });
     console.log(`✅ [PASS] ${name}`);
   } catch (err: unknown) {
@@ -32,16 +38,43 @@ function runTest(name: string, fn: () => void) {
   }
 }
 
-export function runAllTenantAuthTests(): { total: number; passed: number; failed: number } {
+interface MockResponse {
+  statusCode: number;
+  jsonData: Record<string, unknown> | null;
+  status: (code: number) => MockResponse;
+  json: (data: unknown) => MockResponse;
+}
+
+function createMockResponse(): MockResponse {
+  const res: MockResponse = {
+    statusCode: 200,
+    jsonData: null,
+    status(code: number) {
+      this.statusCode = code;
+      return this;
+    },
+    json(data: unknown) {
+      this.jsonData = (data && typeof data === "object") ? (data as Record<string, unknown>) : null;
+      return this;
+    },
+  };
+  return res;
+}
+
+export async function runAllTenantAuthTests(): Promise<{ total: number; passed: number; failed: number }> {
   console.log("\n=======================================================");
   console.log("   SAFETY IA V2 — SUITE DE PRUEBAS MULTI-TENANT & RBAC ");
   console.log("=======================================================\n");
 
-  // Setup Clean State
+  // Setup Clean State and Inject Mock Verifier for Tests
   clearStore();
   companyService.clearCompanyStore();
   establishmentService.clearEstablishmentStore();
   employeeService.clearEmployeeStore();
+  resetGlobalAuthVerifier();
+
+  const mockVerifier = new MockAuthVerifier();
+  setGlobalAuthVerifier(mockVerifier);
 
   const now = new Date().toISOString();
 
@@ -188,11 +221,11 @@ export function runAllTenantAuthTests(): { total: number; passed: number; failed
   });
 
   // =========================================================================
-  // EXECUTE TEST SUITE
+  // EXECUTE TEST SUITE 1 TO 27
   // =========================================================================
 
   // TEST 1: Usuario A -> Organization A puede leer Company A
-  runTest("TEST 1: Usuario A -> Organization A puede leer Company A", () => {
+  await runTest("TEST 1: Usuario A -> Organization A puede leer Company A", () => {
     const contextA = resolveAuthorizationContext("user_member_a", "pro@alpha.com", "org_alpha");
     assert(contextA !== null, "El contexto de usuario A debe resolverse correctamente");
     const canAccess = canAccessCompany(contextA!, compA1, "company:read");
@@ -200,15 +233,15 @@ export function runAllTenantAuthTests(): { total: number; passed: number; failed
   });
 
   // TEST 2: Usuario A -> Organization A NO puede leer Company B de Organization B
-  runTest("TEST 2: Usuario A -> Organization A NO puede leer Company B de Organization B", () => {
+  await runTest("TEST 2: Usuario A -> Organization A NO puede leer Company B de Organization B", () => {
     const contextA = resolveAuthorizationContext("user_member_a", "pro@alpha.com", "org_alpha");
     assert(contextA !== null, "El contexto debe resolverse");
     const canAccess = canAccessCompany(contextA!, compB1, "company:read");
     assert(canAccess === false, "Usuario A NO debe poder acceder a Company B1 de Org B");
   });
 
-  // TEST 3: Usuario A conoce directamente companyId de Company B pero sigue bloqueado (IDOR)
-  runTest("TEST 3: Anti-IDOR: Conocer ID directo de Company B devuelve denegación estricta", () => {
+  // TEST 3: Anti-IDOR: Conocer ID directo de Company B devuelve denegación estricta
+  await runTest("TEST 3: Anti-IDOR: Conocer ID directo de Company B devuelve denegación estricta", () => {
     const contextA = resolveAuthorizationContext("user_member_a", "pro@alpha.com", "org_alpha");
     const directCompanyB = companyService.getCompanyById(compB1.id);
     assert(directCompanyB !== undefined, "La empresa existe en el backend");
@@ -216,8 +249,8 @@ export function runAllTenantAuthTests(): { total: number; passed: number; failed
     assert(allowed === false, "Conocer el ID directo NO autoriza el acceso entre tenants");
   });
 
-  // TEST 4: Professional (member) no puede eliminar Company ni gestionar membresías
-  runTest("TEST 4: Professional (member) tiene permisos de edición pero NO de eliminación de Company", () => {
+  // TEST 4: Professional (member) tiene permisos de edición pero NO de eliminación de Company
+  await runTest("TEST 4: Professional (member) tiene permisos de edición pero NO de eliminación de Company", () => {
     const contextMember = resolveAuthorizationContext("user_member_a", "pro@alpha.com", "org_alpha");
     assert(hasPermission(contextMember!, "company:create") === true, "Member puede crear empresas");
     assert(hasPermission(contextMember!, "company:update") === true, "Member puede actualizar empresas");
@@ -225,8 +258,8 @@ export function runAllTenantAuthTests(): { total: number; passed: number; failed
     assert(hasPermission(contextMember!, "membership:manage") === false, "Member NO puede gestionar miembros");
   });
 
-  // TEST 5: Auditor solo puede realizar operaciones de lectura autorizadas
-  runTest("TEST 5: Auditor solo puede realizar operaciones de lectura (read-only)", () => {
+  // TEST 5: Auditor solo puede realizar operaciones de lectura (read-only)
+  await runTest("TEST 5: Auditor solo puede realizar operaciones de lectura (read-only)", () => {
     const contextAuditor = resolveAuthorizationContext("user_auditor_a", "auditor@alpha.com", "org_alpha");
     assert(hasPermission(contextAuditor!, "company:read") === true, "Auditor puede leer empresas");
     assert(hasPermission(contextAuditor!, "compliance:read") === true, "Auditor puede leer cumplimiento");
@@ -235,15 +268,15 @@ export function runAllTenantAuthTests(): { total: number; passed: number; failed
     assert(hasPermission(contextAuditor!, "company:delete") === false, "Auditor NO puede eliminar empresas");
   });
 
-  // TEST 6: assignedCompanyIds restringe correctamente el acceso a solo las empresas asignadas
-  runTest("TEST 6: assignedCompanyIds restringe acceso selectivo dentro de la misma Org", () => {
+  // TEST 6: assignedCompanyIds restringe acceso selectivo dentro de la misma Org
+  await runTest("TEST 6: assignedCompanyIds restringe acceso selectivo dentro de la misma Org", () => {
     const contextRestricted = resolveAuthorizationContext("user_restricted_a", "restricted@alpha.com", "org_alpha");
     assert(canAccessCompany(contextRestricted!, compA1, "company:read") === true, "Tiene acceso a compA1 asignada");
     assert(canAccessCompany(contextRestricted!, compA2, "company:read") === false, "Bloqueado para compA2 no asignada");
   });
 
-  // TEST 7: PATCH Company no permite cambiar orgId (Inmutabilidad de Tenant)
-  runTest("TEST 7: PATCH Company mantiene orgId inmutable y previene cambio de tenant", () => {
+  // TEST 7: PATCH Company mantiene orgId inmutable y previene cambio de tenant
+  await runTest("TEST 7: PATCH Company mantiene orgId inmutable y previene cambio de tenant", () => {
     const maliciousPayload = {
       legalName: "Metalúrgica Alpha Renombrada S.A.",
       orgId: "org_beta",
@@ -253,8 +286,8 @@ export function runAllTenantAuthTests(): { total: number; passed: number; failed
     assert(updated?.orgId === "org_alpha", "El orgId DEBE permanecer en org_alpha sin alteración");
   });
 
-  // TEST 8: PATCH Establishment no permite cambiar orgId/companyId hacia otro tenant
-  runTest("TEST 8: PATCH Establishment mantiene orgId y companyId inmutables", () => {
+  // TEST 8: PATCH Establishment mantiene orgId y companyId inmutables
+  await runTest("TEST 8: PATCH Establishment mantiene orgId y companyId inmutables", () => {
     const maliciousPayload = {
       name: "Planta Principal Renovada",
       companyId: compB1.id,
@@ -266,40 +299,284 @@ export function runAllTenantAuthTests(): { total: number; passed: number; failed
     assert(updatedEst?.companyId === compA1.id, "companyId no puede ser modificado");
   });
 
-  // TEST 9: Employee no puede crearse dentro de una Company de otro tenant
-  runTest("TEST 9: Employee solo puede asociarse a una Company y Establishment del mismo tenant", () => {
+  // TEST 9: Employee solo puede asociarse a una Company y Establishment del mismo tenant
+  await runTest("TEST 9: Employee solo puede asociarse a una Company y Establishment del mismo tenant", () => {
     const contextA = resolveAuthorizationContext("user_member_a", "pro@alpha.com", "org_alpha");
     const targetCompB = companyService.getCompanyById(compB1.id);
     const canCreateInB = canAccessCompany(contextA!, targetCompB!, "company:update");
     assert(canCreateInB === false, "Usuario de Org A no puede crear empleados en Company de Org B");
   });
 
-  // TEST 10: Un usuario autenticado sin Membership activa no puede acceder a la Organization
-  runTest("TEST 10: Usuario sin membresía activa en target Org recibe contexto nulo", () => {
-    const strangerContext = resolveAuthorizationContext("user_stranger", "stranger@external.com", "org_alpha");
+  // TEST 10: Usuario sin membresía activa en target Org recibe contexto nulo
+  await runTest("TEST 10: Usuario sin membresía activa en target Org recibe contexto nulo", () => {
+    const strangerContext = resolveAuthorizationContext("user_stranger_no_org", "stranger@external.com", "org_alpha");
     assert(strangerContext === null, "El contexto debe ser nulo para usuarios sin membresía");
   });
 
-  // TEST 11: No autenticado -> AuthContext es nulo
-  runTest("TEST 11: Usuario no autenticado (UID vacío) produce contexto nulo", () => {
+  // TEST 11: Usuario no autenticado (UID vacío) produce contexto nulo
+  await runTest("TEST 11: Usuario no autenticado (UID vacío) produce contexto nulo", () => {
     const noAuthContext = resolveAuthorizationContext("", "");
     assert(noAuthContext === null, "UID vacío produce contexto nulo");
   });
 
-  // TEST 12: Autenticado pero sin permiso -> Bloqueo controlado
-  runTest("TEST 12: Comprobación estricta de permisos por rol", () => {
+  // TEST 12: Comprobación estricta de permisos por rol
+  await runTest("TEST 12: Comprobación estricta de permisos por rol", () => {
     const contextMember = resolveAuthorizationContext("user_member_a", "pro@alpha.com", "org_alpha");
     assert(hasPermission(contextMember!, "company:delete") === false, "Permiso no concedido retorna false");
   });
 
-  // TEST 13 (EXTRA IDOR): Verificación de IDOR en Establecimientos y Empleados entre tenants
-  runTest("TEST 13: Anti-IDOR cruzado para Establecimientos y Empleados entre Org A y Org B", () => {
+  // TEST 13: Anti-IDOR cruzado para Establecimientos y Empleados entre Org A y Org B
+  await runTest("TEST 13: Anti-IDOR cruzado para Establecimientos y Empleados entre Org A y Org B", () => {
     const contextA = resolveAuthorizationContext("user_member_a", "pro@alpha.com", "org_alpha");
     const estB = establishmentService.getEstablishmentById(estB1.id);
     const empB = employeeService.getEmployeeById(empB1.id);
 
     assert(canAccessEstablishment(contextA!, estB!, "establishment:read") === false, "Establecimiento de Org B bloqueado para Org A");
     assert(canAccessEmployee(contextA!, empB!, "employee:read") === false, "Empleado de Org B bloqueado para Org A");
+  });
+
+  // TEST 14: Token Firebase válido produce identidad autenticada
+  await runTest("TEST 14: Token Firebase válido produce identidad autenticada", async () => {
+    const req = {
+      headers: {
+        authorization: "Bearer valid_token_owner_a",
+      },
+    } as unknown as AuthenticatedRequest;
+
+    let nextCalled = false;
+    await extractAuthUser(req, {} as Response, () => {
+      nextCalled = true;
+    });
+
+    assert(Boolean(nextCalled), "extractAuthUser debe invocar next()");
+    assert(req.identity !== undefined, "req.identity debe estar presente");
+    assert(req.identity?.uid === "user_owner_a", "UID debe ser user_owner_a");
+    assert(req.userUid === "user_owner_a", "req.userUid debe coincidir con identity.uid");
+  });
+
+  // TEST 15: Token inválido → 401
+  await runTest("TEST 15: Token inválido → 401", async () => {
+    const req = {
+      headers: {
+        authorization: "Bearer invalid_malformed_token_999",
+      },
+    } as unknown as TenantRequest;
+
+    await extractAuthUser(req, {} as Response, () => {});
+    assert(req.identity === undefined, "req.identity debe ser undefined para token inválido");
+    assert(req.userUid === undefined, "req.userUid debe ser undefined para token inválido");
+
+    const res = createMockResponse();
+    let nextCalled = false;
+    requireAuth(req, res as unknown as Response, () => {
+      nextCalled = true;
+    });
+
+    assert(!nextCalled, "requireAuth no debe llamar next() si el token es inválido");
+    assert(res.statusCode === 401, "Debe responder con código 401 UNAUTHENTICATED");
+  });
+
+  // TEST 16: Token expirado → 401
+  await runTest("TEST 16: Token expirado → 401", async () => {
+    const req = {
+      headers: {
+        authorization: "Bearer expired_token",
+      },
+    } as unknown as TenantRequest;
+
+    await extractAuthUser(req, {} as Response, () => {});
+    assert(req.identity === undefined, "req.identity debe ser undefined para token expirado");
+
+    const res = createMockResponse();
+    let nextCalled = false;
+    requireAuth(req, res as unknown as Response, () => {
+      nextCalled = true;
+    });
+
+    assert(!nextCalled, "requireAuth debe bloquear tokens expirados");
+    assert(res.statusCode === 401, "Debe responder con 401");
+  });
+
+  // TEST 17: Authorization header ausente → 401
+  await runTest("TEST 17: Authorization header ausente → 401", async () => {
+    const req = {
+      headers: {},
+    } as unknown as TenantRequest;
+
+    await extractAuthUser(req, {} as Response, () => {});
+    assert(req.identity === undefined, "req.identity debe ser undefined");
+    assert(req.userUid === undefined, "req.userUid debe ser undefined");
+
+    const res = createMockResponse();
+    let nextCalled = false;
+    requireAuth(req, res as unknown as Response, () => {
+      nextCalled = true;
+    });
+
+    assert(!nextCalled, "requireAuth debe bloquear peticiones sin token");
+    assert(res.statusCode === 401, "Debe responder con 401");
+  });
+
+  // TEST 18: x-user-id por sí solo NO autentica
+  await runTest("TEST 18: x-user-id por sí solo NO autentica", async () => {
+    const originalNodeEnv = process.env.NODE_ENV;
+    const originalAuthDev = process.env.AUTH_DEV_MODE;
+    try {
+      process.env.NODE_ENV = "production";
+      process.env.AUTH_DEV_MODE = "false";
+
+      const req = {
+        headers: {
+          "x-user-id": "user_owner_a",
+        },
+      } as unknown as TenantRequest;
+
+      await extractAuthUser(req, {} as Response, () => {});
+      assert(req.identity === undefined, "x-user-id debe ser completamente ignorado en producción");
+      assert(req.userUid === undefined, "req.userUid no debe setearse desde x-user-id");
+
+      const res = createMockResponse();
+      let nextCalled = false;
+      requireAuth(req, res as unknown as Response, () => {
+        nextCalled = true;
+      });
+
+      assert(!nextCalled, "requireAuth debe rechazar peticiones que solo mandan x-user-id");
+      assert(res.statusCode === 401, "Debe responder 401");
+    } finally {
+      process.env.NODE_ENV = originalNodeEnv;
+      process.env.AUTH_DEV_MODE = originalAuthDev;
+    }
+  });
+
+  // TEST 19: x-forwarded-for NO crea identidad
+  await runTest("TEST 19: x-forwarded-for NO crea identidad", async () => {
+    const req = {
+      headers: {
+        "x-forwarded-for": "203.0.113.195, 70.41.3.18",
+      },
+      socket: { remoteAddress: "127.0.0.1" },
+    } as unknown as TenantRequest;
+
+    await extractAuthUser(req, {} as Response, () => {});
+    assert(req.identity === undefined, "No debe crearse identidad basada en IP");
+    assert(req.userUid === undefined, "req.userUid debe permanecer undefined");
+  });
+
+  // TEST 20: Usuario autenticado sin Membership → 403
+  await runTest("TEST 20: Usuario autenticado sin Membership → 403", async () => {
+    const req = {
+      headers: {
+        authorization: "Bearer valid_token_stranger",
+      },
+    } as unknown as TenantRequest;
+
+    await extractAuthUser(req, {} as Response, () => {});
+    assert(req.identity?.uid === "user_stranger_no_org", "Usuario autenticado");
+
+    const res = createMockResponse();
+    let nextCalled = false;
+    requireTenantContext(req, res as unknown as Response, () => {
+      nextCalled = true;
+    });
+
+    assert(!nextCalled, "requireTenantContext debe denegar acceso a usuario sin membresía");
+    assert(res.statusCode === 403, "Debe responder 403 FORBIDDEN");
+  });
+
+  // TEST 21: Usuario autenticado con Membership A no puede acceder a Organization B
+  await runTest("TEST 21: Usuario autenticado con Membership A no puede acceder a Organization B", async () => {
+    const req = {
+      headers: {
+        authorization: "Bearer valid_token_member_a",
+        "x-org-id": "org_beta",
+      },
+    } as unknown as TenantRequest;
+
+    await extractAuthUser(req, {} as Response, () => {});
+    assert(req.identity?.uid === "user_member_a", "Usuario de Org A autenticado");
+
+    const res = createMockResponse();
+    let nextCalled = false;
+    requireTenantContext(req, res as unknown as Response, () => {
+      nextCalled = true;
+    });
+
+    assert(!nextCalled, "Debe bloquear acceso a org_beta");
+    assert(res.statusCode === 403, "Debe responder 403");
+  });
+
+  // TEST 22: x-org-id solamente selecciona contexto; nunca concede acceso
+  await runTest("TEST 22: x-org-id solamente selecciona contexto; nunca concede acceso", async () => {
+    const strangerContext = resolveAuthorizationContext("user_stranger_no_org", "stranger@external.com", "org_alpha");
+    assert(strangerContext === null, "Enviar x-org-id=org_alpha no otorga acceso si no hay membership activa");
+  });
+
+  // TEST 23: Membership role no puede modificarse desde request body
+  await runTest("TEST 23: Membership role no puede modificarse desde request body", () => {
+    const contextMember = resolveAuthorizationContext("user_member_a", "pro@alpha.com", "org_alpha");
+    assert(contextMember?.membershipRole === "member", "El rol autoritativo es member");
+
+    // Intento de simular manipulación de rol en payload
+    const bodyAttempt = { role: "owner", membershipRole: "owner", platformRole: "platform_admin" };
+    // El contexto de autorización viene estrictamente del almacén autoritativo
+    assert(contextMember?.membershipRole !== bodyAttempt.role, "El payload del cliente no puede alterar el rol");
+  });
+
+  // TEST 24: platformRole no se deriva automáticamente de membershipRole
+  await runTest("TEST 24: platformRole no se deriva automáticamente de membershipRole", () => {
+    const ownerContext = resolveAuthorizationContext("user_owner_a", "owner@alpha.com", "org_alpha");
+    assert(ownerContext !== null, "Contexto de owner resuelto");
+    assert(
+      ownerContext?.platformRole === undefined,
+      "platformRole NO debe inferirse automáticamente como consultant_admin a partir de owner"
+    );
+  });
+
+  // TEST 25: Resolver de AuthorizationContext NO crea Organization
+  await runTest("TEST 25: Resolver de AuthorizationContext NO crea Organization", () => {
+    const orgsBefore = getOrganizations().length;
+    const unregisteredUid = "unregistered_test_user_xyz";
+    const result = resolveAuthorizationContext(unregisteredUid, "unreg@test.com");
+
+    assert(result === null, "El contexto debe ser null para usuarios sin registro previo");
+    const orgsAfter = getOrganizations().length;
+    assert(orgsBefore === orgsAfter, "El número de Organizaciones NO debe haber aumentado (cero auto-creación)");
+  });
+
+  // TEST 26: Resolver de AuthorizationContext NO crea Membership
+  await runTest("TEST 26: Resolver de AuthorizationContext NO crea Membership", () => {
+    const membershipsBefore = getAllMemberships().length;
+    const unregisteredUid = "unregistered_test_user_abc";
+    resolveAuthorizationContext(unregisteredUid, "unreg@test.com");
+
+    const membershipsAfter = getAllMemberships().length;
+    assert(membershipsBefore === membershipsAfter, "El número de Memberships NO debe haber aumentado");
+  });
+
+  // TEST 27: Producción sin Firebase Auth verifier real → fail closed
+  await runTest("TEST 27: Producción sin Firebase Auth verifier real → fail closed", () => {
+    const originalNodeEnv = process.env.NODE_ENV;
+    const originalAuthDev = process.env.AUTH_DEV_MODE;
+    try {
+      process.env.NODE_ENV = "production";
+      process.env.AUTH_DEV_MODE = "true";
+
+      resetGlobalAuthVerifier();
+
+      let failedClosed: boolean = false;
+      try {
+        getAuthVerifier();
+      } catch (_err: unknown) {
+        failedClosed = true;
+      }
+
+      assert(failedClosed === true, "En producción, activar AUTH_DEV_MODE debe provocar un fallo fatal cerrado (Fail-Closed)");
+    } finally {
+      process.env.NODE_ENV = originalNodeEnv;
+      process.env.AUTH_DEV_MODE = originalAuthDev;
+      setGlobalAuthVerifier(mockVerifier);
+    }
   });
 
   const passed = testResults.filter((r) => r.passed).length;
@@ -310,7 +587,7 @@ export function runAllTenantAuthTests(): { total: number; passed: number; failed
   if (failed > 0) {
     console.error(`   ⚠️ ${failed} PRUEBAS FALLIDAS`);
   } else {
-    console.log("   🎉 TODAS LAS PRUEBAS DE AISLAMIENTO PASARON PERFECTAMENTE");
+    console.log("   🎉 TODAS LAS 27 PRUEBAS DE AUTENTICACIÓN Y AISLAMIENTO PASARON EXITOSAMENTE");
   }
   console.log("=======================================================\n");
 

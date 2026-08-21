@@ -35,7 +35,7 @@ export interface AuthorizationContext {
   orgId: string;
   membershipId: string;
   membershipRole: MembershipRole;
-  platformRole: PlatformUserRole;
+  platformRole?: PlatformUserRole;
   assignedCompanyIds?: string[]; // If defined and non-empty, member is restricted to these company IDs
 }
 

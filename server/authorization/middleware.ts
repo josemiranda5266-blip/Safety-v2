@@ -1,4 +1,4 @@
-import { Request, Response, NextFunction } from "express";
+import { Response, NextFunction } from "express";
 import { AuthorizationContext, Permission } from "./types";
 import { resolveAuthorizationContext } from "./context";
 import { hasPermission } from "./guards";
@@ -9,10 +9,10 @@ export interface TenantRequest extends AuthenticatedRequest {
 }
 
 /**
- * Ensures request has an authenticated user UID.
+ * Ensures request has an authentic, verified user identity.
  */
 export function requireAuth(req: TenantRequest, res: Response, next: NextFunction): void {
-  if (!req.userUid) {
+  if (!req.identity || !req.userUid) {
     res.status(401).json({
       error: "No autenticado",
       code: "UNAUTHENTICATED",
@@ -24,11 +24,11 @@ export function requireAuth(req: TenantRequest, res: Response, next: NextFunctio
 }
 
 /**
- * Builds and attaches authoritative AuthorizationContext to the request.
+ * Resolves and attaches authoritative AuthorizationContext to the request.
  * If user lacks active membership in the target organization, returns 403.
  */
 export function requireTenantContext(req: TenantRequest, res: Response, next: NextFunction): void {
-  if (!req.userUid) {
+  if (!req.identity || !req.userUid) {
     res.status(401).json({
       error: "No autenticado",
       code: "UNAUTHENTICATED",
@@ -37,10 +37,15 @@ export function requireTenantContext(req: TenantRequest, res: Response, next: Ne
     return;
   }
 
-  const requestedOrgId = (req.headers["x-org-id"] as string) || (req.query.orgId as string) || undefined;
-  const userEmail = req.userEmail || "usuario@safetyia.com";
+  const rawOrgHeader = req.headers ? req.headers["x-org-id"] : undefined;
+  const requestedOrgId =
+    (typeof rawOrgHeader === "string" ? rawOrgHeader : undefined) ||
+    (req.query && typeof req.query.orgId === "string" ? (req.query.orgId as string) : undefined);
 
-  const context = resolveAuthorizationContext(req.userUid, userEmail, requestedOrgId);
+  const userEmail = req.identity.email || req.userEmail || "usuario@safetyia.com";
+  const platformRole = req.identity.platformRole;
+
+  const context = resolveAuthorizationContext(req.userUid, userEmail, requestedOrgId, platformRole);
 
   if (!context) {
     res.status(403).json({

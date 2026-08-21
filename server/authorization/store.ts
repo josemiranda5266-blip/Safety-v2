@@ -41,6 +41,14 @@ export function saveMembership(membership: Membership): Membership {
   return membership;
 }
 
+export function getOrganizations(): Organization[] {
+  return Array.from(organizationsStore.values());
+}
+
+export function getAllMemberships(): Membership[] {
+  return Array.from(membershipsStore.values());
+}
+
 export function clearStore(): void {
   organizationsStore.clear();
   membershipsStore.clear();

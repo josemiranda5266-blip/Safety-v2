@@ -1,28 +1,31 @@
 import { AuthorizationContext } from "./types";
-import { getMembershipsByUser, getMembership, getOrganization, saveOrganization, saveMembership } from "./store";
-import { Organization, Membership } from "../../src/types/tenant";
+import { getMembershipsByUser, getMembership, getOrganization } from "./store";
+import { PlatformUserRole } from "../../src/types/tenant";
 
 /**
  * Resolves the authoritative AuthorizationContext for an authenticated user.
- * Never trusts role, orgId, or companyIds from frontend.
+ * Strictly verifies active memberships.
+ * Pure resolver: NEVER creates Organizations or Memberships, and NEVER infers platformRole from membershipRole.
  */
 export function resolveAuthorizationContext(
   userId: string,
   userEmail: string = "usuario@safetyia.com",
-  requestedOrgId?: string
+  requestedOrgId?: string,
+  explicitPlatformRole?: PlatformUserRole
 ): AuthorizationContext | null {
-  if (!userId) {
+  if (!userId || typeof userId !== "string" || userId.trim() === "") {
     return null;
   }
 
-  // 1. If explicit orgId is requested, verify user's active membership in that org
-  if (requestedOrgId) {
-    const membership = getMembership(requestedOrgId, userId);
+  // 1. If explicit orgId is requested (e.g. from x-org-id selector header), verify active membership
+  if (requestedOrgId && typeof requestedOrgId === "string" && requestedOrgId.trim() !== "") {
+    const targetOrgId = requestedOrgId.trim();
+    const membership = getMembership(targetOrgId, userId);
     if (!membership || !membership.active) {
       return null;
     }
 
-    const org = getOrganization(requestedOrgId);
+    const org = getOrganization(targetOrgId);
     if (!org) {
       return null;
     }
@@ -33,13 +36,13 @@ export function resolveAuthorizationContext(
       orgId: org.id,
       membershipId: membership.id,
       membershipRole: membership.role,
-      platformRole: membership.role === "owner" ? "consultant_admin" : "professional",
+      platformRole: explicitPlatformRole,
       assignedCompanyIds: membership.assignedCompanyIds,
     };
   }
 
-  // 2. Otherwise find user's active memberships
-  const userMemberships = getMembershipsByUser(userId);
+  // 2. Otherwise query user's active memberships
+  const userMemberships = getMembershipsByUser(userId).filter((m) => m.active);
 
   if (userMemberships.length > 0) {
     const primaryMembership = userMemberships[0];
@@ -51,53 +54,12 @@ export function resolveAuthorizationContext(
         orgId: org.id,
         membershipId: primaryMembership.id,
         membershipRole: primaryMembership.role,
-        platformRole: primaryMembership.role === "owner" ? "consultant_admin" : "professional",
+        platformRole: explicitPlatformRole,
         assignedCompanyIds: primaryMembership.assignedCompanyIds,
       };
     }
   }
 
-  // 3. If the user has no organization yet, bootstrap a default personal Organization & Owner Membership
-  const now = new Date().toISOString();
-  const defaultOrgId = `org_${userId.replace(/[^a-zA-Z0-9]/g, "").slice(0, 16)}`;
-  
-  let org = getOrganization(defaultOrgId);
-  if (!org) {
-    org = {
-      id: defaultOrgId,
-      name: "Estudio H&S Personal",
-      ownerUid: userId,
-      plan: "free",
-      planStatus: "active",
-      contactEmail: userEmail,
-      createdAt: now,
-    };
-    saveOrganization(org);
-  }
-
-  const membershipId = `mem_${defaultOrgId}_${userId.slice(0, 8)}`;
-  let membership = getMembership(defaultOrgId, userId);
-  if (!membership) {
-    membership = {
-      id: membershipId,
-      orgId: defaultOrgId,
-      userId,
-      userEmail,
-      role: "owner",
-      active: true,
-      invitedAt: now,
-      joinedAt: now,
-    };
-    saveMembership(membership);
-  }
-
-  return {
-    userId,
-    userEmail,
-    orgId: org.id,
-    membershipId: membership.id,
-    membershipRole: membership.role,
-    platformRole: "consultant_admin",
-    assignedCompanyIds: undefined,
-  };
+  // 3. If user has no active membership in any organization, return null (403 forbidden)
+  return null;
 }

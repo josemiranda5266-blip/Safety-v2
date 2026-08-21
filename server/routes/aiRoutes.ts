@@ -7,7 +7,7 @@ import {
   validateComparisonPayload,
 } from "../middleware/payloadValidator";
 import { requireAuth } from "../authorization/middleware";
-import { generateContentWithRetry, Type } from "../services/gemini";
+import { generateContentWithRetry, Type, GeminiPublicError, mapToGeminiPublicError } from "../services/gemini";
 
 const router = Router();
 
@@ -105,10 +105,11 @@ Instrucción: Analiza minuciosamente los fragmentos anteriores de la biblioteca.
         creditCost: req.creditContext?.cost,
       });
     } catch (error: any) {
-      console.error("[Error /api/chat-rag]:", error);
-      return res.status(500).json({
-        error: "AI_PROCESSING_ERROR",
-        message: error.message || "Error procesando la consulta con la IA.",
+      const publicError = mapToGeminiPublicError(error);
+      console.error("[Error /api/chat-rag]:", error?.message || String(error));
+      return res.status(publicError.status).json({
+        error: publicError.code,
+        message: publicError.message,
       });
     }
   }
@@ -193,8 +194,12 @@ Instrucciones:
         creditsRemaining: creditResult?.remainingCredits,
       });
     } catch (error: any) {
-      console.error("[Error /api/compare-documents]:", error);
-      return res.status(500).json({ error: "AI_PROCESSING_ERROR", message: error.message || "Error en la comparación de documentos." });
+      const publicError = mapToGeminiPublicError(error);
+      console.error("[Error /api/compare-documents]:", error?.message || String(error));
+      return res.status(publicError.status).json({
+        error: publicError.code,
+        message: publicError.message,
+      });
     }
   }
 );
@@ -255,8 +260,12 @@ Devuelve únicamente una estructura JSON válida con el siguiente formato:
         creditsRemaining: creditResult?.remainingCredits,
       });
     } catch (error: any) {
-      console.error("[Error /api/ocr-extract]:", error);
-      return res.status(500).json({ error: "AI_PROCESSING_ERROR", message: error.message || "Error al realizar el OCR del documento." });
+      const publicError = mapToGeminiPublicError(error);
+      console.error("[Error /api/ocr-extract]:", error?.message || String(error));
+      return res.status(publicError.status).json({
+        error: publicError.code,
+        message: publicError.message,
+      });
     }
   }
 );
@@ -346,8 +355,12 @@ Responde únicamente en formato JSON con la siguiente estructura:
         creditsRemaining: creditResult?.remainingCredits,
       });
     } catch (error: any) {
-      console.error("[Error /api/analyze-image]:", error);
-      return res.status(500).json({ error: "AI_PROCESSING_ERROR", message: error.message || "Error al analizar la imagen de riesgos." });
+      const publicError = mapToGeminiPublicError(error);
+      console.error("[Error /api/analyze-image]:", error?.message || String(error));
+      return res.status(publicError.status).json({
+        error: publicError.code,
+        message: publicError.message,
+      });
     }
   }
 );
@@ -492,8 +505,12 @@ Realiza un informe técnico riguroso de inspección visual en formato JSON estru
         creditsRemaining: creditResult?.remainingCredits,
       });
     } catch (error: any) {
-      console.error("[Error /api/inspector-ai-analyze]:", error);
-      return res.status(500).json({ error: "AI_PROCESSING_ERROR", message: error.message || "Error al procesar la inspección visual con la IA." });
+      const publicError = mapToGeminiPublicError(error);
+      console.error("[Error /api/inspector-ai-analyze]:", error?.message || String(error));
+      return res.status(publicError.status).json({
+        error: publicError.code,
+        message: publicError.message,
+      });
     }
   }
 );
@@ -560,8 +577,12 @@ Genera un informe analítico completo estructurado exactamente con el siguiente 
         creditsRemaining: creditResult?.remainingCredits,
       });
     } catch (error: any) {
-      console.error("[Error /api/generate-summary]:", error);
-      return res.status(500).json({ error: "AI_PROCESSING_ERROR", message: error.message || "Error generando el resumen técnico." });
+      const publicError = mapToGeminiPublicError(error);
+      console.error("[Error /api/generate-summary]:", error?.message || String(error));
+      return res.status(publicError.status).json({
+        error: publicError.code,
+        message: publicError.message,
+      });
     }
   }
 );
@@ -638,8 +659,12 @@ Responde únicamente en formato JSON con la estructura:
         creditsRemaining: creditResult?.remainingCredits,
       });
     } catch (error: any) {
-      console.error("[Error /api/generate-checklist]:", error);
-      return res.status(500).json({ error: "AI_PROCESSING_ERROR", message: error.message || "Error al generar la lista de inspección." });
+      const publicError = mapToGeminiPublicError(error);
+      console.error("[Error /api/generate-checklist]:", error?.message || String(error));
+      return res.status(publicError.status).json({
+        error: publicError.code,
+        message: publicError.message,
+      });
     }
   }
 );

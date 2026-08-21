@@ -20,6 +20,89 @@ export function getGenAI(): GoogleGenAI {
   return genAIClient;
 }
 
+export class GeminiPublicError extends Error {
+  public readonly status: number;
+  public readonly code: string;
+
+  constructor(status: number, code: string, message: string) {
+    super(message);
+    this.status = status;
+    this.code = code;
+    this.name = "GeminiPublicError";
+  }
+}
+
+export function mapToGeminiPublicError(error: any): GeminiPublicError {
+  if (error instanceof GeminiPublicError) {
+    return error;
+  }
+
+  const rawMessage = error?.message ? String(error.message) : String(error);
+  const statusProp = error?.status || error?.statusCode || error?.status_code;
+
+  let status = 500;
+  let code = "AI_SERVICE_ERROR";
+  let message = "No fue posible procesar la solicitud de IA.";
+
+  // 1. Detect 429
+  const is429 = statusProp === 429 || 
+                rawMessage.includes("429") || 
+                rawMessage.includes("RESOURCE_EXHAUSTED") || 
+                rawMessage.includes("quota") || 
+                rawMessage.toLowerCase().includes("rate limit");
+
+  // 2. Detect 503
+  const is503 = statusProp === 503 || 
+                rawMessage.includes("503") || 
+                rawMessage.includes("UNAVAILABLE") || 
+                rawMessage.includes("high demand") ||
+                rawMessage.toLowerCase().includes("unavailable");
+
+  // 3. Detect 400
+  const is400 = statusProp === 400 || 
+                rawMessage.includes("400") || 
+                rawMessage.includes("INVALID_ARGUMENT") ||
+                rawMessage.toLowerCase().includes("bad request") ||
+                rawMessage.toLowerCase().includes("invalid_argument");
+
+  // 4. Detect 401
+  const is401 = statusProp === 401 || 
+                rawMessage.includes("401") || 
+                rawMessage.includes("UNAUTHENTICATED") || 
+                rawMessage.toLowerCase().includes("unauthenticated");
+
+  // 5. Detect 403
+  const is403 = statusProp === 403 || 
+                rawMessage.includes("403") || 
+                rawMessage.includes("PERMISSION_DENIED") ||
+                rawMessage.toLowerCase().includes("permission denied") ||
+                rawMessage.toLowerCase().includes("unauthorized");
+
+  if (is429) {
+    status = 429;
+    code = "RATE_LIMIT_EXHAUSTED";
+    message = "Demasiadas solicitudes. Intenta nuevamente más tarde.";
+  } else if (is503) {
+    status = 503;
+    code = "SERVICE_UNAVAILABLE";
+    message = "El servicio de IA no está disponible temporalmente.";
+  } else if (is400) {
+    status = 400;
+    code = "INVALID_REQUEST";
+    message = "Solicitud de IA inválida.";
+  } else if (is401) {
+    status = 401;
+    code = "UNAUTHENTICATED";
+    message = "No fue posible autenticar el servicio de IA.";
+  } else if (is403) {
+    status = 403;
+    code = "UNAUTHORIZED";
+    message = "El servicio de IA no tiene autorización suficiente.";
+  }
+
+  return new GeminiPublicError(status, code, message);
+}
+
 export interface GenerateWithRetryOptions {
   model?: string;
   contents: any;
@@ -38,7 +121,14 @@ export async function generateContentWithRetry(options: GenerateWithRetryOptions
   const maxRetries = options.maxRetries ?? 3;
   let delay = options.initialDelayMs ?? 1000;
 
-  const ai = getGenAI();
+  let ai;
+  try {
+    ai = getGenAI();
+  } catch (err: any) {
+    console.error("[Gemini Config Error] client init failed:", err?.message || String(err));
+    throw new GeminiPublicError(500, "AI_SERVICE_ERROR", "No fue posible procesar la solicitud de IA.");
+  }
+
   let currentModel = primaryModel;
 
   for (let attempt = 1; attempt <= maxRetries; attempt++) {
@@ -55,8 +145,14 @@ export async function generateContentWithRetry(options: GenerateWithRetryOptions
       const is503 = errorMessage.includes("503") || errorMessage.includes("UNAVAILABLE") || errorMessage.includes("high demand");
       const is429 = errorMessage.includes("429") || errorMessage.includes("RESOURCE_EXHAUSTED") || errorMessage.includes("quota");
 
+      // Redact sensitive patterns from warning log
+      const sanitizedWarnMessage = errorMessage
+        .replace(/AIzaSy[a-zA-Z0-9-_]+/g, "[REDACTED_API_KEY]")
+        .replace(/Bearer\s+[a-zA-Z0-9-_.]+/g, "Bearer [REDACTED_TOKEN]")
+        .slice(0, 120);
+
       console.warn(
-        `[Gemini Retry] Intento ${attempt}/${maxRetries} falló con modelo ${currentModel}. Causa: ${errorMessage.slice(0, 120)}`
+        `[Gemini Retry] Intento ${attempt}/${maxRetries} falló con modelo ${currentModel}. Causa: ${sanitizedWarnMessage}`
       );
 
       if ((is503 || is429) && attempt < maxRetries) {
@@ -75,14 +171,15 @@ export async function generateContentWithRetry(options: GenerateWithRetryOptions
         continue;
       }
 
-      // If non-recoverable or out of retries, throw custom error with details
-      throw new Error(
-        is503
-          ? "El modelo de IA experimenta alta demanda momentánea. Por favor, reintenta en unos instantes."
-          : is429
-          ? "Se ha superado temporalmente la cuota de procesamiento de la API. Intente en unos segundos."
-          : errorMessage
-      );
+      // Out of retries or non-recoverable error
+      console.error("[Gemini API Failure]", {
+        message: sanitizedWarnMessage,
+        status: error?.status || error?.statusCode,
+        model: currentModel,
+        attempt
+      });
+
+      throw mapToGeminiPublicError(error);
     }
   }
 }

@@ -3844,6 +3844,148 @@ export async function runAllTenantAuthTests(): Promise<{ total: number; passed: 
     assert(!found, `Se encontró una referencia prohibida a ${forbidden} en el archivo: ${foundInFile}`);
   });
 
+  // =========================================================================
+  // FASE 6: PRUEBAS PARA HALLAZGO 3 (SANITIZACIÓN DE ERRORES GEMINI)
+  // =========================================================================
+
+  const { mapToGeminiPublicError } = await import("../services/gemini");
+
+  await runTest("TEST G3-A: mapToGeminiPublicError con SECRET_API_KEY no propaga clave ni mensaje original", async () => {
+    const error = new Error("API call failed: SECRET_API_KEY=abc123_hidden_secret");
+    const result = mapToGeminiPublicError(error);
+    assert(result.status === 500, "Debe mapear a 500");
+    assert(result.code === "AI_SERVICE_ERROR", "Debe mapear a AI_SERVICE_ERROR");
+    assert(!result.message.includes("abc123_hidden_secret"), "No debe contener el secreto");
+    assert(!result.message.includes("SECRET_API_KEY"), "No debe contener SECRET_API_KEY");
+  });
+
+  await runTest("TEST G3-B: mapToGeminiPublicError con stack trace no propaga rastro de pila", async () => {
+    const error = new Error("Engine crashed");
+    error.stack = "Error: Engine crashed\n    at Object.generateContent (/app/node_modules/sdk/index.js:10:23)";
+    const result = mapToGeminiPublicError(error);
+    assert(!result.message.includes("stack"), "No debe contener stack");
+    assert(!result.message.includes("node_modules"), "No debe contener node_modules");
+  });
+
+  await runTest("TEST G3-C: mapToGeminiPublicError con Bearer token no propaga información de autorización", async () => {
+    const error = new Error("Request failed with Authorization: Bearer secret-token-xyz");
+    const result = mapToGeminiPublicError(error);
+    assert(!result.message.includes("Bearer"), "No debe contener Bearer");
+    assert(!result.message.includes("secret-token-xyz"), "No debe contener el token");
+  });
+
+  await runTest("TEST G3-D: mapToGeminiPublicError con URL interna no propaga la dirección de infraestructura", async () => {
+    const error = new Error("Unable to connect to https://project.internal/gcp/models/gemini-2.5-flash");
+    const result = mapToGeminiPublicError(error);
+    assert(!result.message.includes("project.internal"), "No debe contener la URL interna");
+    assert(!result.message.includes("https://"), "No debe contener https://");
+  });
+
+  await runTest("TEST G3-E: mapToGeminiPublicError con 429 / RESOURCE_EXHAUSTED retorna respuesta controlada", async () => {
+    const error = new Error("RESOURCE_EXHAUSTED: quota exceeded 429");
+    const result = mapToGeminiPublicError(error);
+    assert(result.status === 429, "Debe mapear a status 429");
+    assert(result.code === "RATE_LIMIT_EXHAUSTED", "Debe mapear a RATE_LIMIT_EXHAUSTED");
+    assert(result.message === "Demasiadas solicitudes. Intenta nuevamente más tarde.", "Mensaje amigable correcto");
+  });
+
+  await runTest("TEST G3-F: mapToGeminiPublicError con 503 / UNAVAILABLE retorna respuesta controlada", async () => {
+    const error = new Error("UNAVAILABLE: 503 high demand");
+    const result = mapToGeminiPublicError(error);
+    assert(result.status === 503, "Debe mapear a status 503");
+    assert(result.code === "SERVICE_UNAVAILABLE", "Debe mapear a SERVICE_UNAVAILABLE");
+    assert(result.message === "El servicio de IA no está disponible temporalmente.", "Mensaje amigable correcto");
+  });
+
+  await runTest("TEST G3-G: mapToGeminiPublicError con 400 / INVALID_ARGUMENT retorna respuesta controlada", async () => {
+    const error = new Error("INVALID_ARGUMENT: 400 bad request");
+    const result = mapToGeminiPublicError(error);
+    assert(result.status === 400, "Debe mapear a status 400");
+    assert(result.code === "INVALID_REQUEST", "Debe mapear a INVALID_REQUEST");
+    assert(result.message === "Solicitud de IA inválida.", "Mensaje amigable correcto");
+  });
+
+  await runTest("TEST G3-H: mapToGeminiPublicError con error desconocido retorna respuesta controlada 500", async () => {
+    const error = new Error("Some completely unknown network error");
+    const result = mapToGeminiPublicError(error);
+    assert(result.status === 500, "Debe mapear a status 500");
+    assert(result.code === "AI_SERVICE_ERROR", "Debe mapear a AI_SERVICE_ERROR");
+    assert(result.message === "No fue posible procesar la solicitud de IA.", "Mensaje amigable correcto");
+  });
+
+  await runTest("TEST G3-I: Error con mensaje sensible pero status indeterminado mapea a 500 genérico", async () => {
+    const error = new Error("A very complex error occurred containing password=super_secret but no status code");
+    const result = mapToGeminiPublicError(error);
+    assert(result.status === 500, "Debe mapear a status 500");
+    assert(result.code === "AI_SERVICE_ERROR", "Debe mapear a AI_SERVICE_ERROR");
+    assert(!result.message.includes("super_secret"), "No debe contener datos sensibles");
+  });
+
+  await runTest("TEST G3-J: TEST DE NO PROPAGACIÓN — HTTP route handler no propaga secretos ni stack traces", async () => {
+    const aiRoutesModule = (await import("../routes/aiRoutes")).default;
+    const testApp = express();
+    testApp.use(express.json());
+    testApp.use(extractAuthUser);
+    testApp.use(aiRoutesModule);
+
+    // Initialize user profile to make sure there are enough credits
+    await getOrCreateUserProfile("user_owner_a");
+
+    const { getGenAI } = await import("../services/gemini");
+    const originalApiKey = process.env.GEMINI_API_KEY;
+    process.env.GEMINI_API_KEY = "dummy_key_for_test";
+
+    const ai = getGenAI();
+    const originalGenerateContent = ai.models.generateContent;
+
+    ai.models.generateContent = async () => {
+      const err = new Error("INTERNAL_SECRET_123 stack / Authorization Bearer XYZ");
+      (err as any).status = 500;
+      err.stack = "Error: INTERNAL_SECRET_123 stack / Authorization Bearer XYZ\n    at someLocalFile.ts:12:45";
+      throw err;
+    };
+
+    // Set mock verifier so token extraction succeeds
+    const { setGlobalAuthVerifier, resetGlobalAuthVerifier } = await import("../auth/verifier");
+    setGlobalAuthVerifier(new MockAuthVerifier());
+
+    try {
+      const req = {
+        method: "POST",
+        url: "/chat-rag",
+        headers: {
+          authorization: "Bearer valid_token_owner_a",
+          "content-type": "application/json",
+        },
+        body: { question: "Analiza el plan de emergencias" },
+        socket: { remoteAddress: "127.0.0.1" },
+        connection: { remoteAddress: "127.0.0.1" },
+      };
+      const res = createMockResponse();
+      // Stub res.on for concurrencyLimiter
+      (res as any).on = (event: string, callback: any) => {};
+
+      await new Promise<void>((resolve) => {
+        res.onEnd = () => resolve();
+        (testApp as any).handle(req as any, res as any, (err: any) => resolve());
+      });
+
+      assert(res.statusCode === 500, `Debe devolver HTTP 500, pero devolvió ${res.statusCode}`);
+      assert(res.jsonData !== null, "Debe devolver datos JSON");
+      const jsonStr = JSON.stringify(res.jsonData);
+      assert(!jsonStr.includes("INTERNAL_SECRET_123"), "No debe incluir INTERNAL_SECRET_123");
+      assert(!jsonStr.includes("Authorization"), "No debe incluir Authorization");
+      assert(!jsonStr.includes("Bearer XYZ"), "No debe incluir Bearer XYZ");
+      assert(!jsonStr.includes("stack"), "No debe incluir stack");
+      assert(res.jsonData?.error === "AI_SERVICE_ERROR", "El código debe ser AI_SERVICE_ERROR");
+      assert(res.jsonData?.message === "No fue posible procesar la solicitud de IA.", "Mensaje público amigable correcto");
+    } finally {
+      ai.models.generateContent = originalGenerateContent;
+      process.env.GEMINI_API_KEY = originalApiKey;
+      resetGlobalAuthVerifier();
+    }
+  });
+
   const passed = testResults.filter((r) => r.passed).length;
   const failed = testResults.filter((r) => !r.passed).length;
 

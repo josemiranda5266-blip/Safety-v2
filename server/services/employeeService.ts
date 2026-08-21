@@ -7,6 +7,9 @@ export async function listEmployees(
   establishmentId?: string,
   allowedCompanyIds?: string[]
 ): Promise<Employee[]> {
+  if (allowedCompanyIds && allowedCompanyIds.length === 0) {
+    return [];
+  }
   const db = getAdminFirestore();
   let query = db.collection("employees").where("orgId", "==", orgId).where("active", "==", true);
 
@@ -21,7 +24,7 @@ export async function listEmployees(
   const result: Employee[] = [];
   snapshot.docs.forEach((doc) => {
     const emp = { id: doc.id, ...doc.data() } as Employee;
-    if (!allowedCompanyIds || allowedCompanyIds.length === 0 || allowedCompanyIds.includes(emp.companyId)) {
+    if (!allowedCompanyIds || allowedCompanyIds.includes(emp.companyId)) {
       result.push(emp);
     }
   });
@@ -88,44 +91,60 @@ export async function updateEmployee(
   if (!id) return undefined;
   const db = getAdminFirestore();
   const docRef = db.collection("employees").doc(id);
-  const doc = await docRef.get();
-  if (!doc.exists) return undefined;
 
-  const existing = { id: doc.id, ...doc.data() } as Employee;
-  if (orgId && existing.orgId !== orgId) {
-    return undefined; // Fail-closed
+  try {
+    return await db.runTransaction(async (transaction) => {
+      const doc = await transaction.get(docRef);
+      if (!doc.exists) return undefined;
+
+      const existing = { id: doc.id, ...doc.data() } as Employee;
+      if (orgId && existing.orgId !== orgId) {
+        return undefined; // Fail-closed
+      }
+
+      const updated: Employee = {
+        ...existing,
+        ...updates,
+        id: existing.id, // Immutable
+        orgId: existing.orgId, // Immutable
+        companyId: existing.companyId, // Immutable
+        createdAt: existing.createdAt, // Immutable
+        updatedAt: new Date().toISOString(),
+      };
+
+      transaction.set(docRef, updated, { merge: true });
+      return updated;
+    });
+  } catch (error) {
+    console.error("Error updating employee in transaction:", error);
+    return undefined;
   }
-
-  const updated: Employee = {
-    ...existing,
-    ...updates,
-    id: existing.id, // Immutable
-    orgId: existing.orgId, // Immutable
-    companyId: existing.companyId, // Immutable
-    createdAt: existing.createdAt, // Immutable
-    updatedAt: new Date().toISOString(),
-  };
-
-  await docRef.set(updated, { merge: true });
-  return updated;
 }
 
 export async function deleteEmployee(id: string, orgId?: string): Promise<boolean> {
   if (!id) return false;
   const db = getAdminFirestore();
   const docRef = db.collection("employees").doc(id);
-  const doc = await docRef.get();
-  if (!doc.exists) return false;
 
-  const existing = { id: doc.id, ...doc.data() } as Employee;
-  if (orgId && existing.orgId !== orgId) {
-    return false; // Fail-closed
+  try {
+    return await db.runTransaction(async (transaction) => {
+      const doc = await transaction.get(docRef);
+      if (!doc.exists) return false;
+
+      const existing = { id: doc.id, ...doc.data() } as Employee;
+      if (orgId && existing.orgId !== orgId) {
+        return false; // Fail-closed
+      }
+
+      existing.active = false;
+      existing.updatedAt = new Date().toISOString();
+      transaction.set(docRef, existing, { merge: true });
+      return true;
+    });
+  } catch (error) {
+    console.error("Error deleting employee in transaction:", error);
+    return false;
   }
-
-  existing.active = false;
-  existing.updatedAt = new Date().toISOString();
-  await docRef.set(existing, { merge: true });
-  return true;
 }
 
 export async function clearEmployeeStore(): Promise<void> {

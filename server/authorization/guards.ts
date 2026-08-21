@@ -39,12 +39,10 @@ export function canAccessCompany(
   }
 
   // 3. Granular Company Assignment Restriction
-  if (
-    context.assignedCompanyIds &&
-    context.assignedCompanyIds.length > 0 &&
-    !context.assignedCompanyIds.includes(company.id)
-  ) {
-    return false;
+  if (context.assignedCompanyIds) {
+    if (!context.assignedCompanyIds.includes(company.id)) {
+      return false;
+    }
   }
 
   return true;
@@ -72,12 +70,10 @@ export function canAccessEstablishment(
   }
 
   // 3. Parent Company Assignment Check
-  if (
-    context.assignedCompanyIds &&
-    context.assignedCompanyIds.length > 0 &&
-    !context.assignedCompanyIds.includes(establishment.companyId)
-  ) {
-    return false;
+  if (context.assignedCompanyIds) {
+    if (!context.assignedCompanyIds.includes(establishment.companyId)) {
+      return false;
+    }
   }
 
   return true;
@@ -105,12 +101,10 @@ export function canAccessEmployee(
   }
 
   // 3. Parent Company Assignment Check
-  if (
-    context.assignedCompanyIds &&
-    context.assignedCompanyIds.length > 0 &&
-    !context.assignedCompanyIds.includes(employee.companyId)
-  ) {
-    return false;
+  if (context.assignedCompanyIds) {
+    if (!context.assignedCompanyIds.includes(employee.companyId)) {
+      return false;
+    }
   }
 
   return true;

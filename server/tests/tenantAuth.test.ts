@@ -236,6 +236,22 @@ function createMockFirestore(options?: { shouldFailQuery?: boolean }) {
         },
       };
     },
+    async runTransaction(updateFunction: (transaction: any) => Promise<any>) {
+      const transaction = {
+        async get(docRef: any) {
+          return await docRef.get();
+        },
+        set(docRef: any, data: Record<string, unknown>, setOptions?: { merge?: boolean }) {
+          return docRef.set(data, setOptions);
+        },
+        delete(docRef: any) {
+          for (const colMap of collections.values()) {
+            colMap.delete(docRef.id);
+          }
+        },
+      };
+      return await updateFunction(transaction);
+    },
   };
 
   return mockDb as unknown as Firestore;
@@ -4381,6 +4397,309 @@ export async function runAllTenantAuthTests(): Promise<{ total: number; passed: 
       ai.models.countTokens = originalCountTokens;
       ai.models.generateContent = originalGenerateContent;
     }
+  });
+
+  // --- AUDITORÍA DE AISLAMIENTO ADICIONAL (FAIL-CLOSED) ---
+  setAdminFirestoreForTesting(testDb as any);
+  setGlobalAuthVerifier(new MockAuthVerifier());
+
+  await runTest("AUDIT 1: A -> A = permitido para Empresa, Establecimiento y Empleado", async () => {
+    await saveOrganization({
+      id: "org_alpha",
+      name: "Consultora H&S Alpha",
+      ownerUid: "user_owner_a",
+      plan: "pro",
+      planStatus: "active",
+      contactEmail: "admin@alpha.com",
+      createdAt: now,
+    });
+    await saveMembership({
+      id: "mem_member_a",
+      orgId: "org_alpha",
+      userId: "user_member_a",
+      userEmail: "pro@alpha.com",
+      role: "member",
+      active: true,
+      invitedAt: now,
+    });
+
+    const contextAlpha = await resolveAuthorizationContext("user_member_a", "pro@alpha.com", "org_alpha");
+    assert(contextAlpha !== null, "contextAlpha should be resolved");
+    
+    // Empresa
+    const canAccessComp = canAccessCompany(contextAlpha!, compA1, "company:read");
+    assert(canAccessComp === true, "Miembro de Org A puede leer compA1");
+
+    // Establecimiento
+    const canAccessEst = canAccessEstablishment(contextAlpha!, estA1, "establishment:read");
+    assert(canAccessEst === true, "Miembro de Org A puede leer estA1");
+
+    // Empleado
+    const canAccessEmp = canAccessEmployee(contextAlpha!, empA1, "employee:read");
+    assert(canAccessEmp === true, "Miembro de Org A puede leer empA1");
+  });
+
+  await runTest("AUDIT 2: A -> B = DENEGADO (Organización cruzada)", async () => {
+    await saveOrganization({
+      id: "org_alpha",
+      name: "Consultora H&S Alpha",
+      ownerUid: "user_owner_a",
+      plan: "pro",
+      planStatus: "active",
+      contactEmail: "admin@alpha.com",
+      createdAt: now,
+    });
+    await saveMembership({
+      id: "mem_member_a",
+      orgId: "org_alpha",
+      userId: "user_member_a",
+      userEmail: "pro@alpha.com",
+      role: "member",
+      active: true,
+      invitedAt: now,
+    });
+
+    const contextAlpha = await resolveAuthorizationContext("user_member_a", "pro@alpha.com", "org_alpha");
+    assert(contextAlpha !== null, "contextAlpha should be resolved");
+
+    // Empresa B1
+    const canAccessComp = canAccessCompany(contextAlpha!, compB1, "company:read");
+    assert(canAccessComp === false, "Miembro de Org A NO puede leer compB1");
+
+    // Establecimiento B1
+    const canAccessEst = canAccessEstablishment(contextAlpha!, estB1, "establishment:read");
+    assert(canAccessEst === false, "Miembro de Org A NO puede leer estB1");
+
+    // Empleado B1
+    const canAccessEmp = canAccessEmployee(contextAlpha!, empB1, "employee:read");
+    assert(canAccessEmp === false, "Miembro de Org A NO puede leer empB1");
+  });
+
+  await runTest("AUDIT 3: B -> A = DENEGADO (Organización cruzada)", async () => {
+    await saveOrganization({
+      id: "org_beta",
+      name: "Consultora H&S Beta",
+      ownerUid: "user_owner_b",
+      plan: "pro_plus",
+      planStatus: "active",
+      contactEmail: "admin@beta.com",
+      createdAt: now,
+    });
+    await saveMembership({
+      id: "mem_owner_b",
+      orgId: "org_beta",
+      userId: "user_owner_b",
+      userEmail: "owner@beta.com",
+      role: "owner",
+      active: true,
+      invitedAt: now,
+    });
+
+    const contextBeta = await resolveAuthorizationContext("user_owner_b", "owner@beta.com", "org_beta");
+    assert(contextBeta !== null, "contextBeta should be resolved");
+
+    // Empresa A1
+    const canAccessComp = canAccessCompany(contextBeta!, compA1, "company:read");
+    assert(canAccessComp === false, "Usuario de Org B NO puede leer compA1");
+
+    // Establecimiento A1
+    const canAccessEst = canAccessEstablishment(contextBeta!, estA1, "establishment:read");
+    assert(canAccessEst === false, "Usuario de Org B NO puede leer estA1");
+
+    // Empleado A1
+    const canAccessEmp = canAccessEmployee(contextBeta!, empA1, "employee:read");
+    assert(canAccessEmp === false, "Usuario de Org B NO puede leer empA1");
+  });
+
+  await runTest("AUDIT 4: assignedCompanyIds=[] -> DENEGADO completo (Fail-Closed)", async () => {
+    await saveOrganization({
+      id: "org_alpha",
+      name: "Consultora H&S Alpha",
+      ownerUid: "user_owner_a",
+      plan: "pro",
+      planStatus: "active",
+      contactEmail: "admin@alpha.com",
+      createdAt: now,
+    });
+    // Crear una membresía con asignación vacía []
+    const memEmpty: Membership = {
+      id: "mem_empty_a",
+      orgId: "org_alpha",
+      userId: "user_empty_a",
+      userEmail: "empty@alpha.com",
+      role: "member",
+      assignedCompanyIds: [],
+      active: true,
+      invitedAt: now,
+    };
+    await saveMembership(memEmpty);
+
+    const contextEmpty = await resolveAuthorizationContext("user_empty_a", "empty@alpha.com", "org_alpha");
+    assert(contextEmpty !== null, "contextEmpty should be resolved");
+
+    // No debe poder acceder a compA1 ni compA2
+    assert(canAccessCompany(contextEmpty!, compA1, "company:read") === false, "assignedCompanyIds=[] niega compA1");
+    assert(canAccessCompany(contextEmpty!, compA2, "company:read") === false, "assignedCompanyIds=[] niega compA2");
+
+    // No debe poder acceder a estA1
+    assert(canAccessEstablishment(contextEmpty!, estA1, "establishment:read") === false, "assignedCompanyIds=[] niega estA1");
+
+    // No debe poder acceder a empA1
+    assert(canAccessEmployee(contextEmpty!, empA1, "employee:read") === false, "assignedCompanyIds=[] niega empA1");
+
+    // Las consultas de listado también deben retornar vacío
+    const listedComps = await companyService.listCompanies(contextEmpty!.orgId, contextEmpty!.assignedCompanyIds);
+    assert(listedComps.length === 0, "Listado de empresas con [] retorna vacío");
+
+    const listedEsts = await establishmentService.listEstablishments(contextEmpty!.orgId, undefined, contextEmpty!.assignedCompanyIds);
+    assert(listedEsts.length === 0, "Listado de establecimientos con [] retorna vacío");
+
+    const listedEmps = await employeeService.listEmployees(contextEmpty!.orgId, undefined, undefined, contextEmpty!.assignedCompanyIds);
+    assert(listedEmps.length === 0, "Listado de empleados con [] retorna vacío");
+  });
+
+  await runTest("AUDIT 5: assignedCompanyIds=[A] -> A permitido, B denegado", async () => {
+    await saveOrganization({
+      id: "org_alpha",
+      name: "Consultora H&S Alpha",
+      ownerUid: "user_owner_a",
+      plan: "pro",
+      planStatus: "active",
+      contactEmail: "admin@alpha.com",
+      createdAt: now,
+    });
+    await saveMembership({
+      id: "mem_restricted_a",
+      orgId: "org_alpha",
+      userId: "user_restricted_a",
+      userEmail: "restricted@alpha.com",
+      role: "member",
+      assignedCompanyIds: [compA1.id],
+      active: true,
+      invitedAt: now,
+    });
+
+    const contextRestricted = await resolveAuthorizationContext("user_restricted_a", "restricted@alpha.com", "org_alpha");
+    assert(contextRestricted !== null, "contextRestricted should be resolved");
+
+    // compA1 permitido
+    assert(canAccessCompany(contextRestricted!, compA1, "company:read") === true, "compA1 es permitido");
+    // compA2 denegado
+    assert(canAccessCompany(contextRestricted!, compA2, "company:read") === false, "compA2 es denegado");
+
+    // estA1 (hijo de compA1) es permitido
+    assert(canAccessEstablishment(contextRestricted!, estA1, "establishment:read") === true, "estA1 es permitido");
+
+    // empA1 (hijo de compA1) es permitido
+    assert(canAccessEmployee(contextRestricted!, empA1, "employee:read") === true, "empA1 es permitido");
+  });
+
+  const v2App = express();
+  v2App.use(express.json());
+  v2App.use(extractAuthUser);
+  const companyRoutesModule = (await import("../routes/companyRoutes")).default;
+  const establishmentRoutesModule = (await import("../routes/establishmentRoutes")).default;
+  v2App.use("/api/v2/companies", companyRoutesModule);
+  v2App.use("/api/v2/establishments", establishmentRoutesModule);
+
+  await runTest("AUDIT 6: Payload orgId diferente a JWT en POST -> ignorado/rechazado", async () => {
+    await saveOrganization({
+      id: "org_alpha",
+      name: "Consultora H&S Alpha",
+      ownerUid: "user_owner_a",
+      plan: "pro",
+      planStatus: "active",
+      contactEmail: "admin@alpha.com",
+      createdAt: now,
+    });
+    await saveMembership({
+      id: "mem_member_a",
+      orgId: "org_alpha",
+      userId: "user_member_a",
+      userEmail: "pro@alpha.com",
+      role: "member",
+      active: true,
+      invitedAt: now,
+    });
+
+    const contextAlpha = await resolveAuthorizationContext("user_member_a", "pro@alpha.com", "org_alpha");
+    assert(contextAlpha !== null, "contextAlpha should be resolved");
+
+    // Intentar crear un establecimiento para otra empresa de Org Beta
+    const req = {
+      method: "POST",
+      url: "/api/v2/establishments",
+      headers: {
+        authorization: "Bearer valid_token_member_a",
+        "x-org-id": "org_alpha",
+        "content-type": "application/json",
+      },
+      body: {
+        companyId: compB1.id, // Empresa de otra organización
+        name: "Planta Intrusora",
+        address: "Calle 123",
+        city: "Rosario",
+        province: "Santa Fe",
+      },
+    };
+    const res = createMockResponse();
+    await new Promise<void>((resolve) => {
+      res.onEnd = resolve;
+      (v2App as any).handle(req as any, res as any, () => resolve());
+    });
+
+    // Debe denegar porque compB1 no es accesible/no pertenece a Org Alpha
+    assert(res.statusCode === 404, "Devuelve HTTP 404 por no encontrar la empresa del tenant");
+  });
+
+  await runTest("AUDIT 7: PATCH intentando modificar orgId o companyId -> inmutables e ignorados", async () => {
+    await saveOrganization({
+      id: "org_alpha",
+      name: "Consultora H&S Alpha",
+      ownerUid: "user_owner_a",
+      plan: "pro",
+      planStatus: "active",
+      contactEmail: "admin@alpha.com",
+      createdAt: now,
+    });
+    await saveMembership({
+      id: "mem_member_a",
+      orgId: "org_alpha",
+      userId: "user_member_a",
+      userEmail: "pro@alpha.com",
+      role: "member",
+      active: true,
+      invitedAt: now,
+    });
+
+    const contextAlpha = await resolveAuthorizationContext("user_member_a", "pro@alpha.com", "org_alpha");
+    assert(contextAlpha !== null, "contextAlpha should be resolved");
+
+    // Intentar cambiar orgId de compA1 usando PATCH
+    const req = {
+      method: "PATCH",
+      url: `/api/v2/companies/${compA1.id}`,
+      headers: {
+        authorization: "Bearer valid_token_member_a",
+        "x-org-id": "org_alpha",
+        "content-type": "application/json",
+      },
+      body: {
+        legalName: "Metalúrgica Alpha Modificada",
+        orgId: "org_hacked", // Intento de inyección de tenant
+      },
+    };
+    const res = createMockResponse();
+    await new Promise<void>((resolve) => {
+      res.onEnd = resolve;
+      (v2App as any).handle(req as any, res as any, () => resolve());
+    });
+
+    assert(res.statusCode === 400 || res.statusCode === 200, "PATCH rechaza o ignora campos inmutables");
+    
+    // Verificar que el orgId sigue intacto en base de datos
+    const fetched = await companyService.getCompanyById(compA1.id, "org_alpha");
+    assert(fetched?.orgId === "org_alpha", "orgId permaneció inmutable");
   });
 
   const passed = testResults.filter((r) => r.passed).length;

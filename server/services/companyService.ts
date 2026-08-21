@@ -2,6 +2,9 @@ import { Company } from "../../src/types/tenant";
 import { getAdminFirestore } from "../auth/firestoreAdmin";
 
 export async function listCompanies(orgId: string, allowedCompanyIds?: string[]): Promise<Company[]> {
+  if (allowedCompanyIds && allowedCompanyIds.length === 0) {
+    return [];
+  }
   const db = getAdminFirestore();
   const snapshot = await db.collection("companies")
     .where("orgId", "==", orgId)
@@ -11,7 +14,7 @@ export async function listCompanies(orgId: string, allowedCompanyIds?: string[])
   const companies: Company[] = [];
   snapshot.docs.forEach((doc) => {
     const data = doc.data();
-    if (!allowedCompanyIds || allowedCompanyIds.length === 0 || allowedCompanyIds.includes(doc.id)) {
+    if (!allowedCompanyIds || allowedCompanyIds.includes(doc.id)) {
       companies.push({ id: doc.id, ...data } as Company);
     }
   });
@@ -74,44 +77,60 @@ export async function updateCompany(
   if (!id) return undefined;
   const db = getAdminFirestore();
   const docRef = db.collection("companies").doc(id);
-  const doc = await docRef.get();
-  if (!doc.exists) return undefined;
 
-  const existing = { id: doc.id, ...doc.data() } as Company;
-  if (orgId && existing.orgId !== orgId) {
-    return undefined; // Fail-closed
+  try {
+    return await db.runTransaction(async (transaction) => {
+      const doc = await transaction.get(docRef);
+      if (!doc.exists) return undefined;
+
+      const existing = { id: doc.id, ...doc.data() } as Company;
+      if (orgId && existing.orgId !== orgId) {
+        return undefined; // Fail-closed
+      }
+
+      const updated: Company = {
+        ...existing,
+        ...updates,
+        id: existing.id, // Immutable
+        orgId: existing.orgId, // Immutable
+        createdAt: existing.createdAt, // Immutable
+        updatedAt: new Date().toISOString(),
+      };
+
+      transaction.set(docRef, updated, { merge: true });
+      return updated;
+    });
+  } catch (error) {
+    console.error("Error updating company in transaction:", error);
+    return undefined;
   }
-
-  const updated: Company = {
-    ...existing,
-    ...updates,
-    id: existing.id, // Immutable
-    orgId: existing.orgId, // Immutable
-    createdAt: existing.createdAt, // Immutable
-    updatedAt: new Date().toISOString(),
-  };
-
-  await docRef.set(updated, { merge: true });
-  return updated;
 }
 
 export async function deleteCompany(id: string, orgId?: string): Promise<boolean> {
   if (!id) return false;
   const db = getAdminFirestore();
   const docRef = db.collection("companies").doc(id);
-  const doc = await docRef.get();
-  if (!doc.exists) return false;
 
-  const existing = { id: doc.id, ...doc.data() } as Company;
-  if (orgId && existing.orgId !== orgId) {
-    return false; // Fail-closed
+  try {
+    return await db.runTransaction(async (transaction) => {
+      const doc = await transaction.get(docRef);
+      if (!doc.exists) return false;
+
+      const existing = { id: doc.id, ...doc.data() } as Company;
+      if (orgId && existing.orgId !== orgId) {
+        return false; // Fail-closed
+      }
+
+      // Soft-delete to preserve audit logs
+      existing.active = false;
+      existing.updatedAt = new Date().toISOString();
+      transaction.set(docRef, existing, { merge: true });
+      return true;
+    });
+  } catch (error) {
+    console.error("Error deleting company in transaction:", error);
+    return false;
   }
-
-  // Soft-delete to preserve audit logs
-  existing.active = false;
-  existing.updatedAt = new Date().toISOString();
-  await docRef.set(existing, { merge: true });
-  return true;
 }
 
 export async function clearCompanyStore(): Promise<void> {

@@ -6,6 +6,9 @@ export async function listEstablishments(
   companyId?: string,
   allowedCompanyIds?: string[]
 ): Promise<Establishment[]> {
+  if (allowedCompanyIds && allowedCompanyIds.length === 0) {
+    return [];
+  }
   const db = getAdminFirestore();
   let query = db.collection("establishments").where("orgId", "==", orgId).where("active", "==", true);
 
@@ -17,7 +20,7 @@ export async function listEstablishments(
   const result: Establishment[] = [];
   snapshot.docs.forEach((doc) => {
     const est = { id: doc.id, ...doc.data() } as Establishment;
-    if (!allowedCompanyIds || allowedCompanyIds.length === 0 || allowedCompanyIds.includes(est.companyId)) {
+    if (!allowedCompanyIds || allowedCompanyIds.includes(est.companyId)) {
       result.push(est);
     }
   });
@@ -90,44 +93,60 @@ export async function updateEstablishment(
   if (!id) return undefined;
   const db = getAdminFirestore();
   const docRef = db.collection("establishments").doc(id);
-  const doc = await docRef.get();
-  if (!doc.exists) return undefined;
 
-  const existing = { id: doc.id, ...doc.data() } as Establishment;
-  if (orgId && existing.orgId !== orgId) {
-    return undefined; // Fail-closed
+  try {
+    return await db.runTransaction(async (transaction) => {
+      const doc = await transaction.get(docRef);
+      if (!doc.exists) return undefined;
+
+      const existing = { id: doc.id, ...doc.data() } as Establishment;
+      if (orgId && existing.orgId !== orgId) {
+        return undefined; // Fail-closed
+      }
+
+      const updated: Establishment = {
+        ...existing,
+        ...updates,
+        id: existing.id, // Immutable
+        orgId: existing.orgId, // Immutable
+        companyId: existing.companyId, // Immutable
+        createdAt: existing.createdAt, // Immutable
+        updatedAt: new Date().toISOString(),
+      };
+
+      transaction.set(docRef, updated, { merge: true });
+      return updated;
+    });
+  } catch (error) {
+    console.error("Error updating establishment in transaction:", error);
+    return undefined;
   }
-
-  const updated: Establishment = {
-    ...existing,
-    ...updates,
-    id: existing.id, // Immutable
-    orgId: existing.orgId, // Immutable
-    companyId: existing.companyId, // Immutable
-    createdAt: existing.createdAt, // Immutable
-    updatedAt: new Date().toISOString(),
-  };
-
-  await docRef.set(updated, { merge: true });
-  return updated;
 }
 
 export async function deleteEstablishment(id: string, orgId?: string): Promise<boolean> {
   if (!id) return false;
   const db = getAdminFirestore();
   const docRef = db.collection("establishments").doc(id);
-  const doc = await docRef.get();
-  if (!doc.exists) return false;
 
-  const existing = { id: doc.id, ...doc.data() } as Establishment;
-  if (orgId && existing.orgId !== orgId) {
-    return false; // Fail-closed
+  try {
+    return await db.runTransaction(async (transaction) => {
+      const doc = await transaction.get(docRef);
+      if (!doc.exists) return false;
+
+      const existing = { id: doc.id, ...doc.data() } as Establishment;
+      if (orgId && existing.orgId !== orgId) {
+        return false; // Fail-closed
+      }
+
+      existing.active = false;
+      existing.updatedAt = new Date().toISOString();
+      transaction.set(docRef, existing, { merge: true });
+      return true;
+    });
+  } catch (error) {
+    console.error("Error deleting establishment in transaction:", error);
+    return false;
   }
-
-  existing.active = false;
-  existing.updatedAt = new Date().toISOString();
-  await docRef.set(existing, { merge: true });
-  return true;
 }
 
 export async function clearEstablishmentStore(): Promise<void> {

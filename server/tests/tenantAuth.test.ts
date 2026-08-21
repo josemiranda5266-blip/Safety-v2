@@ -2355,6 +2355,627 @@ export async function runAllTenantAuthTests(): Promise<{ total: number; passed: 
     assert(uploadRes.statusCode === 403, "Auditor recibe 403 Forbidden al intentar subir documento");
   });
 
+  // Mock Storage Setup for Tests 118-131
+  class MockStorageBucket {
+    public files = new Map<string, Buffer>();
+    public shouldFailSave = false;
+    public shouldFailDelete = false;
+
+    file(path: string) {
+      const self = this;
+      return {
+        async save(buffer: Buffer, _options?: any) {
+          if (self.shouldFailSave) {
+            throw new Error("Simulated Storage Save Failure");
+          }
+          self.files.set(path, buffer);
+        },
+        async delete() {
+          if (self.shouldFailDelete) {
+            throw new Error("Simulated Storage Delete Failure");
+          }
+          if (!self.files.has(path)) {
+            throw new Error("File not found in storage bucket");
+          }
+          self.files.delete(path);
+        },
+        async exists() {
+          return [self.files.has(path)];
+        },
+        async download() {
+          if (!self.files.has(path)) {
+            throw new Error("File not found in storage bucket");
+          }
+          return [self.files.get(path)!];
+        },
+      };
+    }
+  }
+
+  class MockDocumentFirestore {
+    public data = new Map<string, any>();
+    public shouldFail = false;
+
+    collection(pathName: string) {
+      const self = this;
+      return {
+        doc(docId: string) {
+          const fullPath = `${pathName}/${docId}`;
+          return {
+            id: docId,
+            ref: { id: docId, path: fullPath },
+            collection(subColName: string) {
+              return self.collection(`${fullPath}/${subColName}`);
+            },
+            async set(record: any) {
+              if (self.shouldFail) throw new Error("Simulated Firestore failure");
+              self.data.set(fullPath, record);
+            },
+            async get() {
+              if (self.shouldFail) throw new Error("Simulated Firestore failure");
+              const exists = self.data.has(fullPath);
+              return {
+                id: docId,
+                exists,
+                data: () => self.data.get(fullPath),
+              };
+            },
+            async delete() {
+              if (self.shouldFail) throw new Error("Simulated Firestore failure");
+              self.data.delete(fullPath);
+            }
+          };
+        },
+        async get() {
+          if (self.shouldFail) throw new Error("Simulated Firestore failure");
+          const docs: any[] = [];
+          for (const [key, val] of self.data.entries()) {
+            if (key.startsWith(pathName + "/")) {
+              const remaining = key.substring(pathName.length + 1);
+              if (!remaining.includes("/")) {
+                docs.push({
+                  id: remaining,
+                  ref: { id: remaining, path: key },
+                  data: () => val,
+                });
+              }
+            }
+          }
+          return {
+            empty: docs.length === 0,
+            docs,
+          };
+        }
+      };
+    }
+
+    batch() {
+      const self = this;
+      const ops: (() => void)[] = [];
+      return {
+        set(docRef: any, data: any) {
+          ops.push(() => {
+            self.data.set(docRef.ref.path, data);
+          });
+        },
+        delete(docRef: any) {
+          ops.push(() => {
+            self.data.delete(docRef.path);
+          });
+        },
+        async commit() {
+          if (self.shouldFail) throw new Error("Simulated Firestore failure");
+          ops.forEach(op => op());
+        }
+      };
+    }
+  }
+
+  const mockBucket = new MockStorageBucket();
+  const mockDb = new MockDocumentFirestore();
+  const { setAdminFirestoreForTesting, setAdminStorageBucketForTesting } = await import("../auth/firestoreAdmin");
+  setAdminFirestoreForTesting(mockDb as any);
+  setAdminStorageBucketForTesting(mockBucket);
+
+  // TEST 118: Upload exitoso crea metadata + Storage object
+  await runTest("TEST 118: Upload exitoso crea metadata + Storage object", async () => {
+    const fileContent = "PDF file content for test 118";
+    const req = {
+      method: "POST",
+      url: "/api/v2/documents/upload",
+      headers: {
+        authorization: "Bearer valid_token_owner_a",
+        "x-org-id": "org_alpha",
+        "content-type": "application/json",
+      },
+      body: {
+        filename: "test118.pdf",
+        fileBase64: Buffer.from(fileContent).toString("base64"),
+        title: "Test 118 Doc",
+      },
+    };
+    const res = createMockResponse();
+    await new Promise<void>((resolve) => {
+      res.onEnd = resolve;
+      (docApp as any).handle(req as any, res as any, () => resolve());
+    });
+    assert(res.statusCode === 201, "HTTP 201 Created");
+    const doc = (res.jsonData?.document as any);
+    assert(doc && doc.storagePath, "Documento y storagePath generados");
+    assert(mockBucket.files.has(doc.storagePath), "Archivo físico almacenado en Storage");
+    assert(mockBucket.files.get(doc.storagePath)?.toString() === fileContent, "Contenido del archivo en Storage coincide");
+  });
+
+  // TEST 119: orgId enviado por cliente diferente al tenant autenticado es ignorado/rechazado
+  await runTest("TEST 119: orgId enviado por cliente diferente al tenant autenticado es ignorado/rechazado", async () => {
+    const req = {
+      method: "POST",
+      url: "/api/v2/documents/upload",
+      headers: {
+        authorization: "Bearer valid_token_owner_a",
+        "x-org-id": "org_alpha",
+        "content-type": "application/json",
+      },
+      body: {
+        orgId: "org_malicious_hacker",
+        filename: "test119.pdf",
+        fileBase64: Buffer.from("Hacker payload").toString("base64"),
+      },
+    };
+    const res = createMockResponse();
+    await new Promise<void>((resolve) => {
+      res.onEnd = resolve;
+      (docApp as any).handle(req as any, res as any, () => resolve());
+    });
+    assert(res.statusCode === 201, "HTTP 201 Created");
+    const doc = (res.jsonData?.document as any);
+    assert(doc.orgId === "org_alpha", "Servidor forzó org_alpha ignorando org_malicious_hacker");
+    assert(doc.storagePath.startsWith("organizations/org_alpha/"), "Storage path pertenece a org_alpha");
+  });
+
+  // TEST 120: Cross-tenant document read devuelve 404/403 según contrato existente
+  await runTest("TEST 120: Cross-tenant document read devuelve 404/403 según contrato existente", async () => {
+    // 1. Upload as org_alpha
+    const uploadReq = {
+      method: "POST",
+      url: "/api/v2/documents/upload",
+      headers: {
+        authorization: "Bearer valid_token_owner_a",
+        "x-org-id": "org_alpha",
+        "content-type": "application/json",
+      },
+      body: {
+        filename: "secret_alpha.pdf",
+        fileBase64: Buffer.from("Top Secret Alpha").toString("base64"),
+      },
+    };
+    const uploadRes = createMockResponse();
+    await new Promise<void>((resolve) => {
+      uploadRes.onEnd = resolve;
+      (docApp as any).handle(uploadReq as any, uploadRes as any, () => resolve());
+    });
+    const docId = (uploadRes.jsonData?.document as any)?.id;
+
+    // 2. Read as org_beta
+    const readReq = {
+      method: "GET",
+      url: `/api/v2/documents/${docId}`,
+      headers: {
+        authorization: "Bearer valid_token_owner_b",
+        "x-org-id": "org_beta",
+      },
+    };
+    const readRes = createMockResponse();
+    await new Promise<void>((resolve) => {
+      readRes.onEnd = resolve;
+      (docApp as any).handle(readReq as any, readRes as any, () => resolve());
+    });
+    assert(readRes.statusCode === 404, "Devuelve 404 para no revelar existencia de recurso en otro tenant");
+  });
+
+  // TEST 121: Cross-tenant delete bloqueado
+  await runTest("TEST 121: Cross-tenant delete bloqueado", async () => {
+    // 1. Upload as org_alpha
+    const uploadReq = {
+      method: "POST",
+      url: "/api/v2/documents/upload",
+      headers: {
+        authorization: "Bearer valid_token_owner_a",
+        "x-org-id": "org_alpha",
+        "content-type": "application/json",
+      },
+      body: {
+        filename: "protected_alpha.pdf",
+        fileBase64: Buffer.from("Protected").toString("base64"),
+      },
+    };
+    const uploadRes = createMockResponse();
+    await new Promise<void>((resolve) => {
+      uploadRes.onEnd = resolve;
+      (docApp as any).handle(uploadReq as any, uploadRes as any, () => resolve());
+    });
+    const docId = (uploadRes.jsonData?.document as any)?.id;
+
+    // 2. Attempt DELETE as org_beta
+    const deleteReq = {
+      method: "DELETE",
+      url: `/api/v2/documents/${docId}`,
+      headers: {
+        authorization: "Bearer valid_token_owner_b",
+        "x-org-id": "org_beta",
+      },
+    };
+    const deleteRes = createMockResponse();
+    await new Promise<void>((resolve) => {
+      deleteRes.onEnd = resolve;
+      (docApp as any).handle(deleteReq as any, deleteRes as any, () => resolve());
+    });
+    assert(deleteRes.statusCode === 404, "Intento de borrado cross-tenant devuelve 404");
+
+    // 3. Verify doc still exists for org_alpha
+    const verifyReq = {
+      method: "GET",
+      url: `/api/v2/documents/${docId}`,
+      headers: {
+        authorization: "Bearer valid_token_owner_a",
+        "x-org-id": "org_alpha",
+      },
+    };
+    const verifyRes = createMockResponse();
+    await new Promise<void>((resolve) => {
+      verifyRes.onEnd = resolve;
+      (docApp as any).handle(verifyReq as any, verifyRes as any, () => resolve());
+    });
+    assert(verifyRes.statusCode === 200, "Documento de org_alpha sigue existiendo e intacto");
+  });
+
+  // TEST 122: Storage failure en production devuelve error controlado, nunca memory fallback
+  await runTest("TEST 122: Storage failure en production devuelve error controlado, nunca memory fallback", async () => {
+    const originalEnv = process.env.NODE_ENV;
+    const originalProjectId = process.env.FIREBASE_PROJECT_ID;
+    const originalBypass = process.env.BYPASS_PROD_VERIFIER_FOR_TESTING;
+
+    process.env.NODE_ENV = "production";
+    process.env.FIREBASE_PROJECT_ID = "test-prod-project";
+    process.env.BYPASS_PROD_VERIFIER_FOR_TESTING = "true";
+
+    mockBucket.shouldFailSave = true;
+
+    const req = {
+      method: "POST",
+      url: "/api/v2/documents/upload",
+      headers: {
+        authorization: "Bearer valid_token_owner_a",
+        "x-org-id": "org_alpha",
+        "content-type": "application/json",
+      },
+      body: {
+        filename: "fail_prod.pdf",
+        fileBase64: Buffer.from("Fail in prod").toString("base64"),
+      },
+    };
+    const res = createMockResponse();
+    await new Promise<void>((resolve) => {
+      res.onEnd = resolve;
+      (docApp as any).handle(req as any, res as any, () => resolve());
+    });
+
+    mockBucket.shouldFailSave = false;
+    process.env.NODE_ENV = originalEnv;
+    process.env.FIREBASE_PROJECT_ID = originalProjectId;
+    process.env.BYPASS_PROD_VERIFIER_FOR_TESTING = originalBypass;
+
+    assert(res.statusCode === 503, "Devuelve HTTP 503 Service Unavailable en fallo de Storage en producción");
+    assert(res.jsonData?.code === "INFRASTRUCTURE_ERROR", "Código de error de infraestructura");
+  });
+
+  // TEST 123: Firestore failure en production devuelve error controlled, nunca memory fallback
+  await runTest("TEST 123: Firestore failure en production devuelve error controlado, nunca memory fallback", async () => {
+    const originalEnv = process.env.NODE_ENV;
+    const originalProjectId = process.env.FIREBASE_PROJECT_ID;
+    const originalBypass = process.env.BYPASS_PROD_VERIFIER_FOR_TESTING;
+
+    process.env.NODE_ENV = "production";
+    process.env.FIREBASE_PROJECT_ID = "test-prod-project";
+    process.env.BYPASS_PROD_VERIFIER_FOR_TESTING = "true";
+
+    // Mock broken Firestore instance
+    const failingDb: any = {
+      collection: () => {
+        throw new Error("Simulated Firestore Critical DB Failure");
+      },
+    };
+    const { setAdminFirestoreForTesting } = await import("../auth/firestoreAdmin");
+    setAdminFirestoreForTesting(failingDb);
+
+    const req = {
+      method: "POST",
+      url: "/api/v2/documents/upload",
+      headers: {
+        authorization: "Bearer valid_token_owner_a",
+        "x-org-id": "org_alpha",
+        "content-type": "application/json",
+      },
+      body: {
+        filename: "fail_firestore_prod.pdf",
+        fileBase64: Buffer.from("Fail firestore in prod").toString("base64"),
+      },
+    };
+    const res = createMockResponse();
+    await new Promise<void>((resolve) => {
+      res.onEnd = resolve;
+      (docApp as any).handle(req as any, res as any, () => resolve());
+    });
+
+    setAdminFirestoreForTesting(mockDb as any);
+    process.env.NODE_ENV = originalEnv;
+    process.env.FIREBASE_PROJECT_ID = originalProjectId;
+    process.env.BYPASS_PROD_VERIFIER_FOR_TESTING = originalBypass;
+
+    assert(res.statusCode === 503, "Devuelve HTTP 503 Service Unavailable en fallo de Firestore en producción");
+    assert(res.jsonData?.code === "INFRASTRUCTURE_ERROR", "Código de error de infraestructura");
+  });
+
+  // TEST 124: Filename con path traversal rechazado/sanitizado
+  await runTest("TEST 124: Filename con path traversal rechazado/sanitizado", async () => {
+    const req = {
+      method: "POST",
+      url: "/api/v2/documents/upload",
+      headers: {
+        authorization: "Bearer valid_token_owner_a",
+        "x-org-id": "org_alpha",
+        "content-type": "application/json",
+      },
+      body: {
+        filename: "../../../etc/passwd.pdf",
+        fileBase64: Buffer.from("Path traversal test").toString("base64"),
+      },
+    };
+    const res = createMockResponse();
+    await new Promise<void>((resolve) => {
+      res.onEnd = resolve;
+      (docApp as any).handle(req as any, res as any, () => resolve());
+    });
+    assert(res.statusCode === 201, "HTTP 201 Created con filename sanitizado");
+    const doc = (res.jsonData?.document as any);
+    assert(!doc.filename.includes(".."), "Filename no contiene '..'");
+    assert(!doc.filename.includes("/"), "Filename no contiene '/'");
+    assert(doc.storagePath === `organizations/org_alpha/documents/${doc.id}/${doc.filename}`, "Storage path seguro dentro del tenant");
+  });
+
+  // TEST 125: Archivo sobre tamaño máximo rechazado
+  await runTest("TEST 125: Archivo sobre tamaño máximo rechazado (400)", async () => {
+    const largeBuffer = Buffer.alloc(16 * 1024 * 1024);
+    const req = {
+      method: "POST",
+      url: "/api/v2/documents/upload",
+      headers: {
+        authorization: "Bearer valid_token_owner_a",
+        "x-org-id": "org_alpha",
+        "content-type": "application/json",
+      },
+      body: {
+        filename: "huge.pdf",
+        fileBase64: largeBuffer.toString("base64"),
+      },
+    };
+    const res = createMockResponse();
+    await new Promise<void>((resolve) => {
+      res.onEnd = resolve;
+      (docApp as any).handle(req as any, res as any, () => resolve());
+    });
+    assert(res.statusCode === 400, "Rechaza con HTTP 400 Bad Request");
+    assert(res.jsonData?.code === "FILE_TOO_LARGE", "Código de error FILE_TOO_LARGE");
+  });
+
+  // TEST 126: MIME/extensión no permitida rechazada
+  await runTest("TEST 126: MIME/extensión no permitida rechazada (400)", async () => {
+    const req = {
+      method: "POST",
+      url: "/api/v2/documents/upload",
+      headers: {
+        authorization: "Bearer valid_token_owner_a",
+        "x-org-id": "org_alpha",
+        "content-type": "application/json",
+      },
+      body: {
+        filename: "malware.exe",
+        mimeType: "application/x-msdownload",
+        fileBase64: Buffer.from("MZ...").toString("base64"),
+      },
+    };
+    const res = createMockResponse();
+    await new Promise<void>((resolve) => {
+      res.onEnd = resolve;
+      (docApp as any).handle(req as any, res as any, () => resolve());
+    });
+    assert(res.statusCode === 400, "Rechaza con HTTP 400 Bad Request");
+    assert(res.jsonData?.code === "INVALID_FILE_TYPE", "Código de error INVALID_FILE_TYPE");
+  });
+
+  // TEST 127: Base64 inválido rechazado
+  await runTest("TEST 127: Base64 inválido rechazado (400)", async () => {
+    const req = {
+      method: "POST",
+      url: "/api/v2/documents/upload",
+      headers: {
+        authorization: "Bearer valid_token_owner_a",
+        "x-org-id": "org_alpha",
+        "content-type": "application/json",
+      },
+      body: {
+        filename: "invalid.pdf",
+        fileBase64: "!!!not_base64_string!!!",
+      },
+    };
+    const res = createMockResponse();
+    await new Promise<void>((resolve) => {
+      res.onEnd = resolve;
+      (docApp as any).handle(req as any, res as any, () => resolve());
+    });
+    assert(res.statusCode === 400, "Rechaza con HTTP 400 Bad Request");
+    assert(res.jsonData?.code === "INVALID_BASE64", "Código de error INVALID_BASE64");
+  });
+
+  // TEST 128: Payload con chunks gigantes rechazado
+  await runTest("TEST 128: Payload con chunks gigantes rechazado (400)", async () => {
+    const giantChunkText = "A".repeat(10005);
+    const req = {
+      method: "POST",
+      url: "/api/v2/documents/upload",
+      headers: {
+        authorization: "Bearer valid_token_owner_a",
+        "x-org-id": "org_alpha",
+        "content-type": "application/json",
+      },
+      body: {
+        filename: "giant_chunk.pdf",
+        fileBase64: Buffer.from("test").toString("base64"),
+        chunks: [{ text: giantChunkText }],
+      },
+    };
+    const res = createMockResponse();
+    await new Promise<void>((resolve) => {
+      res.onEnd = resolve;
+      (docApp as any).handle(req as any, res as any, () => resolve());
+    });
+    assert(res.statusCode === 400, "Rechaza con HTTP 400 Bad Request");
+    assert(res.jsonData?.code === "CHUNK_TOO_LARGE", "Código de error CHUNK_TOO_LARGE");
+  });
+
+  // TEST 129: Payload intenta inyectar orgId dentro de chunks y no consigue cambiar tenant
+  await runTest("TEST 129: Payload intenta inyectar orgId dentro de chunks y no consigue cambiar tenant", async () => {
+    const req = {
+      method: "POST",
+      url: "/api/v2/documents/upload",
+      headers: {
+        authorization: "Bearer valid_token_owner_a",
+        "x-org-id": "org_alpha",
+        "content-type": "application/json",
+      },
+      body: {
+        filename: "chunk_injection.pdf",
+        fileBase64: Buffer.from("test").toString("base64"),
+        chunks: [
+          { text: "Injected Chunk", orgId: "org_beta", docId: "fake_doc_id" },
+        ],
+      },
+    };
+    const res = createMockResponse();
+    await new Promise<void>((resolve) => {
+      res.onEnd = resolve;
+      (docApp as any).handle(req as any, res as any, () => resolve());
+    });
+    assert(res.statusCode === 201, "Documento creado con HTTP 201");
+    const docId = (res.jsonData?.document as any)?.id;
+
+    // Fetch chunks
+    const getReq = {
+      method: "GET",
+      url: `/api/v2/documents/${docId}`,
+      headers: {
+        authorization: "Bearer valid_token_owner_a",
+        "x-org-id": "org_alpha",
+      },
+    };
+    const getRes = createMockResponse();
+    await new Promise<void>((resolve) => {
+      getRes.onEnd = resolve;
+      (docApp as any).handle(getReq as any, getRes as any, () => resolve());
+    });
+
+    const chunks = (getRes.jsonData?.chunks as any[]) || [];
+    assert(chunks.length === 1, "Chunk retornado");
+    assert(chunks[0].orgId === "org_alpha", "Servidor forzó orgId a org_alpha en el chunk");
+    assert(chunks[0].docId === docId, "Servidor forzó docId autoritativo en el chunk");
+  });
+
+  // TEST 130: DELETE elimina metadata + chunks + Storage object
+  await runTest("TEST 130: DELETE elimina metadata + chunks + Storage object", async () => {
+    // 1. Upload doc
+    const uploadReq = {
+      method: "POST",
+      url: "/api/v2/documents/upload",
+      headers: {
+        authorization: "Bearer valid_token_owner_a",
+        "x-org-id": "org_alpha",
+        "content-type": "application/json",
+      },
+      body: {
+        filename: "doc_full_delete.pdf",
+        fileBase64: Buffer.from("Full delete test").toString("base64"),
+      },
+    };
+    const uploadRes = createMockResponse();
+    await new Promise<void>((resolve) => {
+      uploadRes.onEnd = resolve;
+      (docApp as any).handle(uploadReq as any, uploadRes as any, () => resolve());
+    });
+    const doc = (uploadRes.jsonData?.document as any);
+    assert(doc && doc.id && doc.storagePath, "Documento creado");
+    assert(mockBucket.files.has(doc.storagePath), "Archivo existe en Storage antes de borrar");
+
+    // 2. DELETE
+    const deleteReq = {
+      method: "DELETE",
+      url: `/api/v2/documents/${doc.id}`,
+      headers: {
+        authorization: "Bearer valid_token_owner_a",
+        "x-org-id": "org_alpha",
+      },
+    };
+    const deleteRes = createMockResponse();
+    await new Promise<void>((resolve) => {
+      deleteRes.onEnd = resolve;
+      (docApp as any).handle(deleteReq as any, deleteRes as any, () => resolve());
+    });
+    assert(deleteRes.statusCode === 200, "Responde HTTP 200 OK");
+    assert(!mockBucket.files.has(doc.storagePath), "Archivo físico eliminado de Storage");
+
+    // 3. GET returns 404
+    const getReq = {
+      method: "GET",
+      url: `/api/v2/documents/${doc.id}`,
+      headers: {
+        authorization: "Bearer valid_token_owner_a",
+        "x-org-id": "org_alpha",
+      },
+    };
+    const getRes = createMockResponse();
+    await new Promise<void>((resolve) => {
+      getRes.onEnd = resolve;
+      (docApp as any).handle(getReq as any, getRes as any, () => resolve());
+    });
+    assert(getRes.statusCode === 404, "GET devuelve 404 tras eliminación");
+  });
+
+  // TEST 131: Cliente intenta enviar storagePath arbitrario y es ignorado
+  await runTest("TEST 131: Cliente intenta enviar storagePath arbitrario y es ignorado", async () => {
+    const req = {
+      method: "POST",
+      url: "/api/v2/documents/upload",
+      headers: {
+        authorization: "Bearer valid_token_owner_a",
+        "x-org-id": "org_alpha",
+        "content-type": "application/json",
+      },
+      body: {
+        filename: "override_path.pdf",
+        fileBase64: Buffer.from("Override test").toString("base64"),
+        storagePath: "organizations/org_beta/documents/fake/secret.pdf",
+      },
+    };
+    const res = createMockResponse();
+    await new Promise<void>((resolve) => {
+      res.onEnd = resolve;
+      (docApp as any).handle(req as any, res as any, () => resolve());
+    });
+    assert(res.statusCode === 201, "HTTP 201 Created");
+    const doc = (res.jsonData?.document as any);
+    assert(doc.storagePath !== "organizations/org_beta/documents/fake/secret.pdf", "storagePath del cliente ignorado");
+    assert(doc.storagePath.startsWith(`organizations/org_alpha/documents/${doc.id}/`), "storagePath autoritativo generado por el servidor");
+  });
+
   const passed = testResults.filter((r) => r.passed).length;
   const failed = testResults.filter((r) => !r.passed).length;
 

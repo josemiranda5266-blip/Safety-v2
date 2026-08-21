@@ -1,11 +1,13 @@
 import { getApps, initializeApp, App } from "firebase-admin/app";
 import { getFirestore, Firestore } from "firebase-admin/firestore";
+import { getStorage } from "firebase-admin/storage";
 import { getFirebaseProjectId, getAuthConfig } from "./config";
 import fs from "fs";
 import path from "path";
 
 let cachedFirestore: Firestore | null = null;
 let cachedAdminApp: App | null = null;
+let cachedStorageBucket: any = null;
 
 export function getAdminApp(): App {
   if (cachedAdminApp) {
@@ -71,3 +73,31 @@ export function getAdminFirestore(): Firestore {
 export function setAdminFirestoreForTesting(firestore: Firestore | null): void {
   cachedFirestore = firestore;
 }
+
+/**
+ * Returns the Firebase Admin Storage Bucket instance.
+ */
+export function getAdminStorageBucket(): any {
+  if (cachedStorageBucket) {
+    return cachedStorageBucket;
+  }
+
+  const app = getAdminApp();
+  const storage = getStorage(app);
+  const projectId = getFirebaseProjectId();
+  const bucketName =
+    process.env.FIREBASE_STORAGE_BUCKET ||
+    process.env.GCS_BUCKET_NAME ||
+    `${projectId}.appspot.com`;
+
+  cachedStorageBucket = storage.bucket(bucketName);
+  return cachedStorageBucket;
+}
+
+/**
+ * Helper to inject or reset Storage Bucket instance for testing.
+ */
+export function setAdminStorageBucketForTesting(bucket: any): void {
+  cachedStorageBucket = bucket;
+}
+

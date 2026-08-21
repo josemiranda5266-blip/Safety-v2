@@ -14,6 +14,7 @@ import { AuthorizationContext } from "../authorization/types";
 import * as companyService from "../services/companyService";
 import * as establishmentService from "../services/establishmentService";
 import * as employeeService from "../services/employeeService";
+import { setAdminFirestoreForTesting, setAdminStorageBucketForTesting } from "../auth/firestoreAdmin";
 import { requireAiCredits, CreditGuardedRequest } from "../middleware/creditGatekeeper";
 import {
   FirestoreOrganizationRepository,
@@ -245,11 +246,15 @@ export async function runAllTenantAuthTests(): Promise<{ total: number; passed: 
   console.log("   SAFETY IA V2 — SUITE DE PRUEBAS MULTI-TENANT & RBAC ");
   console.log("=======================================================\n");
 
+  // Inject Mock Firestore at the very beginning of the test suite
+  const testDb = createMockFirestore();
+  setAdminFirestoreForTesting(testDb as any);
+
   // Setup Clean State and Inject Mock Verifier for Tests
   await clearStore();
-  companyService.clearCompanyStore();
-  establishmentService.clearEstablishmentStore();
-  employeeService.clearEmployeeStore();
+  await companyService.clearCompanyStore();
+  await establishmentService.clearEstablishmentStore();
+  await employeeService.clearEmployeeStore();
   resetGlobalAuthVerifier();
 
   const mockVerifier = new MockAuthVerifier();
@@ -306,19 +311,19 @@ export async function runAllTenantAuthTests(): Promise<{ total: number; passed: 
   await saveMembership(memMemberA);
 
   // Seed Companies
-  const compA1 = companyService.createCompany({
+  const compA1 = await companyService.createCompany({
     orgId: "org_alpha",
     legalName: "Metalúrgica Alpha S.A.",
     cuit: "30-11111111-9",
   });
 
-  const compA2 = companyService.createCompany({
+  const compA2 = await companyService.createCompany({
     orgId: "org_alpha",
     legalName: "Constructora Alpha S.R.L.",
     cuit: "30-22222222-9",
   });
 
-  const compB1 = companyService.createCompany({
+  const compB1 = await companyService.createCompany({
     orgId: "org_beta",
     legalName: "Logística Beta S.A.",
     cuit: "30-33333333-9",
@@ -362,7 +367,7 @@ export async function runAllTenantAuthTests(): Promise<{ total: number; passed: 
   await saveMembership(memOwnerB);
 
   // Seed Establishments
-  const estA1 = establishmentService.createEstablishment({
+  const estA1 = await establishmentService.createEstablishment({
     orgId: "org_alpha",
     companyId: compA1.id,
     name: "Planta Principal Alpha",
@@ -371,7 +376,7 @@ export async function runAllTenantAuthTests(): Promise<{ total: number; passed: 
     province: "Córdoba",
   });
 
-  const estB1 = establishmentService.createEstablishment({
+  const estB1 = await establishmentService.createEstablishment({
     orgId: "org_beta",
     companyId: compB1.id,
     name: "Depósito Central Beta",
@@ -381,7 +386,7 @@ export async function runAllTenantAuthTests(): Promise<{ total: number; passed: 
   });
 
   // Seed Employees
-  const empA1 = employeeService.createEmployee({
+  const empA1 = await employeeService.createEmployee({
     orgId: "org_alpha",
     companyId: compA1.id,
     establishmentId: estA1.id,
@@ -390,7 +395,7 @@ export async function runAllTenantAuthTests(): Promise<{ total: number; passed: 
     cuil: "20-12345678-9",
   });
 
-  const empB1 = employeeService.createEmployee({
+  const empB1 = await employeeService.createEmployee({
     orgId: "org_beta",
     companyId: compB1.id,
     establishmentId: estB1.id,
@@ -761,7 +766,7 @@ export async function runAllTenantAuthTests(): Promise<{ total: number; passed: 
   // TEST 16: Listado de empresas filtra por tenant
   await runTest("TEST 16: Listado de empresas filtra por tenant", async () => {
     const contextMember = await resolveAuthorizationContext("user_member_a", "pro@alpha.com", "org_alpha");
-    const companies = companyService.listCompanies(contextMember!.orgId, contextMember!.assignedCompanyIds);
+    const companies = await companyService.listCompanies(contextMember!.orgId, contextMember!.assignedCompanyIds);
     assert(companies.length === 2, "Org A ve 2 empresas");
     assert(companies.every((c) => c.orgId === "org_alpha"), "Todas las empresas pertenecen a Org A");
   });
@@ -769,7 +774,7 @@ export async function runAllTenantAuthTests(): Promise<{ total: number; passed: 
   // TEST 17: Listado de empresas filtra por assignedCompanyIds
   await runTest("TEST 17: Listado de empresas filtra por assignedCompanyIds", async () => {
     const contextRestricted = await resolveAuthorizationContext("user_restricted_a", "restricted@alpha.com", "org_alpha");
-    const companies = companyService.listCompanies(contextRestricted!.orgId, contextRestricted!.assignedCompanyIds);
+    const companies = await companyService.listCompanies(contextRestricted!.orgId, contextRestricted!.assignedCompanyIds);
     assert(companies.length === 1, "Usuario restringido ve exactamente 1 empresa");
     assert(companies[0].id === compA1.id, "Empresa visible es compA1");
   });
@@ -880,7 +885,7 @@ export async function runAllTenantAuthTests(): Promise<{ total: number; passed: 
   // TEST 28: Usuario restringido bloqueado de establecimiento no asignado
   await runTest("TEST 28: Usuario restringido bloqueado de establecimiento no asignado", async () => {
     const contextRestricted = await resolveAuthorizationContext("user_restricted_a", "restricted@alpha.com", "org_alpha");
-    const estA2 = establishmentService.createEstablishment({
+    const estA2 = await establishmentService.createEstablishment({
       orgId: "org_alpha",
       companyId: compA2.id,
       name: "Planta Secundaria Alpha",
@@ -894,7 +899,7 @@ export async function runAllTenantAuthTests(): Promise<{ total: number; passed: 
   // TEST 29: Usuario restringido bloqueado de empleado no asignado
   await runTest("TEST 29: Usuario restringido bloqueado de empleado no asignado", async () => {
     const contextRestricted = await resolveAuthorizationContext("user_restricted_a", "restricted@alpha.com", "org_alpha");
-    const empA2 = employeeService.createEmployee({
+    const empA2 = await employeeService.createEmployee({
       orgId: "org_alpha",
       companyId: compA2.id,
       establishmentId: "est_dummy",
@@ -924,23 +929,23 @@ export async function runAllTenantAuthTests(): Promise<{ total: number; passed: 
   });
 
   // TEST 32: Inmutabilidad de orgId en actualización de empresa
-  await runTest("TEST 32: Inmutabilidad de orgId en actualización de empresa", () => {
-    const updated = companyService.updateCompany(compA1.id, {
+  await runTest("TEST 32: Inmutabilidad de orgId en actualización de empresa", async () => {
+    const updated = await companyService.updateCompany(compA1.id, {
       legalName: "Metalúrgica Alpha Renombrada S.A.",
     });
     assert(updated?.orgId === "org_alpha", "orgId permanece inmutable");
   });
 
   // TEST 33: Soft delete de empresa
-  await runTest("TEST 33: Soft delete de empresa", () => {
-    const tempComp = companyService.createCompany({
+  await runTest("TEST 33: Soft delete de empresa", async () => {
+    const tempComp = await companyService.createCompany({
       orgId: "org_alpha",
       legalName: "Empresa Temporal S.A.",
       cuit: "30-99999999-9",
     });
-    const deleted = companyService.deleteCompany(tempComp.id);
+    const deleted = await companyService.deleteCompany(tempComp.id);
     assert(deleted, "Empresa marcada como borrada");
-    const found = companyService.getCompanyById(tempComp.id);
+    const found = await companyService.getCompanyById(tempComp.id);
     assert(found?.active === false, "Empresa está inactiva");
   });
 
@@ -2713,7 +2718,6 @@ export async function runAllTenantAuthTests(): Promise<{ total: number; passed: 
 
   const mockBucket = new MockStorageBucket();
   const mockDb = new MockDocumentFirestore();
-  const { setAdminFirestoreForTesting, setAdminStorageBucketForTesting } = await import("../auth/firestoreAdmin");
   setAdminFirestoreForTesting(mockDb as any);
   setAdminStorageBucketForTesting(mockBucket);
 

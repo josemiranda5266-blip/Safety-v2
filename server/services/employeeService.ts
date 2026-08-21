@@ -1,36 +1,47 @@
 import { Employee } from "../../src/types/tenant";
+import { getAdminFirestore } from "../auth/firestoreAdmin";
 
-// In-memory persistent store for Employee domain (Zero medical data)
-const employeesStore = new Map<string, Employee>();
-
-export function listEmployees(
+export async function listEmployees(
   orgId: string,
   companyId?: string,
   establishmentId?: string,
   allowedCompanyIds?: string[]
-): Employee[] {
-  const result: Employee[] = [];
-  for (const emp of employeesStore.values()) {
-    if (emp.orgId === orgId && emp.active) {
-      if (companyId && emp.companyId !== companyId) {
-        continue;
-      }
-      if (establishmentId && emp.establishmentId !== establishmentId) {
-        continue;
-      }
-      if (!allowedCompanyIds || allowedCompanyIds.length === 0 || allowedCompanyIds.includes(emp.companyId)) {
-        result.push(emp);
-      }
-    }
+): Promise<Employee[]> {
+  const db = getAdminFirestore();
+  let query = db.collection("employees").where("orgId", "==", orgId).where("active", "==", true);
+
+  if (companyId) {
+    query = query.where("companyId", "==", companyId);
   }
+  if (establishmentId) {
+    query = query.where("establishmentId", "==", establishmentId);
+  }
+
+  const snapshot = await query.get();
+  const result: Employee[] = [];
+  snapshot.docs.forEach((doc) => {
+    const emp = { id: doc.id, ...doc.data() } as Employee;
+    if (!allowedCompanyIds || allowedCompanyIds.length === 0 || allowedCompanyIds.includes(emp.companyId)) {
+      result.push(emp);
+    }
+  });
   return result;
 }
 
-export function getEmployeeById(id: string): Employee | undefined {
-  return employeesStore.get(id);
+export async function getEmployeeById(id: string, orgId?: string): Promise<Employee | undefined> {
+  if (!id) return undefined;
+  const db = getAdminFirestore();
+  const doc = await db.collection("employees").doc(id).get();
+  if (!doc.exists) return undefined;
+  const emp = { id: doc.id, ...doc.data() } as Employee;
+  if (orgId && emp.orgId !== orgId) {
+    return undefined; // Fail-closed
+  }
+  return emp;
 }
 
-export function createEmployee(data: {
+export async function createEmployee(data: {
+  id?: string;
   companyId: string;
   establishmentId: string;
   sectorId?: string;
@@ -42,9 +53,9 @@ export function createEmployee(data: {
   hireDate?: string;
   isContractorStaff?: boolean;
   contractorId?: string;
-}): Employee {
+}): Promise<Employee> {
   const now = new Date().toISOString();
-  const id = `emp_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
+  const id = data.id || `emp_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
 
   const employee: Employee = {
     id,
@@ -64,17 +75,25 @@ export function createEmployee(data: {
     updatedAt: now,
   };
 
-  employeesStore.set(id, employee);
+  const db = getAdminFirestore();
+  await db.collection("employees").doc(id).set(employee);
   return employee;
 }
 
-export function updateEmployee(
+export async function updateEmployee(
   id: string,
-  updates: Partial<Omit<Employee, "id" | "orgId" | "companyId" | "createdAt">>
-): Employee | undefined {
-  const existing = employeesStore.get(id);
-  if (!existing) {
-    return undefined;
+  updates: Partial<Omit<Employee, "id" | "orgId" | "companyId" | "createdAt">>,
+  orgId?: string
+): Promise<Employee | undefined> {
+  if (!id) return undefined;
+  const db = getAdminFirestore();
+  const docRef = db.collection("employees").doc(id);
+  const doc = await docRef.get();
+  if (!doc.exists) return undefined;
+
+  const existing = { id: doc.id, ...doc.data() } as Employee;
+  if (orgId && existing.orgId !== orgId) {
+    return undefined; // Fail-closed
   }
 
   const updated: Employee = {
@@ -87,21 +106,33 @@ export function updateEmployee(
     updatedAt: new Date().toISOString(),
   };
 
-  employeesStore.set(id, updated);
+  await docRef.set(updated, { merge: true });
   return updated;
 }
 
-export function deleteEmployee(id: string): boolean {
-  const existing = employeesStore.get(id);
-  if (!existing) {
-    return false;
+export async function deleteEmployee(id: string, orgId?: string): Promise<boolean> {
+  if (!id) return false;
+  const db = getAdminFirestore();
+  const docRef = db.collection("employees").doc(id);
+  const doc = await docRef.get();
+  if (!doc.exists) return false;
+
+  const existing = { id: doc.id, ...doc.data() } as Employee;
+  if (orgId && existing.orgId !== orgId) {
+    return false; // Fail-closed
   }
+
   existing.active = false;
   existing.updatedAt = new Date().toISOString();
-  employeesStore.set(id, existing);
+  await docRef.set(existing, { merge: true });
   return true;
 }
 
-export function clearEmployeeStore(): void {
-  employeesStore.clear();
+export async function clearEmployeeStore(): Promise<void> {
+  const db = getAdminFirestore();
+  const snapshot = await db.collection("employees").get();
+  if (snapshot.empty) return;
+  const batch = db.batch();
+  snapshot.docs.forEach((doc) => batch.delete(doc.ref));
+  await batch.commit();
 }

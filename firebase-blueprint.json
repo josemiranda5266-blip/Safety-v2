@@ -165,6 +165,73 @@
         "joinedAt": { "type": "string" }
       },
       "required": ["id", "orgId", "userId", "userEmail", "role", "active"]
+    },
+    "Company": {
+      "title": "Company",
+      "description": "Company under professional administration",
+      "properties": {
+        "id": { "type": "string" },
+        "orgId": { "type": "string" },
+        "legalName": { "type": "string" },
+        "tradeName": { "type": "string" },
+        "cuit": { "type": "string" },
+        "ciiuCode": { "type": "string" },
+        "activityDescription": { "type": "string" },
+        "artInsuranceName": { "type": "string" },
+        "artPolicyNumber": { "type": "string" },
+        "isLegacyMigrated": { "type": "boolean" },
+        "active": { "type": "boolean" },
+        "createdAt": { "type": "string" },
+        "updatedAt": { "type": "string" }
+      },
+      "required": ["id", "orgId", "legalName", "cuit", "active", "createdAt"]
+    },
+    "Establishment": {
+      "title": "Establishment",
+      "description": "Physical establishment belonging to a company",
+      "properties": {
+        "id": { "type": "string" },
+        "companyId": { "type": "string" },
+        "orgId": { "type": "string" },
+        "name": { "type": "string" },
+        "code": { "type": "string" },
+        "address": { "type": "string" },
+        "city": { "type": "string" },
+        "province": { "type": "string" },
+        "country": { "type": "string" },
+        "postalCode": { "type": "string" },
+        "surfaceM2": { "type": "number" },
+        "totalWorkers": { "type": "number" },
+        "installedPowerKW": { "type": "number" },
+        "isConstructionSite": { "type": "boolean" },
+        "isLegacyMigrated": { "type": "boolean" },
+        "active": { "type": "boolean" },
+        "createdAt": { "type": "string" },
+        "updatedAt": { "type": "string" }
+      },
+      "required": ["id", "companyId", "orgId", "name", "address", "city", "province", "active", "createdAt"]
+    },
+    "Employee": {
+      "title": "Employee",
+      "description": "Worker legajo register",
+      "properties": {
+        "id": { "type": "string" },
+        "companyId": { "type": "string" },
+        "establishmentId": { "type": "string" },
+        "sectorId": { "type": "string" },
+        "positionId": { "type": "string" },
+        "orgId": { "type": "string" },
+        "cuil": { "type": "string" },
+        "firstName": { "type": "string" },
+        "lastName": { "type": "string" },
+        "hireDate": { "type": "string" },
+        "isContractorStaff": { "type": "boolean" },
+        "contractorId": { "type": "string" },
+        "active": { "type": "boolean" },
+        "createdAt": { "type": "string" },
+        "updatedAt": { "type": "string" }
+      },
+      "required": ["id", "companyId", "establishmentId", "orgId", "cuil", "firstName", "lastName", "active", "createdAt"]
     }
   }
 }

@@ -15,13 +15,13 @@ router.use(requireTenantContext);
  * GET /api/v2/establishments
  * Lists establishments filtered by authorized companyId and Organization.
  */
-router.get("/", requirePermission("establishment:read"), (req: TenantRequest, res: Response) => {
+router.get("/", requirePermission("establishment:read"), async (req: TenantRequest, res: Response) => {
   const context = req.authContext!;
   const companyId = req.query.companyId as string | undefined;
 
   // If specific companyId is requested, verify access to that company
   if (companyId) {
-    const parentCompany = companyService.getCompanyById(companyId);
+    const parentCompany = await companyService.getCompanyById(companyId, context.orgId);
     if (!parentCompany || !canAccessCompany(context, parentCompany, "company:read")) {
       res.status(404).json({
         error: "Empresa no encontrada o no accesible",
@@ -31,7 +31,7 @@ router.get("/", requirePermission("establishment:read"), (req: TenantRequest, re
     }
   }
 
-  const establishments = establishmentService.listEstablishments(
+  const establishments = await establishmentService.listEstablishments(
     context.orgId,
     companyId,
     context.assignedCompanyIds
@@ -44,11 +44,11 @@ router.get("/", requirePermission("establishment:read"), (req: TenantRequest, re
  * GET /api/v2/establishments/:id
  * Retrieves a single establishment by ID with strict tenant validation.
  */
-router.get("/:id", requirePermission("establishment:read"), (req: TenantRequest, res: Response) => {
+router.get("/:id", requirePermission("establishment:read"), async (req: TenantRequest, res: Response) => {
   const context = req.authContext!;
   const { id } = req.params;
 
-  const establishment = establishmentService.getEstablishmentById(id);
+  const establishment = await establishmentService.getEstablishmentById(id, context.orgId);
 
   if (!establishment || !canAccessEstablishment(context, establishment, "establishment:read")) {
     res.status(404).json({
@@ -65,7 +65,7 @@ router.get("/:id", requirePermission("establishment:read"), (req: TenantRequest,
  * POST /api/v2/establishments
  * Creates a new establishment under an authorized Company in the context Organization.
  */
-router.post("/", requirePermission("establishment:create"), (req: TenantRequest, res: Response) => {
+router.post("/", requirePermission("establishment:create"), async (req: TenantRequest, res: Response) => {
   const context = req.authContext!;
 
   const parseResult = createEstablishmentSchema.safeParse(req.body);
@@ -78,7 +78,7 @@ router.post("/", requirePermission("establishment:create"), (req: TenantRequest,
   }
 
   // Verify parent company exists and belongs to context Organization
-  const parentCompany = companyService.getCompanyById(parseResult.data.companyId);
+  const parentCompany = await companyService.getCompanyById(parseResult.data.companyId, context.orgId);
   if (!parentCompany || !canAccessCompany(context, parentCompany, "company:update")) {
     res.status(404).json({
       error: "La empresa especificada no existe o no pertenece a la organización autorizada",
@@ -87,7 +87,7 @@ router.post("/", requirePermission("establishment:create"), (req: TenantRequest,
     return;
   }
 
-  const newEstablishment = establishmentService.createEstablishment({
+  const newEstablishment = await establishmentService.createEstablishment({
     ...parseResult.data,
     orgId: context.orgId, // Server enforces authoritative tenant ID
   });
@@ -99,11 +99,11 @@ router.post("/", requirePermission("establishment:create"), (req: TenantRequest,
  * PATCH /api/v2/establishments/:id
  * Updates an existing establishment within the authorized tenant.
  */
-router.patch("/:id", requirePermission("establishment:update"), (req: TenantRequest, res: Response) => {
+router.patch("/:id", requirePermission("establishment:update"), async (req: TenantRequest, res: Response) => {
   const context = req.authContext!;
   const { id } = req.params;
 
-  const establishment = establishmentService.getEstablishmentById(id);
+  const establishment = await establishmentService.getEstablishmentById(id, context.orgId);
   if (!establishment || !canAccessEstablishment(context, establishment, "establishment:update")) {
     res.status(404).json({
       error: "Establecimiento no encontrado",
@@ -121,7 +121,7 @@ router.patch("/:id", requirePermission("establishment:update"), (req: TenantRequ
     return;
   }
 
-  const updated = establishmentService.updateEstablishment(id, parseResult.data);
+  const updated = await establishmentService.updateEstablishment(id, parseResult.data, context.orgId);
   res.json({ establishment: updated });
 });
 
@@ -129,11 +129,11 @@ router.patch("/:id", requirePermission("establishment:update"), (req: TenantRequ
  * DELETE /api/v2/establishments/:id
  * Deletes an establishment within the authorized tenant.
  */
-router.delete("/:id", requirePermission("establishment:delete"), (req: TenantRequest, res: Response) => {
+router.delete("/:id", requirePermission("establishment:delete"), async (req: TenantRequest, res: Response) => {
   const context = req.authContext!;
   const { id } = req.params;
 
-  const establishment = establishmentService.getEstablishmentById(id);
+  const establishment = await establishmentService.getEstablishmentById(id, context.orgId);
   if (!establishment || !canAccessEstablishment(context, establishment, "establishment:delete")) {
     res.status(404).json({
       error: "Establecimiento no encontrado",
@@ -142,7 +142,7 @@ router.delete("/:id", requirePermission("establishment:delete"), (req: TenantReq
     return;
   }
 
-  establishmentService.deleteEstablishment(id);
+  await establishmentService.deleteEstablishment(id, context.orgId);
   res.json({ success: true, message: "Establecimiento eliminado correctamente" });
 });
 

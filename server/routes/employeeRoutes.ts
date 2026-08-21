@@ -16,13 +16,13 @@ router.use(requireTenantContext);
  * GET /api/v2/employees
  * Lists employees filtered by authorized companyId/establishmentId.
  */
-router.get("/", requirePermission("employee:read"), (req: TenantRequest, res: Response) => {
+router.get("/", requirePermission("employee:read"), async (req: TenantRequest, res: Response) => {
   const context = req.authContext!;
   const companyId = req.query.companyId as string | undefined;
   const establishmentId = req.query.establishmentId as string | undefined;
 
   if (companyId) {
-    const parentCompany = companyService.getCompanyById(companyId);
+    const parentCompany = await companyService.getCompanyById(companyId, context.orgId);
     if (!parentCompany || !canAccessCompany(context, parentCompany, "company:read")) {
       res.status(404).json({
         error: "Empresa no encontrada o no accesible",
@@ -32,7 +32,7 @@ router.get("/", requirePermission("employee:read"), (req: TenantRequest, res: Re
     }
   }
 
-  const employees = employeeService.listEmployees(
+  const employees = await employeeService.listEmployees(
     context.orgId,
     companyId,
     establishmentId,
@@ -46,11 +46,11 @@ router.get("/", requirePermission("employee:read"), (req: TenantRequest, res: Re
  * GET /api/v2/employees/:id
  * Retrieves a single employee by ID with strict tenant isolation.
  */
-router.get("/:id", requirePermission("employee:read"), (req: TenantRequest, res: Response) => {
+router.get("/:id", requirePermission("employee:read"), async (req: TenantRequest, res: Response) => {
   const context = req.authContext!;
   const { id } = req.params;
 
-  const employee = employeeService.getEmployeeById(id);
+  const employee = await employeeService.getEmployeeById(id, context.orgId);
 
   if (!employee || !canAccessEmployee(context, employee, "employee:read")) {
     res.status(404).json({
@@ -67,7 +67,7 @@ router.get("/:id", requirePermission("employee:read"), (req: TenantRequest, res:
  * POST /api/v2/employees
  * Creates a new employee record. Validates parent company and establishment.
  */
-router.post("/", requirePermission("employee:create"), (req: TenantRequest, res: Response) => {
+router.post("/", requirePermission("employee:create"), async (req: TenantRequest, res: Response) => {
   const context = req.authContext!;
 
   const parseResult = createEmployeeSchema.safeParse(req.body);
@@ -80,7 +80,7 @@ router.post("/", requirePermission("employee:create"), (req: TenantRequest, res:
   }
 
   // 1. Verify parent company access
-  const parentCompany = companyService.getCompanyById(parseResult.data.companyId);
+  const parentCompany = await companyService.getCompanyById(parseResult.data.companyId, context.orgId);
   if (!parentCompany || !canAccessCompany(context, parentCompany, "company:update")) {
     res.status(404).json({
       error: "La empresa especificada no existe o no pertenece a la organización autorizada",
@@ -90,7 +90,7 @@ router.post("/", requirePermission("employee:create"), (req: TenantRequest, res:
   }
 
   // 2. Verify parent establishment access
-  const parentEstablishment = establishmentService.getEstablishmentById(parseResult.data.establishmentId);
+  const parentEstablishment = await establishmentService.getEstablishmentById(parseResult.data.establishmentId, context.orgId);
   if (!parentEstablishment || !canAccessEstablishment(context, parentEstablishment, "establishment:update")) {
     res.status(404).json({
       error: "El establecimiento especificado no existe o no pertenece a la organización autorizada",
@@ -108,7 +108,7 @@ router.post("/", requirePermission("employee:create"), (req: TenantRequest, res:
     return;
   }
 
-  const newEmployee = employeeService.createEmployee({
+  const newEmployee = await employeeService.createEmployee({
     ...parseResult.data,
     orgId: context.orgId, // Server enforces authoritative tenant ID
   });
@@ -120,11 +120,11 @@ router.post("/", requirePermission("employee:create"), (req: TenantRequest, res:
  * PATCH /api/v2/employees/:id
  * Updates an employee record within the authorized tenant.
  */
-router.patch("/:id", requirePermission("employee:update"), (req: TenantRequest, res: Response) => {
+router.patch("/:id", requirePermission("employee:update"), async (req: TenantRequest, res: Response) => {
   const context = req.authContext!;
   const { id } = req.params;
 
-  const employee = employeeService.getEmployeeById(id);
+  const employee = await employeeService.getEmployeeById(id, context.orgId);
   if (!employee || !canAccessEmployee(context, employee, "employee:update")) {
     res.status(404).json({
       error: "Empleado no encontrado",
@@ -142,7 +142,7 @@ router.patch("/:id", requirePermission("employee:update"), (req: TenantRequest, 
     return;
   }
 
-  const updated = employeeService.updateEmployee(id, parseResult.data);
+  const updated = await employeeService.updateEmployee(id, parseResult.data, context.orgId);
   res.json({ employee: updated });
 });
 
@@ -150,11 +150,11 @@ router.patch("/:id", requirePermission("employee:update"), (req: TenantRequest, 
  * DELETE /api/v2/employees/:id
  * Soft-deletes an employee record within the authorized tenant.
  */
-router.delete("/:id", requirePermission("employee:delete"), (req: TenantRequest, res: Response) => {
+router.delete("/:id", requirePermission("employee:delete"), async (req: TenantRequest, res: Response) => {
   const context = req.authContext!;
   const { id } = req.params;
 
-  const employee = employeeService.getEmployeeById(id);
+  const employee = await employeeService.getEmployeeById(id, context.orgId);
   if (!employee || !canAccessEmployee(context, employee, "employee:delete")) {
     res.status(404).json({
       error: "Empleado no encontrado",
@@ -163,7 +163,7 @@ router.delete("/:id", requirePermission("employee:delete"), (req: TenantRequest,
     return;
   }
 
-  employeeService.deleteEmployee(id);
+  await employeeService.deleteEmployee(id, context.orgId);
   res.json({ success: true, message: "Empleado eliminado correctamente" });
 });
 

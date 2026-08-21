@@ -14,9 +14,9 @@ router.use(requireTenantContext);
  * GET /api/v2/companies
  * Lists all active companies belonging to the user's authorized Organization.
  */
-router.get("/", requirePermission("company:read"), (req: TenantRequest, res: Response) => {
+router.get("/", requirePermission("company:read"), async (req: TenantRequest, res: Response) => {
   const context = req.authContext!;
-  const companies = companyService.listCompanies(context.orgId, context.assignedCompanyIds);
+  const companies = await companyService.listCompanies(context.orgId, context.assignedCompanyIds);
   res.json({ companies });
 });
 
@@ -24,11 +24,11 @@ router.get("/", requirePermission("company:read"), (req: TenantRequest, res: Res
  * GET /api/v2/companies/:companyId
  * Retrieves a single company by ID with strict tenant isolation and IDOR protection.
  */
-router.get("/:companyId", requirePermission("company:read"), (req: TenantRequest, res: Response) => {
+router.get("/:companyId", requirePermission("company:read"), async (req: TenantRequest, res: Response) => {
   const context = req.authContext!;
   const { companyId } = req.params;
 
-  const company = companyService.getCompanyById(companyId);
+  const company = await companyService.getCompanyById(companyId, context.orgId);
 
   // Return 404 if company doesn't exist OR belongs to another tenant (avoids resource enumeration)
   if (!company || !canAccessCompany(context, company, "company:read")) {
@@ -46,7 +46,7 @@ router.get("/:companyId", requirePermission("company:read"), (req: TenantRequest
  * POST /api/v2/companies
  * Creates a new company strictly scoped to the context Organization.
  */
-router.post("/", requirePermission("company:create"), (req: TenantRequest, res: Response) => {
+router.post("/", requirePermission("company:create"), async (req: TenantRequest, res: Response) => {
   const context = req.authContext!;
 
   const parseResult = createCompanySchema.safeParse(req.body);
@@ -58,7 +58,7 @@ router.post("/", requirePermission("company:create"), (req: TenantRequest, res: 
     return;
   }
 
-  const newCompany = companyService.createCompany({
+  const newCompany = await companyService.createCompany({
     ...parseResult.data,
     orgId: context.orgId, // Server enforces authoritative tenant ID
   });
@@ -70,11 +70,11 @@ router.post("/", requirePermission("company:create"), (req: TenantRequest, res: 
  * PATCH /api/v2/companies/:companyId
  * Updates an existing company within the authorized tenant.
  */
-router.patch("/:companyId", requirePermission("company:update"), (req: TenantRequest, res: Response) => {
+router.patch("/:companyId", requirePermission("company:update"), async (req: TenantRequest, res: Response) => {
   const context = req.authContext!;
   const { companyId } = req.params;
 
-  const company = companyService.getCompanyById(companyId);
+  const company = await companyService.getCompanyById(companyId, context.orgId);
   if (!company || !canAccessCompany(context, company, "company:update")) {
     res.status(404).json({
       error: "Empresa no encontrada",
@@ -92,7 +92,7 @@ router.patch("/:companyId", requirePermission("company:update"), (req: TenantReq
     return;
   }
 
-  const updated = companyService.updateCompany(companyId, parseResult.data);
+  const updated = await companyService.updateCompany(companyId, parseResult.data, context.orgId);
   res.json({ company: updated });
 });
 
@@ -100,11 +100,11 @@ router.patch("/:companyId", requirePermission("company:update"), (req: TenantReq
  * DELETE /api/v2/companies/:companyId
  * Soft-deletes a company within the authorized tenant.
  */
-router.delete("/:companyId", requirePermission("company:delete"), (req: TenantRequest, res: Response) => {
+router.delete("/:companyId", requirePermission("company:delete"), async (req: TenantRequest, res: Response) => {
   const context = req.authContext!;
   const { companyId } = req.params;
 
-  const company = companyService.getCompanyById(companyId);
+  const company = await companyService.getCompanyById(companyId, context.orgId);
   if (!company || !canAccessCompany(context, company, "company:delete")) {
     res.status(404).json({
       error: "Empresa no encontrada",
@@ -113,7 +113,7 @@ router.delete("/:companyId", requirePermission("company:delete"), (req: TenantRe
     return;
   }
 
-  companyService.deleteCompany(companyId);
+  await companyService.deleteCompany(companyId, context.orgId);
   res.json({ success: true, message: "Empresa eliminada correctamente" });
 });
 

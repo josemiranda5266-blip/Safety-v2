@@ -1,32 +1,43 @@
 import { Establishment } from "../../src/types/tenant";
+import { getAdminFirestore } from "../auth/firestoreAdmin";
 
-// In-memory persistent store for Establishment domain
-const establishmentsStore = new Map<string, Establishment>();
-
-export function listEstablishments(
+export async function listEstablishments(
   orgId: string,
   companyId?: string,
   allowedCompanyIds?: string[]
-): Establishment[] {
-  const result: Establishment[] = [];
-  for (const est of establishmentsStore.values()) {
-    if (est.orgId === orgId && est.active) {
-      if (companyId && est.companyId !== companyId) {
-        continue;
-      }
-      if (!allowedCompanyIds || allowedCompanyIds.length === 0 || allowedCompanyIds.includes(est.companyId)) {
-        result.push(est);
-      }
-    }
+): Promise<Establishment[]> {
+  const db = getAdminFirestore();
+  let query = db.collection("establishments").where("orgId", "==", orgId).where("active", "==", true);
+
+  if (companyId) {
+    query = query.where("companyId", "==", companyId);
   }
+
+  const snapshot = await query.get();
+  const result: Establishment[] = [];
+  snapshot.docs.forEach((doc) => {
+    const est = { id: doc.id, ...doc.data() } as Establishment;
+    if (!allowedCompanyIds || allowedCompanyIds.length === 0 || allowedCompanyIds.includes(est.companyId)) {
+      result.push(est);
+    }
+  });
   return result;
 }
 
-export function getEstablishmentById(id: string): Establishment | undefined {
-  return establishmentsStore.get(id);
+export async function getEstablishmentById(id: string, orgId?: string): Promise<Establishment | undefined> {
+  if (!id) return undefined;
+  const db = getAdminFirestore();
+  const doc = await db.collection("establishments").doc(id).get();
+  if (!doc.exists) return undefined;
+  const est = { id: doc.id, ...doc.data() } as Establishment;
+  if (orgId && est.orgId !== orgId) {
+    return undefined; // Fail-closed
+  }
+  return est;
 }
 
-export function createEstablishment(data: {
+export async function createEstablishment(data: {
+  id?: string;
   companyId: string;
   orgId: string;
   name: string;
@@ -41,9 +52,9 @@ export function createEstablishment(data: {
   installedPowerKW?: number;
   isConstructionSite?: boolean;
   isLegacyMigrated?: boolean;
-}): Establishment {
+}): Promise<Establishment> {
   const now = new Date().toISOString();
-  const id = `est_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
+  const id = data.id || `est_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
 
   const establishment: Establishment = {
     id,
@@ -66,17 +77,25 @@ export function createEstablishment(data: {
     updatedAt: now,
   };
 
-  establishmentsStore.set(id, establishment);
+  const db = getAdminFirestore();
+  await db.collection("establishments").doc(id).set(establishment);
   return establishment;
 }
 
-export function updateEstablishment(
+export async function updateEstablishment(
   id: string,
-  updates: Partial<Omit<Establishment, "id" | "orgId" | "companyId" | "createdAt">>
-): Establishment | undefined {
-  const existing = establishmentsStore.get(id);
-  if (!existing) {
-    return undefined;
+  updates: Partial<Omit<Establishment, "id" | "orgId" | "companyId" | "createdAt">>,
+  orgId?: string
+): Promise<Establishment | undefined> {
+  if (!id) return undefined;
+  const db = getAdminFirestore();
+  const docRef = db.collection("establishments").doc(id);
+  const doc = await docRef.get();
+  if (!doc.exists) return undefined;
+
+  const existing = { id: doc.id, ...doc.data() } as Establishment;
+  if (orgId && existing.orgId !== orgId) {
+    return undefined; // Fail-closed
   }
 
   const updated: Establishment = {
@@ -89,21 +108,33 @@ export function updateEstablishment(
     updatedAt: new Date().toISOString(),
   };
 
-  establishmentsStore.set(id, updated);
+  await docRef.set(updated, { merge: true });
   return updated;
 }
 
-export function deleteEstablishment(id: string): boolean {
-  const existing = establishmentsStore.get(id);
-  if (!existing) {
-    return false;
+export async function deleteEstablishment(id: string, orgId?: string): Promise<boolean> {
+  if (!id) return false;
+  const db = getAdminFirestore();
+  const docRef = db.collection("establishments").doc(id);
+  const doc = await docRef.get();
+  if (!doc.exists) return false;
+
+  const existing = { id: doc.id, ...doc.data() } as Establishment;
+  if (orgId && existing.orgId !== orgId) {
+    return false; // Fail-closed
   }
+
   existing.active = false;
   existing.updatedAt = new Date().toISOString();
-  establishmentsStore.set(id, existing);
+  await docRef.set(existing, { merge: true });
   return true;
 }
 
-export function clearEstablishmentStore(): void {
-  establishmentsStore.clear();
+export async function clearEstablishmentStore(): Promise<void> {
+  const db = getAdminFirestore();
+  const snapshot = await db.collection("establishments").get();
+  if (snapshot.empty) return;
+  const batch = db.batch();
+  snapshot.docs.forEach((doc) => batch.delete(doc.ref));
+  await batch.commit();
 }

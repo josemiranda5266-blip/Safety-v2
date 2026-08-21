@@ -106,7 +106,10 @@ Instrucción: Analiza minuciosamente los fragmentos anteriores de la biblioteca.
       });
     } catch (error: any) {
       const publicError = mapToGeminiPublicError(error);
-      console.error("[Error /api/chat-rag]:", error?.message || String(error));
+      console.error("[Error /api/chat-rag]", {
+        code: publicError.code,
+        status: publicError.status,
+      });
       return res.status(publicError.status).json({
         error: publicError.code,
         message: publicError.message,
@@ -195,7 +198,10 @@ Instrucciones:
       });
     } catch (error: any) {
       const publicError = mapToGeminiPublicError(error);
-      console.error("[Error /api/compare-documents]:", error?.message || String(error));
+      console.error("[Error /api/compare-documents]", {
+        code: publicError.code,
+        status: publicError.status,
+      });
       return res.status(publicError.status).json({
         error: publicError.code,
         message: publicError.message,
@@ -261,7 +267,10 @@ Devuelve únicamente una estructura JSON válida con el siguiente formato:
       });
     } catch (error: any) {
       const publicError = mapToGeminiPublicError(error);
-      console.error("[Error /api/ocr-extract]:", error?.message || String(error));
+      console.error("[Error /api/ocr-extract]", {
+        code: publicError.code,
+        status: publicError.status,
+      });
       return res.status(publicError.status).json({
         error: publicError.code,
         message: publicError.message,
@@ -356,7 +365,10 @@ Responde únicamente en formato JSON con la siguiente estructura:
       });
     } catch (error: any) {
       const publicError = mapToGeminiPublicError(error);
-      console.error("[Error /api/analyze-image]:", error?.message || String(error));
+      console.error("[Error /api/analyze-image]", {
+        code: publicError.code,
+        status: publicError.status,
+      });
       return res.status(publicError.status).json({
         error: publicError.code,
         message: publicError.message,
@@ -506,7 +518,10 @@ Realiza un informe técnico riguroso de inspección visual en formato JSON estru
       });
     } catch (error: any) {
       const publicError = mapToGeminiPublicError(error);
-      console.error("[Error /api/inspector-ai-analyze]:", error?.message || String(error));
+      console.error("[Error /api/inspector-ai-analyze]", {
+        code: publicError.code,
+        status: publicError.status,
+      });
       return res.status(publicError.status).json({
         error: publicError.code,
         message: publicError.message,
@@ -578,7 +593,10 @@ Genera un informe analítico completo estructurado exactamente con el siguiente 
       });
     } catch (error: any) {
       const publicError = mapToGeminiPublicError(error);
-      console.error("[Error /api/generate-summary]:", error?.message || String(error));
+      console.error("[Error /api/generate-summary]", {
+        code: publicError.code,
+        status: publicError.status,
+      });
       return res.status(publicError.status).json({
         error: publicError.code,
         message: publicError.message,
@@ -660,7 +678,10 @@ Responde únicamente en formato JSON con la estructura:
       });
     } catch (error: any) {
       const publicError = mapToGeminiPublicError(error);
-      console.error("[Error /api/generate-checklist]:", error?.message || String(error));
+      console.error("[Error /api/generate-checklist]", {
+        code: publicError.code,
+        status: publicError.status,
+      });
       return res.status(publicError.status).json({
         error: publicError.code,
         message: publicError.message,

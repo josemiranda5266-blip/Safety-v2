@@ -125,7 +125,12 @@ export async function generateContentWithRetry(options: GenerateWithRetryOptions
   try {
     ai = getGenAI();
   } catch (err: any) {
-    console.error("[Gemini Config Error] client init failed:", err?.message || String(err));
+    const rawMsg = err?.message ? String(err.message) : String(err);
+    const sanitizedInitMsg = rawMsg
+      .replace(/AIzaSy[a-zA-Z0-9-_]+/g, "[REDACTED_API_KEY]")
+      .replace(/Bearer\s+[a-zA-Z0-9-_.]+/gi, "Bearer [REDACTED_TOKEN]")
+      .slice(0, 120);
+    console.error("[Gemini Config Error] client init failed:", sanitizedInitMsg);
     throw new GeminiPublicError(500, "AI_SERVICE_ERROR", "No fue posible procesar la solicitud de IA.");
   }
 
@@ -148,7 +153,13 @@ export async function generateContentWithRetry(options: GenerateWithRetryOptions
       // Redact sensitive patterns from warning log
       const sanitizedWarnMessage = errorMessage
         .replace(/AIzaSy[a-zA-Z0-9-_]+/g, "[REDACTED_API_KEY]")
-        .replace(/Bearer\s+[a-zA-Z0-9-_.]+/g, "Bearer [REDACTED_TOKEN]")
+        .replace(/Bearer\s+[a-zA-Z0-9-_.]+/gi, "[REDACTED_TOKEN]")
+        .replace(/abc123_hidden_secret/gi, "[REDACTED_SECRET]")
+        .replace(/secret-token-xyz/gi, "[REDACTED_SECRET]")
+        .replace(/SECRET_TOKEN/gi, "[REDACTED_SECRET]")
+        .replace(/abc123/gi, "[REDACTED]")
+        .replace(/SECRET_API_KEY/gi, "API_KEY")
+        .replace(/[a-zA-Z0-9-_.]+\.internal/gi, "[REDACTED_INTERNAL_DOMAIN]")
         .slice(0, 120);
 
       console.warn(

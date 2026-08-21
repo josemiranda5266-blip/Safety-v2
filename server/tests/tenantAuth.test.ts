@@ -3986,6 +3986,191 @@ export async function runAllTenantAuthTests(): Promise<{ total: number; passed: 
     }
   });
 
+  async function runLoggedRouteTest(
+    testName: string,
+    thrownError: Error & { status?: number; statusCode?: number },
+    forbiddenInHttp: string[],
+    forbiddenInLogs: string[],
+    expectedStatus: number,
+    expectedErrorCode: string,
+    expectedMessage?: string
+  ) {
+    await runTest(testName, async () => {
+      const aiRoutesModule = (await import("../routes/aiRoutes")).default;
+      const testApp = express();
+      testApp.use(express.json());
+      testApp.use(extractAuthUser);
+      testApp.use(aiRoutesModule);
+
+      await getOrCreateUserProfile("user_owner_a");
+
+      const { getGenAI } = await import("../services/gemini");
+      const originalApiKey = process.env.GEMINI_API_KEY;
+      process.env.GEMINI_API_KEY = "dummy_key_for_test";
+
+      const ai = getGenAI();
+      const originalGenerateContent = ai.models.generateContent;
+
+      ai.models.generateContent = async () => {
+        throw thrownError;
+      };
+
+      const { setGlobalAuthVerifier, resetGlobalAuthVerifier } = await import("../auth/verifier");
+      setGlobalAuthVerifier(new MockAuthVerifier());
+
+      // Capture logs
+      let logBuffer = "";
+      const originalConsoleError = console.error;
+      const originalConsoleWarn = console.warn;
+      const originalConsoleLog = console.log;
+
+      console.error = (...args: any[]) => {
+        logBuffer += args.map(arg => typeof arg === 'object' ? JSON.stringify(arg) : String(arg)).join(" ") + "\n";
+      };
+      console.warn = (...args: any[]) => {
+        logBuffer += args.map(arg => typeof arg === 'object' ? JSON.stringify(arg) : String(arg)).join(" ") + "\n";
+      };
+      console.log = (...args: any[]) => {
+        logBuffer += args.map(arg => typeof arg === 'object' ? JSON.stringify(arg) : String(arg)).join(" ") + "\n";
+      };
+
+      try {
+        const req = {
+          method: "POST",
+          url: "/chat-rag",
+          headers: {
+            authorization: "Bearer valid_token_owner_a",
+            "content-type": "application/json",
+          },
+          body: { question: "Prueba de error" },
+          socket: { remoteAddress: "127.0.0.1" },
+          connection: { remoteAddress: "127.0.0.1" },
+        };
+        const res = createMockResponse();
+        const listeners: Record<string, Array<() => void>> = {};
+        (res as any).on = (event: string, cb: any) => {
+          if (!listeners[event]) listeners[event] = [];
+          listeners[event].push(cb);
+        };
+
+        await new Promise<void>((resolve) => {
+          res.onEnd = () => {
+            if (listeners["finish"]) listeners["finish"].forEach((cb) => cb());
+            if (listeners["close"]) listeners["close"].forEach((cb) => cb());
+            resolve();
+          };
+          (testApp as any).handle(req as any, res as any, (err: any) => resolve());
+        });
+
+        // Restore logs first
+        console.error = originalConsoleError;
+        console.warn = originalConsoleWarn;
+        console.log = originalConsoleLog;
+
+        assert(res.statusCode === expectedStatus, `Debe devolver HTTP ${expectedStatus}, pero devolvió ${res.statusCode}`);
+        assert(res.jsonData !== null, "Debe devolver datos JSON");
+        
+        const jsonStr = JSON.stringify(res.jsonData);
+        assert(res.jsonData?.error === expectedErrorCode, `El código de error debe ser ${expectedErrorCode}, pero fue ${res.jsonData?.error}`);
+        if (expectedMessage) {
+          assert(res.jsonData?.message === expectedMessage, `El mensaje debe ser ${expectedMessage}`);
+        }
+
+        // Verify no forbidden strings are present in the HTTP response body
+        for (const forbidden of forbiddenInHttp) {
+          assert(!jsonStr.includes(forbidden), `La respuesta HTTP no debe incluir "${forbidden}"`);
+        }
+
+        // Verify no forbidden strings are present in the captured logs
+        for (const forbidden of forbiddenInLogs) {
+          assert(!logBuffer.includes(forbidden), `Los logs capturados no deben incluir "${forbidden}"`);
+        }
+      } finally {
+        console.error = originalConsoleError;
+        console.warn = originalConsoleWarn;
+        console.log = originalConsoleLog;
+        ai.models.generateContent = originalGenerateContent;
+        process.env.GEMINI_API_KEY = originalApiKey;
+        resetGlobalAuthVerifier();
+      }
+    });
+  }
+
+  // Regression Tests for Hallazgo 3 final logging & response security
+  const testErr1 = new Error("API call failed: SECRET_API_KEY=abc123_hidden_secret");
+  await runLoggedRouteTest(
+    "TEST G3-K (TEST 1): Error con SECRET_API_KEY no se propaga a HTTP ni a logs",
+    testErr1,
+    ["abc123_hidden_secret", "SECRET_API_KEY"],
+    ["abc123_hidden_secret", "SECRET_API_KEY"],
+    500,
+    "AI_SERVICE_ERROR"
+  );
+
+  const testErr2 = new Error("Request failed with Authorization: Bearer secret-token-xyz");
+  await runLoggedRouteTest(
+    "TEST G3-L (TEST 2): Error con Authorization: Bearer SECRET_TOKEN no se propaga a HTTP ni a logs",
+    testErr2,
+    ["secret-token-xyz", "Bearer"],
+    ["secret-token-xyz", "Bearer"],
+    500,
+    "AI_SERVICE_ERROR"
+  );
+
+  const testErr3 = new Error("Failed validation for API Key: AIzaSySECRET123");
+  await runLoggedRouteTest(
+    "TEST G3-M (TEST 3): Error con AIzaSySECRET123 no se propaga a HTTP ni a logs",
+    testErr3,
+    ["AIzaSySECRET123"],
+    ["AIzaSySECRET123"],
+    500,
+    "AI_SERVICE_ERROR"
+  );
+
+  const testErr4 = new Error("Unable to connect to https://project.internal/gcp");
+  testErr4.stack = "Error: Unable to connect\n    at /app/server/secret.ts:45:12";
+  await runLoggedRouteTest(
+    "TEST G3-N (TEST 4): Error con stack trace y ruta interna no se propaga a HTTP ni a logs",
+    testErr4,
+    ["project.internal", "secret.ts", "stack"],
+    ["secret.ts", "stack", "project.internal"],
+    500,
+    "AI_SERVICE_ERROR"
+  );
+
+  const testErr5 = new Error("Some completely unknown network error");
+  await runLoggedRouteTest(
+    "TEST G3-O (TEST 5): Error desconocido devuelve 500 y mensaje amigable",
+    testErr5,
+    ["Some completely unknown network error"],
+    [],
+    500,
+    "AI_SERVICE_ERROR",
+    "No fue posible procesar la solicitud de IA."
+  );
+
+  const testErr6 = new Error("RESOURCE_EXHAUSTED: quota exceeded 429");
+  await runLoggedRouteTest(
+    "TEST G3-P (TEST 6): Error 429 devuelve 429 y mensaje amigable",
+    testErr6,
+    ["quota exceeded 429"],
+    [],
+    429,
+    "RATE_LIMIT_EXHAUSTED",
+    "Demasiadas solicitudes. Intenta nuevamente más tarde."
+  );
+
+  const testErr7 = new Error("UNAVAILABLE: 503 high demand");
+  await runLoggedRouteTest(
+    "TEST G3-Q (TEST 7): Error 503 devuelve 503 y mensaje amigable",
+    testErr7,
+    ["UNAVAILABLE: 503", "high demand"],
+    [],
+    503,
+    "SERVICE_UNAVAILABLE",
+    "El servicio de IA no está disponible temporalmente."
+  );
+
   const passed = testResults.filter((r) => r.passed).length;
   const failed = testResults.filter((r) => !r.passed).length;
 

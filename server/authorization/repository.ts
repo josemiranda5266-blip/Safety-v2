@@ -19,6 +19,7 @@ export interface MembershipRepository {
 export interface AuthorizationRepository {
   organizations: OrganizationRepository;
   memberships: MembershipRepository;
+  healthCheck?(): Promise<boolean> | boolean;
   clear(): Promise<void> | void;
 }
 
@@ -90,6 +91,10 @@ export class InMemoryAuthorizationRepository implements AuthorizationRepository 
   constructor() {
     this.organizations = new InMemoryOrganizationRepository();
     this.memberships = new InMemoryMembershipRepository();
+  }
+
+  async healthCheck(): Promise<boolean> {
+    return true;
   }
 
   clear(): void {

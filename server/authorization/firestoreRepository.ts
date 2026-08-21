@@ -342,6 +342,17 @@ export class FirestoreAuthorizationRepository implements AuthorizationRepository
     this.memberships = new FirestoreMembershipRepository(this.db);
   }
 
+  async healthCheck(): Promise<boolean> {
+    try {
+      // Light read check on organizations collection
+      await this.db.collection("organizations").limit(1).get();
+      return true;
+    } catch (error) {
+      console.error("[FirestoreAuthorizationRepository] Health check failed:", error);
+      return false;
+    }
+  }
+
   async clear(): Promise<void> {
     await this.organizations.clear();
     await this.memberships.clear();

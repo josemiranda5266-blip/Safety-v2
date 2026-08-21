@@ -10,6 +10,11 @@ import userRoutes from "./server/routes/userRoutes";
 import companyRoutes from "./server/routes/companyRoutes";
 import establishmentRoutes from "./server/routes/establishmentRoutes";
 import employeeRoutes from "./server/routes/employeeRoutes";
+import {
+  initializeAuthorizationRepository,
+  getAuthorizationRepository,
+} from "./server/authorization/store";
+import { InMemoryAuthorizationRepository } from "./server/authorization/repository";
 
 dotenv.config();
 
@@ -56,6 +61,24 @@ app.use("/api/v2/employees", employeeRoutes);
 
 // Vite Middleware for dev or static server in prod
 async function startServer() {
+  try {
+    // 1. Initialize Authorization Repository (Validates config, Firestore Admin, Health Check & Fail-Closed rules)
+    await initializeAuthorizationRepository();
+
+    // 2. Explicit production check: ensure active repository is NOT InMemory
+    if (
+      process.env.NODE_ENV === "production" &&
+      getAuthorizationRepository() instanceof InMemoryAuthorizationRepository
+    ) {
+      throw new Error(
+        "CRITICAL SECURITY ERROR: Production authorization repository cannot be InMemory."
+      );
+    }
+  } catch (err) {
+    console.error("[CRITICAL STARTUP ERROR] Failed to initialize authorization repository:", err);
+    process.exit(1);
+  }
+
   if (process.env.NODE_ENV !== "production") {
     const vite = await createViteServer({
       server: { middlewareMode: true },

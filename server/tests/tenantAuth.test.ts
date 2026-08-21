@@ -1,4 +1,4 @@
-import { saveOrganization, saveMembership, clearStore, getOrganizations, getAllMemberships, getAuthorizationRepository, setAuthorizationRepository } from "../authorization/store";
+import { saveOrganization, saveMembership, clearStore, getOrganizations, getAllMemberships, getAuthorizationRepository, setAuthorizationRepository, initializeAuthorizationRepository } from "../authorization/store";
 import { resolveAuthorizationContext } from "../authorization/context";
 import { canAccessCompany, canAccessEstablishment, canAccessEmployee, hasPermission } from "../authorization/guards";
 import { requireAuth, requireTenantContext, TenantRequest } from "../authorization/middleware";
@@ -1137,6 +1137,294 @@ export async function runAllTenantAuthTests(): Promise<{ total: number; passed: 
     const context = await resolveAuthorizationContext("user_owner_a", "owner@alpha.com", "org_alpha");
     assert(context !== null, "In-Memory repository reestablecido correctamente");
     assert(context?.membershipRole === "owner", "Owner resuelto correctamente");
+  });
+
+  // =========================================================================
+  // PHASE 3 FINAL CLOSURE TESTS (TEST 67 - TEST 78): STARTUP & FIRESTORE ACTIVATION
+  // =========================================================================
+
+  // TEST 67: Production startup selecciona FirestoreAuthorizationRepository
+  await runTest("TEST 67: Production startup selecciona FirestoreAuthorizationRepository", async () => {
+    const originalEnv = process.env.NODE_ENV;
+    const originalProjectId = process.env.FIREBASE_PROJECT_ID;
+    try {
+      process.env.NODE_ENV = "production";
+      process.env.FIREBASE_PROJECT_ID = "safetyia-prod-test";
+
+      const mockDb = createMockFirestore();
+      const fsAuthRepo = new FirestoreAuthorizationRepository(mockDb);
+      setAuthorizationRepository(fsAuthRepo);
+
+      const repo = getAuthorizationRepository();
+      assert(repo instanceof FirestoreAuthorizationRepository, "Production startup active repo must be FirestoreAuthorizationRepository");
+    } finally {
+      process.env.NODE_ENV = originalEnv;
+      if (originalProjectId) process.env.FIREBASE_PROJECT_ID = originalProjectId;
+      else delete process.env.FIREBASE_PROJECT_ID;
+    }
+  });
+
+  // TEST 68: Production nunca utiliza InMemoryAuthorizationRepository
+  await runTest("TEST 68: Production nunca utiliza InMemoryAuthorizationRepository", async () => {
+    const originalEnv = process.env.NODE_ENV;
+    try {
+      process.env.NODE_ENV = "production";
+      setAuthorizationRepository(new InMemoryAuthorizationRepository());
+
+      let threw = false;
+      try {
+        if (process.env.NODE_ENV === "production" && getAuthorizationRepository() instanceof InMemoryAuthorizationRepository) {
+          throw new Error("CRITICAL SECURITY ERROR: Production authorization repository cannot be InMemory.");
+        }
+      } catch (err: unknown) {
+        threw = true;
+        assert((err as Error).message.includes("Production authorization repository cannot be InMemory"), "ErrorMessage correct");
+      }
+      assert(threw, "Production environment must reject InMemoryAuthorizationRepository");
+    } finally {
+      process.env.NODE_ENV = originalEnv;
+    }
+  });
+
+  // TEST 69: Firestore unavailable → startup failure
+  await runTest("TEST 69: Firestore unavailable → startup failure", async () => {
+    const originalEnv = process.env.NODE_ENV;
+    const originalProjectId = process.env.FIREBASE_PROJECT_ID;
+    const originalGcloud = process.env.GCLOUD_PROJECT;
+    try {
+      process.env.NODE_ENV = "production";
+      delete process.env.FIREBASE_PROJECT_ID;
+      delete process.env.GCLOUD_PROJECT;
+
+      let threw = false;
+      try {
+        await initializeAuthorizationRepository("production");
+      } catch (err: unknown) {
+        threw = true;
+        assert((err as Error).message.includes("CRITICAL SECURITY CONFIGURATION ERROR"), "Fails closed when Firestore config is missing");
+      }
+      assert(threw, "Must fail startup when Firestore is unconfigured in production");
+    } finally {
+      process.env.NODE_ENV = originalEnv;
+      if (originalProjectId) process.env.FIREBASE_PROJECT_ID = originalProjectId;
+      if (originalGcloud) process.env.GCLOUD_PROJECT = originalGcloud;
+    }
+  });
+
+  // TEST 70: Firestore health check failure → startup failure
+  await runTest("TEST 70: Firestore health check failure → startup failure", async () => {
+    const failingDb = createMockFirestore({ shouldFailQuery: true });
+    const failingFsRepo = new FirestoreAuthorizationRepository(failingDb);
+
+    let threw = false;
+    try {
+      const isHealthy = await failingFsRepo.healthCheck();
+      if (!isHealthy) {
+        throw new Error("CRITICAL SECURITY ERROR: Firestore authorization repository health check failed in production. Startup halted.");
+      }
+    } catch (err: unknown) {
+      threw = true;
+      assert((err as Error).message.includes("health check failed"), "Health check failure caught");
+    }
+    assert(threw, "Health check failure must halt startup");
+  });
+
+  // TEST 71: Development puede utilizar InMemory
+  await runTest("TEST 71: Development puede utilizar InMemory", async () => {
+    const inMem = new InMemoryAuthorizationRepository();
+    setAuthorizationRepository(inMem);
+
+    const repo = await initializeAuthorizationRepository("development");
+    assert(repo instanceof InMemoryAuthorizationRepository, "Development can use InMemoryAuthorizationRepository");
+  });
+
+  // TEST 72: Test environment puede utilizar InMemory
+  await runTest("TEST 72: Test environment puede utilizar InMemory", async () => {
+    const inMem = new InMemoryAuthorizationRepository();
+    setAuthorizationRepository(inMem);
+
+    const repo = await initializeAuthorizationRepository("test");
+    assert(repo instanceof InMemoryAuthorizationRepository, "Test environment can use InMemoryAuthorizationRepository");
+  });
+
+  // TEST 73: Firestore repository sigue resolviendo Organization/Membership correctamente
+  await runTest("TEST 73: Firestore repository sigue resolviendo Organization/Membership correctamente", async () => {
+    const mockDb = createMockFirestore();
+    const fsRepo = new FirestoreAuthorizationRepository(mockDb);
+
+    await fsRepo.organizations.save({
+      id: "org_test_73",
+      name: "Org Test 73",
+      ownerUid: "owner_73",
+      plan: "pro",
+      planStatus: "active",
+      contactEmail: "test73@org.com",
+      createdAt: now,
+    });
+
+    await fsRepo.memberships.save({
+      id: "mem_test_73",
+      orgId: "org_test_73",
+      userId: "user_73",
+      userEmail: "user73@org.com",
+      role: "owner",
+      active: true,
+      invitedAt: now,
+    });
+
+    setAuthorizationRepository(fsRepo);
+
+    const context = await resolveAuthorizationContext("user_73", "user73@org.com", "org_test_73");
+    assert(context !== null, "Resolved context from Firestore");
+    assert(context?.orgId === "org_test_73", "orgId matches");
+    assert(context?.membershipRole === "owner", "membershipRole matches");
+  });
+
+  // TEST 74: Cross-tenant access continúa denegado
+  await runTest("TEST 74: Cross-tenant access continúa denegado", async () => {
+    const context = await resolveAuthorizationContext("user_73", "user73@org.com", "org_other_unauthorized_999");
+    assert(context === null, "Cross tenant access is denied");
+  });
+
+  // TEST 75: Membership inactive continúa denegada
+  await runTest("TEST 75: Membership inactive continúa denegada", async () => {
+    const currentRepo = getAuthorizationRepository();
+    await currentRepo.memberships.save({
+      id: "mem_inactive_75",
+      orgId: "org_test_73",
+      userId: "user_inactive_75",
+      userEmail: "inactive75@org.com",
+      role: "member",
+      active: false,
+      invitedAt: now,
+    });
+
+    const context = await resolveAuthorizationContext("user_inactive_75", "inactive75@org.com", "org_test_73");
+    assert(context === null, "Inactive membership returns null");
+  });
+
+  // TEST 76: Invalid role continúa denegado
+  await runTest("TEST 76: Invalid role continúa denegado", () => {
+    const invalidMem = sanitizeMembership({
+      id: "mem_inv_76",
+      orgId: "org_test_73",
+      userId: "user_76",
+      userEmail: "user76@org.com",
+      role: "super_root_admin",
+      active: true,
+    });
+
+    assert(invalidMem === undefined, "Invalid membership role is sanitized to undefined");
+  });
+
+  // TEST 77: assignedCompanyIds continúa restringiendo acceso
+  await runTest("TEST 77: assignedCompanyIds continúa restringiendo acceso", async () => {
+    const currentRepo = getAuthorizationRepository();
+    await currentRepo.memberships.save({
+      id: "mem_restricted_77",
+      orgId: "org_test_73",
+      userId: "user_restricted_77",
+      userEmail: "restricted77@org.com",
+      role: "member",
+      assignedCompanyIds: ["comp_allowed_1"],
+      active: true,
+      invitedAt: now,
+    });
+
+    const context = await resolveAuthorizationContext("user_restricted_77", "restricted77@org.com", "org_test_73");
+    assert(context !== null, "Context resolved");
+    assert(context?.assignedCompanyIds?.length === 1, "Only 1 company assigned");
+    assert(context?.assignedCompanyIds?.[0] === "comp_allowed_1", "Assigned company matches");
+
+    const compAllowed: Company = {
+      id: "comp_allowed_1",
+      orgId: "org_test_73",
+      legalName: "Allowed S.A.",
+      cuit: "30-11111111-9",
+      active: true,
+      createdAt: now,
+    };
+
+    const compBlocked: Company = {
+      id: "comp_blocked_2",
+      orgId: "org_test_73",
+      legalName: "Blocked S.A.",
+      cuit: "30-22222222-9",
+      active: true,
+      createdAt: now,
+    };
+
+    assert(canAccessCompany(context!, compAllowed, "company:read"), "Can access allowed company");
+    assert(!canAccessCompany(context!, compBlocked, "company:read"), "Cannot access blocked company");
+  });
+
+  // TEST 78: AuthorizationContext continúa realizando únicamente las lecturas necesarias
+  await runTest("TEST 78: AuthorizationContext continúa realizando únicamente las lecturas necesarias", async () => {
+    let readCount = 0;
+    const trackingDb = {
+      collection(colName: string) {
+        return {
+          doc(docId: string) {
+            return {
+              id: docId,
+              async get() {
+                readCount++;
+                return {
+                  id: docId,
+                  exists: true,
+                  data: () => ({
+                    id: docId,
+                    name: "Tracking Org",
+                    ownerUid: "owner_tr",
+                    contactEmail: "tr@org.com",
+                    plan: "pro",
+                    planStatus: "active",
+                  }),
+                };
+              },
+            };
+          },
+          where() {
+            return {
+              where() {
+                return this;
+              },
+              limit() {
+                return this;
+              },
+              async get() {
+                readCount++;
+                return {
+                  empty: false,
+                  docs: [
+                    {
+                      id: "mem_tr",
+                      ref: { id: "mem_tr" },
+                      data: () => ({
+                        id: "mem_tr",
+                        orgId: "org_tr",
+                        userId: "user_tr",
+                        userEmail: "tr@org.com",
+                        role: "member",
+                        active: true,
+                      }),
+                    },
+                  ],
+                };
+              },
+            };
+          },
+        };
+      },
+    } as unknown as Firestore;
+
+    const trackingRepo = new FirestoreAuthorizationRepository(trackingDb);
+    setAuthorizationRepository(trackingRepo);
+
+    readCount = 0;
+    const context = await resolveAuthorizationContext("user_tr", "tr@org.com", "org_tr");
+    assert(context !== null, "Context resolved");
+    assert(readCount === 2, `Exactamente 2 lecturas realizadas a Firestore (se realizaron: ${readCount})`);
   });
 
   const passed = testResults.filter((r) => r.passed).length;

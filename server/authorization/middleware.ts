@@ -27,7 +27,7 @@ export function requireAuth(req: TenantRequest, res: Response, next: NextFunctio
  * Resolves and attaches authoritative AuthorizationContext to the request.
  * If user lacks active membership in the target organization, returns 403.
  */
-export function requireTenantContext(req: TenantRequest, res: Response, next: NextFunction): void {
+export async function requireTenantContext(req: TenantRequest, res: Response, next: NextFunction): Promise<void> {
   if (!req.identity || !req.userUid) {
     res.status(401).json({
       error: "No autenticado",
@@ -45,7 +45,7 @@ export function requireTenantContext(req: TenantRequest, res: Response, next: Ne
   const userEmail = req.identity.email || req.userEmail || "usuario@safetyia.com";
   const platformRole = req.identity.platformRole;
 
-  const context = resolveAuthorizationContext(req.userUid, userEmail, requestedOrgId, platformRole);
+  const context = await resolveAuthorizationContext(req.userUid, userEmail, requestedOrgId, platformRole);
 
   if (!context) {
     res.status(403).json({

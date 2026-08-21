@@ -113,6 +113,26 @@ service cloud.firestore {
       allow update: if isExistingOwner() && request.resource.data.userId == request.auth.uid;
     }
 
+    // Multi-tenant Organizations
+    match /organizations/{orgId} {
+      allow read: if isSignedIn() && (
+        exists(/databases/$(database)/documents/memberships/$(orgId + '_' + request.auth.uid)) ||
+        isAdmin()
+      );
+      // Authority writes strictly restricted to server / admin
+      allow write: if isAdmin();
+    }
+
+    // Multi-tenant Memberships
+    match /memberships/{membershipId} {
+      allow read: if isSignedIn() && (
+        resource.data.userId == request.auth.uid ||
+        isAdmin()
+      );
+      // Authority writes strictly restricted to server / admin
+      allow write: if isAdmin();
+    }
+
     // Credit Transactions (Immutable audit trail)
     match /creditTransactions/{txId} {
       allow read: if isExistingOwner() || isAdmin();

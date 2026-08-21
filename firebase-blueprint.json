@@ -129,6 +129,42 @@
         "success": { "type": "boolean" }
       },
       "required": ["userId", "operationType", "creditsDeducted", "timestamp"]
+    },
+    "Organization": {
+      "title": "Organization",
+      "description": "Multi-tenant organization account",
+      "properties": {
+        "id": { "type": "string" },
+        "name": { "type": "string" },
+        "legalName": { "type": "string" },
+        "taxId": { "type": "string" },
+        "ownerUid": { "type": "string" },
+        "plan": { "type": "string", "enum": ["free", "pro", "pro_plus", "enterprise"] },
+        "planStatus": { "type": "string", "enum": ["active", "trial", "past_due", "cancelled"] },
+        "contactEmail": { "type": "string" },
+        "contactPhone": { "type": "string" },
+        "address": { "type": "string" },
+        "createdAt": { "type": "string" },
+        "updatedAt": { "type": "string" }
+      },
+      "required": ["id", "name", "ownerUid", "plan", "planStatus", "contactEmail"]
+    },
+    "Membership": {
+      "title": "Membership",
+      "description": "User membership within an organization tenant",
+      "properties": {
+        "id": { "type": "string" },
+        "orgId": { "type": "string" },
+        "userId": { "type": "string" },
+        "userEmail": { "type": "string" },
+        "userName": { "type": "string" },
+        "role": { "type": "string", "enum": ["owner", "admin", "member", "auditor"] },
+        "assignedCompanyIds": { "type": "array", "items": { "type": "string" } },
+        "active": { "type": "boolean" },
+        "invitedAt": { "type": "string" },
+        "joinedAt": { "type": "string" }
+      },
+      "required": ["id", "orgId", "userId", "userEmail", "role", "active"]
     }
   }
 }

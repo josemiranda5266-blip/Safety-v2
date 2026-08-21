@@ -1,25 +1,25 @@
 import { Organization, Membership } from "../../src/types/tenant";
 
 export interface OrganizationRepository {
-  getById(id: string): Organization | undefined;
-  save(org: Organization): Organization;
-  getAll(): Organization[];
-  clear(): void;
+  getById(id: string): Promise<Organization | undefined> | Organization | undefined;
+  save(org: Organization): Promise<Organization> | Organization;
+  getAll(): Promise<Organization[]> | Organization[];
+  clear(): Promise<void> | void;
 }
 
 export interface MembershipRepository {
-  getByOrgAndUser(orgId: string, userId: string): Membership | undefined;
-  getById(id: string): Membership | undefined;
-  getByUser(userId: string): Membership[];
-  save(membership: Membership): Membership;
-  getAll(): Membership[];
-  clear(): void;
+  getByOrgAndUser(orgId: string, userId: string): Promise<Membership | undefined> | Membership | undefined;
+  getById(id: string): Promise<Membership | undefined> | Membership | undefined;
+  getByUser(userId: string): Promise<Membership[]> | Membership[];
+  save(membership: Membership): Promise<Membership> | Membership;
+  getAll(): Promise<Membership[]> | Membership[];
+  clear(): Promise<void> | void;
 }
 
 export interface AuthorizationRepository {
   organizations: OrganizationRepository;
   memberships: MembershipRepository;
-  clear(): void;
+  clear(): Promise<void> | void;
 }
 
 export class InMemoryOrganizationRepository implements OrganizationRepository {

@@ -3,9 +3,10 @@ import {
   AuthorizationRepository,
   InMemoryAuthorizationRepository,
 } from "./repository";
+import { FirestoreAuthorizationRepository } from "./firestoreRepository";
 
-// Default in-memory repository instance for Phase 2
-// In Phase 3, this can be swapped with FirestoreAuthorizationRepository without modifying consumers
+// Current active repository instance
+// Can be InMemoryAuthorizationRepository or FirestoreAuthorizationRepository
 let currentAuthRepository: AuthorizationRepository = new InMemoryAuthorizationRepository();
 
 export function getAuthorizationRepository(): AuthorizationRepository {
@@ -16,39 +17,47 @@ export function setAuthorizationRepository(repo: AuthorizationRepository): void 
   currentAuthRepository = repo;
 }
 
-export function getOrganization(orgId: string): Organization | undefined {
-  return currentAuthRepository.organizations.getById(orgId);
+/**
+ * Initializes Firestore as the active Authorization repository.
+ */
+export function useFirestoreAuthorizationRepository(): FirestoreAuthorizationRepository {
+  const repo = new FirestoreAuthorizationRepository();
+  currentAuthRepository = repo;
+  return repo;
 }
 
-export function saveOrganization(org: Organization): Organization {
-  return currentAuthRepository.organizations.save(org);
+export async function getOrganization(orgId: string): Promise<Organization | undefined> {
+  return await currentAuthRepository.organizations.getById(orgId);
 }
 
-export function getMembership(orgId: string, userId: string): Membership | undefined {
-  return currentAuthRepository.memberships.getByOrgAndUser(orgId, userId);
+export async function saveOrganization(org: Organization): Promise<Organization> {
+  return await currentAuthRepository.organizations.save(org);
 }
 
-export function getMembershipById(membershipId: string): Membership | undefined {
-  return currentAuthRepository.memberships.getById(membershipId);
+export async function getMembership(orgId: string, userId: string): Promise<Membership | undefined> {
+  return await currentAuthRepository.memberships.getByOrgAndUser(orgId, userId);
 }
 
-export function getMembershipsByUser(userId: string): Membership[] {
-  return currentAuthRepository.memberships.getByUser(userId);
+export async function getMembershipById(membershipId: string): Promise<Membership | undefined> {
+  return await currentAuthRepository.memberships.getById(membershipId);
 }
 
-export function saveMembership(membership: Membership): Membership {
-  return currentAuthRepository.memberships.save(membership);
+export async function getMembershipsByUser(userId: string): Promise<Membership[]> {
+  return await currentAuthRepository.memberships.getByUser(userId);
 }
 
-export function getOrganizations(): Organization[] {
-  return currentAuthRepository.organizations.getAll();
+export async function saveMembership(membership: Membership): Promise<Membership> {
+  return await currentAuthRepository.memberships.save(membership);
 }
 
-export function getAllMemberships(): Membership[] {
-  return currentAuthRepository.memberships.getAll();
+export async function getOrganizations(): Promise<Organization[]> {
+  return await currentAuthRepository.organizations.getAll();
 }
 
-export function clearStore(): void {
-  currentAuthRepository.clear();
+export async function getAllMemberships(): Promise<Membership[]> {
+  return await currentAuthRepository.memberships.getAll();
 }
 
+export async function clearStore(): Promise<void> {
+  await currentAuthRepository.clear();
+}

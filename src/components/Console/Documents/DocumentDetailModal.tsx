@@ -17,12 +17,30 @@ import {
   Layers, 
   CheckCircle2, 
   AlertTriangle,
-  FileCheck
+  FileCheck,
+  Sparkles,
+  Loader2,
+  Award,
+  AlertOctagon
 } from 'lucide-react';
 import { ProfessionalDocument } from '../../../types/documentManagement';
 import { getAlertLevelStyle } from '../../../utils/expirationEngine';
 import { documentManagementService } from '../../../services/documentManagementService';
 import { DocumentRenewModal } from './DocumentRenewModal';
+
+interface AuditReport {
+  complianceScore: number;
+  complianceStatus: string;
+  executiveAuditVerdict: string;
+  legalBasis: string[];
+  conformities: string[];
+  findingsAndGaps: Array<{
+    finding: string;
+    severity: 'Alta' | 'Media' | 'Baja';
+    normativeImpact: string;
+  }>;
+  actionPlanRecommendations: string[];
+}
 
 interface DocumentDetailModalProps {
   isOpen: boolean;
@@ -39,16 +57,59 @@ export const DocumentDetailModal: React.FC<DocumentDetailModalProps> = ({
   onDocumentUpdated,
   onDocumentDeleted,
 }) => {
-  const [activeTab, setActiveTab] = useState<'info' | 'history'>('info');
+  const [activeTab, setActiveTab] = useState<'info' | 'history' | 'audit'>('info');
   const [isRenewOpen, setIsRenewOpen] = useState(false);
   const [isDownloading, setIsDownloading] = useState(false);
   const [isDeleting, setIsDeleting] = useState(false);
   const [confirmDelete, setConfirmDelete] = useState(false);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
 
+  // AI Audit State
+  const [auditReport, setAuditReport] = useState<AuditReport | null>(null);
+  const [isLoadingAudit, setIsLoadingAudit] = useState(false);
+
   if (!isOpen) return null;
 
   const alertStyle = getAlertLevelStyle(document.expirationAlertLevel);
+
+  const handleRunAudit = async () => {
+    setIsLoadingAudit(true);
+    setErrorMsg(null);
+    try {
+      const token = localStorage.getItem('auth_token') || 'dev-token';
+      const res = await fetch('/api/audit-document-compliance', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify({
+          documentTitle: document.title,
+          category: document.category,
+          documentNumber: document.documentNumber,
+          issueDate: document.issueDate,
+          expirationDate: document.expirationDate,
+          responsibleName: document.responsibleName,
+          issuingOrganism: document.issuingOrganism,
+          notes: document.notes,
+          tags: document.tags,
+        }),
+      });
+
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}));
+        throw new Error(err.message || 'Error al ejecutar la auditoría con IA.');
+      }
+
+      const data = await res.json();
+      setAuditReport(data);
+    } catch (err: any) {
+      console.error('Error running audit:', err);
+      setErrorMsg(err.message || 'No se pudo completar la auditoría con IA.');
+    } finally {
+      setIsLoadingAudit(false);
+    }
+  };
 
   const handleDownload = async (version?: number) => {
     setIsDownloading(true);
@@ -140,6 +201,16 @@ export const DocumentDetailModal: React.FC<DocumentDetailModalProps> = ({
               }`}
             >
               <History className="w-4 h-4" /> Historial de Versiones ({(document.versionHistory || []).length || 1})
+            </button>
+            <button
+              onClick={() => setActiveTab('audit')}
+              className={`py-3 px-4 text-xs font-bold border-b-2 transition-all flex items-center gap-2 ${
+                activeTab === 'audit'
+                  ? 'border-orange-500 text-orange-600 dark:text-orange-400'
+                  : 'border-transparent text-slate-500 hover:text-slate-800 dark:hover:text-slate-300'
+              }`}
+            >
+              <Sparkles className="w-4 h-4 text-amber-500" /> Auditoría Técnica con IA
             </button>
           </div>
 
@@ -315,7 +386,7 @@ export const DocumentDetailModal: React.FC<DocumentDetailModalProps> = ({
                   </div>
                 )}
               </div>
-            ) : (
+            ) : activeTab === 'history' ? (
               /* Version History Chain */
               <div className="space-y-4">
                 <p className="text-xs text-slate-500">
@@ -351,6 +422,162 @@ export const DocumentDetailModal: React.FC<DocumentDetailModalProps> = ({
                     </div>
                   ))}
                 </div>
+              </div>
+            ) : (
+              /* AI Technical & Legal Compliance Audit */
+              <div className="space-y-5">
+                {!auditReport && !isLoadingAudit && (
+                  <div className="p-6 rounded-2xl bg-gradient-to-br from-orange-500/5 via-amber-500/5 to-slate-50 dark:to-slate-800/40 border border-orange-500/20 text-center space-y-3">
+                    <div className="w-12 h-12 rounded-2xl bg-orange-500/10 text-orange-600 dark:text-orange-400 flex items-center justify-center mx-auto border border-orange-500/20">
+                      <Sparkles className="w-6 h-6" />
+                    </div>
+                    <h3 className="text-sm font-bold text-slate-900 dark:text-white">
+                      Auditoría Automática de Validez y Cumplimiento SRT
+                    </h3>
+                    <p className="text-xs text-slate-600 dark:text-slate-400 max-w-md mx-auto">
+                      Evalúa si este documento ({document.category}) cumple con las formalidades legales, periodicidades reglamentarias, firmas habilitantes y cláusulas obligatorias bajo la normativa argentina.
+                    </p>
+                    <button
+                      onClick={handleRunAudit}
+                      className="px-4 py-2 bg-gradient-to-r from-orange-500 to-amber-600 hover:from-orange-600 hover:to-amber-700 text-white font-bold text-xs rounded-xl shadow-md flex items-center gap-2 mx-auto active:scale-95 transition-all"
+                    >
+                      <Sparkles className="w-4 h-4" />
+                      <span>Ejecutar Auditoría con IA</span>
+                    </button>
+                  </div>
+                )}
+
+                {isLoadingAudit && (
+                  <div className="p-10 text-center space-y-3">
+                    <Loader2 className="w-8 h-8 text-orange-500 animate-spin mx-auto" />
+                    <p className="text-xs font-bold text-slate-900 dark:text-white">
+                      Auditando documento contra resoluciones SRT y marco legal...
+                    </p>
+                    <p className="text-[11px] text-slate-400">
+                      Verificando validez formal, firmas con matrícula, vigencia y anexos requeridos.
+                    </p>
+                  </div>
+                )}
+
+                {auditReport && !isLoadingAudit && (
+                  <div className="space-y-4">
+                    {/* Score & Verdict Card */}
+                    <div className="p-4 rounded-xl bg-slate-50 dark:bg-slate-800/60 border border-slate-200 dark:border-slate-700 flex items-center justify-between gap-4">
+                      <div>
+                        <span className="text-[11px] font-bold uppercase tracking-wider text-slate-400">
+                          Dictamen del Auditor IA
+                        </span>
+                        <h4 className="text-sm font-bold text-slate-900 dark:text-white mt-0.5">
+                          {auditReport.complianceStatus}
+                        </h4>
+                        <p className="text-xs text-slate-600 dark:text-slate-300 mt-1">
+                          {auditReport.executiveAuditVerdict}
+                        </p>
+                      </div>
+
+                      <div className="flex flex-col items-center justify-center p-3 rounded-xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 shrink-0">
+                        <span className={`text-2xl font-black ${
+                          auditReport.complianceScore >= 80
+                            ? 'text-emerald-600 dark:text-emerald-400'
+                            : auditReport.complianceScore >= 60
+                            ? 'text-amber-500'
+                            : 'text-rose-600 dark:text-rose-400'
+                        }`}>
+                          {auditReport.complianceScore}%
+                        </span>
+                        <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400">
+                          Conformidad
+                        </span>
+                      </div>
+                    </div>
+
+                    {/* Re-audit Button */}
+                    <div className="flex justify-end">
+                      <button
+                        onClick={handleRunAudit}
+                        className="text-xs text-orange-600 dark:text-orange-400 font-bold hover:underline flex items-center gap-1"
+                      >
+                        <RefreshCw className="w-3 h-3" /> Re-auditar
+                      </button>
+                    </div>
+
+                    {/* Legal Bases */}
+                    {auditReport.legalBasis && auditReport.legalBasis.length > 0 && (
+                      <div className="p-3 rounded-xl bg-blue-50/50 dark:bg-blue-950/20 border border-blue-200 dark:border-blue-800/60">
+                        <span className="text-[11px] font-bold uppercase tracking-wider text-blue-700 dark:text-blue-300 flex items-center gap-1 mb-1.5">
+                          <Award className="w-3.5 h-3.5" /> Marco Legal y Resoluciones Aplicables
+                        </span>
+                        <div className="flex flex-wrap gap-1.5">
+                          {auditReport.legalBasis.map((base, idx) => (
+                            <span key={idx} className="px-2 py-0.5 rounded text-xs bg-blue-100 dark:bg-blue-900/40 text-blue-800 dark:text-blue-200 font-medium">
+                              {base}
+                            </span>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+
+                    {/* Conformities */}
+                    {auditReport.conformities && auditReport.conformities.length > 0 && (
+                      <div className="p-3.5 rounded-xl bg-emerald-50/50 dark:bg-emerald-950/20 border border-emerald-200 dark:border-emerald-800/60 space-y-1.5">
+                        <span className="text-[11px] font-bold uppercase tracking-wider text-emerald-700 dark:text-emerald-400 flex items-center gap-1">
+                          <CheckCircle2 className="w-3.5 h-3.5" /> Puntos Conformes Identificados
+                        </span>
+                        <ul className="space-y-1">
+                          {auditReport.conformities.map((c, idx) => (
+                            <li key={idx} className="text-xs text-emerald-900 dark:text-emerald-200 flex items-start gap-1.5">
+                              <span className="text-emerald-500 font-bold">•</span>
+                              <span>{c}</span>
+                            </li>
+                          ))}
+                        </ul>
+                      </div>
+                    )}
+
+                    {/* Findings & Gaps */}
+                    {auditReport.findingsAndGaps && auditReport.findingsAndGaps.length > 0 && (
+                      <div className="p-3.5 rounded-xl bg-rose-50/50 dark:bg-rose-950/20 border border-rose-200 dark:border-rose-800/60 space-y-2">
+                        <span className="text-[11px] font-bold uppercase tracking-wider text-rose-700 dark:text-rose-400 flex items-center gap-1">
+                          <AlertOctagon className="w-3.5 h-3.5" /> Hallazgos y Omisiones Técnicas
+                        </span>
+                        <div className="space-y-2">
+                          {auditReport.findingsAndGaps.map((f, idx) => (
+                            <div key={idx} className="p-2.5 rounded-lg bg-white dark:bg-slate-900 border border-rose-100 dark:border-rose-900/60 text-xs">
+                              <div className="flex items-center justify-between mb-1">
+                                <span className="font-bold text-slate-900 dark:text-white">{f.finding}</span>
+                                <span className={`px-1.5 py-0.5 rounded text-[10px] font-bold ${
+                                  f.severity === 'Alta'
+                                    ? 'bg-rose-100 dark:bg-rose-900/60 text-rose-700 dark:text-rose-300'
+                                    : 'bg-amber-100 dark:bg-amber-900/60 text-amber-700 dark:text-amber-300'
+                                }`}>
+                                  Severidad {f.severity}
+                                </span>
+                              </div>
+                              <p className="text-[11px] text-slate-500">{f.normativeImpact}</p>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+
+                    {/* Action Plan */}
+                    {auditReport.actionPlanRecommendations && auditReport.actionPlanRecommendations.length > 0 && (
+                      <div className="p-3.5 rounded-xl bg-amber-50/50 dark:bg-amber-950/20 border border-amber-200 dark:border-amber-800/60 space-y-1.5">
+                        <span className="text-[11px] font-bold uppercase tracking-wider text-amber-800 dark:text-amber-300 flex items-center gap-1">
+                          <ShieldCheck className="w-3.5 h-3.5" /> Acciones Correctivas Recomendadas
+                        </span>
+                        <ul className="space-y-1">
+                          {auditReport.actionPlanRecommendations.map((action, idx) => (
+                            <li key={idx} className="text-xs text-amber-950 dark:text-amber-200 flex items-start gap-1.5">
+                              <span className="text-amber-500 font-bold">•</span>
+                              <span>{action}</span>
+                            </li>
+                          ))}
+                        </ul>
+                      </div>
+                    )}
+                  </div>
+                )}
               </div>
             )}
           </div>

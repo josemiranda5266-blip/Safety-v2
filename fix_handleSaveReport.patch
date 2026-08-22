@@ -1,0 +1,61 @@
+--- src/components/InspectorIA/InspectorIAScreen.tsx
++++ src/components/InspectorIA/InspectorIAScreen.tsx
+@@ -44,6 +44,8 @@
+ import { db } from '../../services/db';
+ import { exportReportToWord, exportReportToPDF } from '../../utils/reportExport';
+ import { useTenant } from '../../context/TenantContext';
++import { inspectionService } from '../../services/inspectionService';
++import { capaApi } from '../../services/capaApi';
+ 
+ // Realistic sample site photos for instant 1-click testing
+ const SAMPLE_SITE_IMAGES = [
+@@ -283,6 +285,38 @@
+   const handleSaveReport = async () => {
+     if (!generatedDraftReport) return;
+     await db.saveInspectionReport(generatedDraftReport);
++    
++    // Generate real Inspection record
++    if (activeCompany && selectedEstablishmentId) {
++      const newInspectionId = await inspectionService.createInspection({
++        companyId: activeCompany.id,
++        establishmentId: selectedEstablishmentId,
++        sectorId: '', // To be refined
++        date: new Date().toISOString().split('T')[0],
++        type: 'InspectorIA AI',
++        status: 'Closed',
++        findings: generatedDraftReport.findings.map(f => ({
++          id: f.id,
++          description: f.description,
++          hazard: f.hazardTitle,
++          risk: f.riskLevel,
++          severity: f.riskLevel === 'Crítico' ? 'Critical' : f.riskLevel === 'Alto' ? 'High' : f.riskLevel === 'Medio' ? 'Medium' : 'Low',
++          photoUrl: f.photoUrl,
++          location: siteLocation,
++          responsible: inspectorName,
++          dueDate: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString().split('T')[0],
++          status: 'Pendiente'
++        }))
++      });
++
++      // Generate CAPA actions for High/Critical
++      for (const finding of generatedDraftReport.findings) {
++        if (finding.riskLevel === 'Alto' || finding.riskLevel === 'Crítico') {
++          await capaApi.createCorrectiveAction({
++            companyId: activeCompany.id,
++            establishmentId: selectedEstablishmentId,
++            description: `[InspectorIA] ${finding.hazardTitle}: ${finding.description}`,
++            actionRequired: finding.suggestedAction,
++            responsibleName: 'Por asignar',
++            deadlineDate: new Date(Date.now() + 3 * 24 * 60 * 60 * 1000).toISOString().split('T')[0],
++            sourceType: 'Inspección',
++            sourceId: newInspectionId,
++            riskLevel: finding.riskLevel,
++            status: 'Pendiente'
++          }).catch(err => console.error("Error creating CAPA from InspectorIA", err));
++        }
++      }
++    }
++
+     loadData();
+     setSelectedReport(generatedDraftReport);
+     setGeneratedDraftReport(null);

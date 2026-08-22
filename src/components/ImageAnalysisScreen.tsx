@@ -7,10 +7,29 @@ import { exportHazardAnalysisPDF } from '../services/pdfExporter';
 export const ImageAnalysisScreen: React.FC = () => {
   const [selectedImage, setSelectedImage] = useState<string | null>(null);
   const [mimeType, setMimeType] = useState<string>('image/jpeg');
+  const [activityDescription, setActivityDescription] = useState<string>('');
   const [isAnalyzing, setIsAnalyzing] = useState(false);
   const [analysisResult, setAnalysisResult] = useState<HazardAnalysisResult | null>(null);
 
   const fileInputRef = useRef<HTMLInputElement>(null);
+
+  const QUICK_CRITICAL_TAGS = [
+    'Trabajos en Altura (>2m)',
+    'Riesgo Eléctrico / LOTO',
+    'Corte / Soldadura en Caliente',
+    'Espacio Confinado',
+    'Izaje y Cargas Suspendidas',
+    'Manejo Químico / Vapores',
+    'Uso de Herramientas Eléctricas',
+    'Excavaciones y Zanjas',
+    'Tránsito Peatonal y Vehicular',
+  ];
+
+  const handleAddTag = (tag: string) => {
+    if (!activityDescription.includes(tag)) {
+      setActivityDescription((prev) => (prev ? `${prev}. ${tag}` : tag));
+    }
+  };
 
   const handleImageUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
     if (e.target.files && e.target.files[0]) {
@@ -40,6 +59,7 @@ export const ImageAnalysisScreen: React.FC = () => {
       const data = await db.callAiApi<any>('/api/analyze-image', {
         imageBase64: base64Data,
         mimeType,
+        activityDescription,
         availableNormsContext: normsList,
       });
 
@@ -47,6 +67,7 @@ export const ImageAnalysisScreen: React.FC = () => {
         id: `haz_${Date.now()}`,
         date: new Date().toLocaleDateString('es-AR'),
         imagePreviewUrl: selectedImage,
+        activityDescription: activityDescription.trim() || undefined,
         overallAssessment: data.overallAssessment || 'Inspección visual completada.',
         riskLevel: data.riskLevel || 'Medio',
         hazards: data.hazards || [],
@@ -120,13 +141,48 @@ export const ImageAnalysisScreen: React.FC = () => {
               </button>
             </div>
 
+            {/* Activity & Critical Elements Description Box */}
+            <div className="p-4 rounded-2xl bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 space-y-3 text-left">
+              <div className="flex items-center justify-between">
+                <label className="text-xs font-bold text-slate-800 dark:text-slate-200 flex items-center gap-1.5">
+                  <FileText className="w-4 h-4 text-rose-500" />
+                  <span>Descripción de la Actividad & Elementos Críticos:</span>
+                </label>
+                <span className="text-[10px] text-slate-400 font-medium">
+                  {activityDescription.length} caracteres
+                </span>
+              </div>
+              <p className="text-[11px] text-slate-500 dark:text-slate-400 leading-snug">
+                Describe la tarea o elementos críticos (alturas, bloqueo eléctrico, herramientas, químicos) para que la IA los analice conjuntamente con la fotografía.
+              </p>
+              <textarea
+                value={activityDescription}
+                onChange={(e) => setActivityDescription(e.target.value)}
+                rows={3}
+                placeholder="Ej: Montaje de andamio a 4m de altura con uso de amoladora angular. Verificar si se usan arneses anclados y protección ocular..."
+                className="w-full p-3 rounded-xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 text-xs text-slate-900 dark:text-white placeholder:text-slate-400 focus:ring-2 focus:ring-rose-500 outline-none resize-none"
+              />
+              <div className="flex flex-wrap gap-1.5 pt-1">
+                {QUICK_CRITICAL_TAGS.map((tag) => (
+                  <button
+                    key={tag}
+                    type="button"
+                    onClick={() => handleAddTag(tag)}
+                    className="px-2 py-1 rounded-lg text-[10px] font-semibold bg-rose-500/10 text-rose-600 dark:text-rose-400 hover:bg-rose-500/20 border border-rose-500/20 transition-all"
+                  >
+                    + {tag}
+                  </button>
+                ))}
+              </div>
+            </div>
+
             <button
               onClick={handleAnalyzePhoto}
               disabled={isAnalyzing}
               className="w-full py-3.5 rounded-xl bg-gradient-to-r from-rose-500 to-pink-600 text-white font-bold text-sm shadow-lg shadow-rose-500/25 disabled:opacity-50 transition-all flex items-center justify-center gap-2"
             >
               <Sparkles className="w-4 h-4" />
-              <span>{isAnalyzing ? 'Detectando riesgos con Inteligencia Visión...' : 'Analizar Foto con IA'}</span>
+              <span>{isAnalyzing ? 'Detectando riesgos con Inteligencia Visión & Contexto...' : 'Analizar Foto + Actividad con IA'}</span>
             </button>
           </div>
         ) : (
@@ -174,9 +230,21 @@ export const ImageAnalysisScreen: React.FC = () => {
             </button>
           </div>
 
+          {analysisResult.activityDescription && (
+            <div className="p-4 rounded-2xl bg-slate-950/80 border border-rose-500/30 space-y-1">
+              <h4 className="text-xs font-bold text-rose-400 uppercase tracking-wider flex items-center gap-1.5">
+                <FileText className="w-3.5 h-3.5" />
+                <span>Contexto Operativo & Elementos Críticos Indicados</span>
+              </h4>
+              <p className="text-xs text-slate-300 leading-relaxed italic">
+                "{analysisResult.activityDescription}"
+              </p>
+            </div>
+          )}
+
           <div className="p-4 rounded-2xl bg-slate-950 border border-slate-800 space-y-1">
             <h4 className="text-xs font-bold text-rose-400 uppercase tracking-wider">
-              Evaluación General de la Imagen
+              Evaluación General de la Imagen & Contexto
             </h4>
             <p className="text-sm text-slate-200 leading-relaxed">
               {analysisResult.overallAssessment}

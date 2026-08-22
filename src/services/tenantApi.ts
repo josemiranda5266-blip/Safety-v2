@@ -395,6 +395,24 @@ class TenantApiService {
     return data.employee;
   }
 
+  public async bulkCreateEmployees(payload: {
+    companyId: string;
+    establishmentId: string;
+    employees: Partial<Employee>[];
+  }): Promise<{ message: string; createdCount: number; errorCount: number; created: Employee[]; errors: any[] }> {
+    const headers = await this.getAuthHeaders();
+    const res = await fetch('/api/v2/employees/bulk', {
+      method: 'POST',
+      headers,
+      body: JSON.stringify(payload),
+    });
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({}));
+      throw new Error(err.error || err.message || 'Error al procesar carga masiva');
+    }
+    return await res.json();
+  }
+
   public async updateEmployee(id: string, payload: Partial<Employee>): Promise<Employee> {
     const headers = await this.getAuthHeaders();
     const res = await fetch(`/api/v2/employees/${id}`, {

@@ -249,6 +249,7 @@ export interface HazardAnalysisResult {
   id: string;
   date: string;
   imagePreviewUrl?: string;
+  activityDescription?: string;
   overallAssessment: string;
   riskLevel: 'Bajo' | 'Medio' | 'Alto' | 'Crítico';
   hazards: HazardItem[];
@@ -334,6 +335,7 @@ export interface InspectionReport {
   inspectorRegistration?: string;
   date: string;
   gpsLocation?: string;
+  activityDescription?: string;
   executiveSummary: string;
   findings: InspectionFinding[];
   appliedNorms: string[];

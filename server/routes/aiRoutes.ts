@@ -26,7 +26,7 @@ router.post(
   async (req: CreditGuardedRequest, res) => {
     const startTime = Date.now();
     try {
-      const { question, contextChunks } = req.body;
+      const { question, contextChunks, tenantContext } = req.body;
       const hasContext = Array.isArray(contextChunks) && contextChunks.length > 0;
 
       const formattedContext = hasContext
@@ -56,11 +56,22 @@ Texto del Fragmento:
             .join("\n\n--------------------\n\n")
         : "NO HAY FRAGMENTOS DISPONIBLES EN LA BIBLIOTECA.";
 
-      const systemInstruction = `Eres "Safety IA", un Arquitecto Senior y Especialista en Higiene y Seguridad Laboral.
+      const tenantContextInfo = tenantContext
+        ? `\nCONTEXTO DE LA EMPRESA CONSULTANTE:
+- Empresa: ${tenantContext.companyName || tenantContext.legalName || "No especificada"}
+- CUIT: ${tenantContext.taxId || "N/A"}
+- Actividad Principal / Rubro: ${tenantContext.activity || "General / Industrial"}
+- Establecimiento / Planta: ${tenantContext.establishmentName || "General"}
+- Sectores / Puestos Involucrados: ${tenantContext.sectors || "Todos"}
+- Cantidad de Trabajadores: ${tenantContext.totalEmployees || "No especificado"}`
+        : "";
+
+      const systemInstruction = `Eres "Safety IA", un Arquitecto Senior y Especialista en Higiene y Seguridad Laboral en Argentina y normativa internacional.
+${tenantContextInfo}
 
 REGLAS ABSOLUTAS DE ANTI-ALUCINACIÓN (CUMPLIMIENTO OBLIGATORIO):
 1. La aplicación NUNCA debe responder inventando información o utilizando conocimientos externos fuera de la biblioteca provista.
-2. Tu respuesta debe generarse ÚNICA Y EXCLUSIVAMENTE utilizando la información de los FRAGMENTOS DE LA BIBLIOTECA provistos en el contexto.
+2. Tu respuesta debe generarse ÚNICA Y EXCLUSIVAMENTE utilizando la información de los FRAGMENTOS DE LA BIBLIOTECA provistos en el contexto, adaptándola al contexto de la empresa consultante cuando aplique.
 3. Si los fragmentos no contienen información suficiente para responder con precisión la pregunta del usuario, debes responder EXACTAMENTE con la siguiente frase completa y sin modificaciones:
 "No encontré información suficiente sobre este tema dentro de tu biblioteca documental."
 (No agregues explicaciones extras ni especulaciones si devuelves esta frase).
@@ -68,7 +79,7 @@ REGLAS ABSOLUTAS DE ANTI-ALUCINACIÓN (CUMPLIMIENTO OBLIGATORIO):
 REGLAS DE CITAS AUTOMÁTICAS (SI EXISTE INFORMACIÓN EN LA BIBLIOTECA):
 1. Toda respuesta debe indicar al final o por cada punto las citas exactas de las fuentes utilizadas en la biblioteca con el formato:
    **Fuente:** [Título del Documento] | **Página:** [Número de Página] | **Capítulo/Sección:** [Capítulo o Sección] | **Artículo:** [Número de Artículo o Parágrafo]
-2. Las respuestas deben ser claras, técnicas, resumidas y fáciles de entender por profesionales de Higiene y Seguridad.
+2. Las respuestas deben ser claras, técnicas, estructuradas y fáciles de entender por profesionales de Higiene y Seguridad.
 3. Al final de CUALQUIER respuesta afirmativa basada en la biblioteca, DEBES agregar como último párrafo independiente EXACTAMENTE la siguiente frase:
 "Puedo ampliar esta respuesta utilizando otros documentos relacionados."`;
 
@@ -81,7 +92,7 @@ PREGUNTA / CONSULTA DEL USUARIO:
 Instrucción: Analiza minuciosamente los fragmentos anteriores de la biblioteca. Si contienen respuesta precisa, responde con rigurosidad técnica, citas exactas y la frase final obligatoria. Si no hay información suficiente, responde únicamente con "No encontré información suficiente sobre este tema dentro de tu biblioteca documental."`;
 
       const response = await generateContentWithRetry({
-        model: "gemini-2.5-flash",
+        model: "gemini-3.7-flash",
         contents: userPrompt,
         config: {
           systemInstruction,
@@ -162,7 +173,7 @@ Instrucciones:
 }`;
 
       const response = await generateContentWithRetry({
-        model: "gemini-2.5-flash",
+        model: "gemini-3.7-flash",
         contents: promptText,
         config: {
           responseMimeType: "application/json",
@@ -242,7 +253,7 @@ Devuelve únicamente una estructura JSON válida con el siguiente formato:
 }`;
 
       const response = await generateContentWithRetry({
-        model: "gemini-2.5-flash",
+        model: "gemini-3.7-flash",
         contents: { parts: [imagePart, { text: promptText }] },
         config: {
           responseMimeType: "application/json",
@@ -291,7 +302,7 @@ router.post(
   requireAiCredits("IMAGE_ANALYSIS"),
   async (req: CreditGuardedRequest, res) => {
     try {
-      const { imageBase64, mimeType, availableNormsContext } = req.body;
+      const { imageBase64, mimeType, availableNormsContext, activityDescription } = req.body;
 
       const imagePart = {
         inlineData: {
@@ -301,26 +312,30 @@ router.post(
       };
 
       const promptText = `Actúa como un Auditor y Técnico especialista en Higiene y Seguridad Laboral.
-Examina detenidamente esta fotografía tomada en un puesto o área de trabajo.
+Examina detenidamente esta fotografía tomada en un puesto o área de trabajo, EVALUÁNDOLA DE MANERA CONJUNTA E INTEGRADA con la descripción de la actividad y elementos críticos provistos por el usuario.
+
+CONTEXTO OPERATIVO Y DESCRIPCIÓN DE LA ACTIVIDAD / ELEMENTOS CRÍTICOS:
+"${activityDescription || 'Inspección visual general del puesto o sector de trabajo.'}"
 
 BIBLIOTECA NORMATIVA DISPONIBLE EN LA APLICACIÓN:
 ${availableNormsContext || "Ley 19.587, Decreto 351/79, Decreto 911/96 (Construcción), Res. SRT 295/03 (Ergonomía/Contaminantes), Normas IRAM."}
 
 TAREA:
-1. Detecta todos los riesgos visibles (falta de EPP, orden y limpieza, riesgo eléctrico, trabajo en altura desprotegido, sustancias químicas, mala postura, falta de señalización, extintor obstruido o ausente, etc.).
-2. Para cada riesgo detectado, evalúa el Nivel de Severidad (Bajo, Medio, Alto, Crítico).
-3. Asocia cada riesgo con la normativa legal aplicable presente en la biblioteca.
-4. Recomienda las medidas preventivas y correctivas inmediatas.
+1. Evalúa la imagen y la descripción de la actividad como un todo: contrasta lo observado en la fotografía (posturas, herramientas, entorno, protecciones colectivas e individuales) con los elementos críticos y la tarea descripta.
+2. Detecta todos los riesgos visibles y operativos (falta o uso inadecuado de EPP, orden y limpieza, riesgo eléctrico, trabajo en altura, sustancias químicas, fuego/oxicorte, posturas forzadas, atrapamiento, falta de señalización, etc.).
+3. Para cada riesgo detectado, evalúa el Nivel de Severidad (Bajo, Medio, Alto, Crítico).
+4. Asocia cada riesgo con la normativa legal aplicable presente en la biblioteca.
+5. Recomienda las medidas preventivas y correctivas inmediatas según la jerarquía de control.
 
 Responde únicamente en formato JSON con la siguiente estructura:
 {
-  "overallAssessment": "Evaluación general del lugar inspeccionado",
+  "overallAssessment": "Evaluación general integrando la actividad descripta y los elementos visuales observados",
   "riskLevel": "Bajo | Medio | Alto | Crítico",
   "hazards": [
     {
       "hazardName": "Nombre del riesgo detectado",
       "severity": "Bajo | Medio | Alto | Crítico",
-      "description": "Descripción detallada de la condición subestándar observada en la imagen",
+      "description": "Descripción detallada de la condición o acto subestándar considerando la actividad en curso",
       "applicableNorm": "Artículo y ley/decreto aplicable según la biblioteca",
       "preventiveAction": "Medida correctiva recomendada"
     }
@@ -329,7 +344,7 @@ Responde únicamente en formato JSON con la siguiente estructura:
 }`;
 
       const response = await generateContentWithRetry({
-        model: "gemini-2.5-flash",
+        model: "gemini-3.7-flash",
         contents: { parts: [imagePart, { text: promptText }] },
         config: {
           responseMimeType: "application/json",
@@ -397,6 +412,7 @@ router.post(
         siteLocation,
         inspectorName,
         inspectorRegistration,
+        activityDescription,
         relevantLibraryChunks,
       } = req.body;
 
@@ -425,11 +441,14 @@ Texto Normativo:
 
       const systemInstruction = `Eres "INSPECTOR IA", un Ingeniero Senior en Higiene y Seguridad Laboral y Especialista en Visión Artificial.
 
-REGLAS DE RESPALDO NORMATIVO Y ANTI-ALUCINACIÓN:
-1. Analiza la imagen o captura de inspección e identifica TODOS los riesgos visibles en las categorías: EPP, Altura, Escaleras, Eléctrico, Incendio, Orden y Limpieza, Señalización, Salidas de Emergencia, Almacenamiento, Ergonómico, Mecánico, Químico, Biológico.
-2. Para CADA hallazgo/riesgo detectado, busca el respaldo normativo dentro de los DOCUMENTOS DE LA BIBLIOTECA provistos en el contexto.
-3. Si la biblioteca provista CONTIENE la norma aplicable, cita el Título exacto, Página, Artículo/Sección y texto relevante, y establece "hasLibraryBackup": true.
-4. Si la biblioteca NO contiene respaldo normativo para un hallazgo en particular, DEBES indicar exactamente en docTitle: "Sin respaldo documental en la biblioteca local", con "hasLibraryBackup": false, y "quotedText": "No se encontró norma específica cargada en la biblioteca del usuario". NUNCA INVENTES CITAS O ARTÍCULOS QUE NO ESTÉN EN LA BIBLIOTECA.`;
+DIRECTRICES DE ANÁLISIS INTEGRADO (IMAGEN + DESCRIPCIÓN OPERATIVA):
+1. EVALUACIÓN CONJUNTA OBLIGATORIA: Debes analizar de manera holística e integrada tanto la imagen/fotografía capturada como la DESCRIPCIÓN DE LA ACTIVIDAD Y ELEMENTOS CRÍTICOS provista por el auditor o inspector. Considera la imagen y el texto descriptivo como una sola unidad de análisis técnico.
+2. CONTEXTUALIZACIÓN DE RIESGOS: Utiliza la descripción para entender la operación en curso (ej. trabajos en caliente, espacios confinados, izajes, excavaciones, mantenimiento eléctrico, trabajos en altura) y busca activamente en la imagen las evidencias, condiciones subestándares, actos inseguros o falta de medidas de control vinculadas a dicha tarea.
+3. CATEGORÍAS DE RIESGO: Identifica todos los riesgos relevantes en: EPP, Altura, Escaleras, Eléctrico, Incendio, Orden y Limpieza, Señalización, Salidas de Emergencia, Almacenamiento, Ergonómico, Mecánico, Químico, Biológico.
+4. REGLAS DE RESPALDO NORMATIVO Y ANTI-ALUCINACIÓN:
+   - Para CADA hallazgo/riesgo detectado, busca el respaldo normativo dentro de los DOCUMENTOS DE LA BIBLIOTECA provistos en el contexto.
+   - Si la biblioteca provista CONTIENE la norma aplicable (Ley 19.587, Dec. 351/79, Dec. 911/96, etc.), cita el Título exacto, Página, Artículo/Sección y texto relevante, y establece "hasLibraryBackup": true.
+   - Si la biblioteca NO contiene respaldo normativo para un hallazgo en particular, DEBES indicar exactamente en docTitle: "Sin respaldo documental en la biblioteca local", con "hasLibraryBackup": false, y "quotedText": "No se encontró norma específica cargada en la biblioteca del usuario". NUNCA INVENTES CITAS O ARTÍCULOS QUE NO ESTÉN EN LA BIBLIOTECA.`;
 
       const promptText = `INFORMACIÓN DE LA INSPECCIÓN DE CAMPO:
 Empresa: ${companyName || "Empresa / Cliente"}
@@ -437,13 +456,18 @@ Ubicación / Obra: ${siteLocation || "Planta Industrial / Obra"}
 Inspector: ${inspectorName || "Técnico en H&S"} (${inspectorRegistration || "Matrícula H&S"})
 Fecha: ${new Date().toISOString().split("T")[0]}
 
+DESCRIPCIÓN DE LA ACTIVIDAD & ELEMENTOS CRÍTICOS OBSERVADOS:
+"""
+${activityDescription || "Inspección visual general del sector/puesto de trabajo."}
+"""
+
 BIBLIOTECA DOCUMENTAL DISPONIBLE EN LA APLICACIÓN:
 ${formattedLibraryContext}
 
-Realiza un informe técnico riguroso de inspección visual en formato JSON estructurado:`;
+Realiza un informe técnico riguroso de inspección visual en formato JSON estructurado integrando la imagen y la descripción de la actividad como un todo:`;
 
       const response = await generateContentWithRetry({
-        model: "gemini-2.5-flash",
+        model: "gemini-3.7-flash",
         contents: { parts: [mediaPart, { text: promptText }] },
         config: {
           systemInstruction,
@@ -564,7 +588,7 @@ Genera un informe analítico completo estructurado exactamente con el siguiente 
 }`;
 
       const response = await generateContentWithRetry({
-        model: "gemini-2.5-flash",
+        model: "gemini-3.7-flash",
         contents: promptText,
         config: {
           responseMimeType: "application/json",
@@ -644,7 +668,7 @@ Responde únicamente en formato JSON con la estructura:
 }`;
 
       const response = await generateContentWithRetry({
-        model: "gemini-2.5-flash",
+        model: "gemini-3.7-flash",
         contents: promptText,
         config: {
           responseMimeType: "application/json",
@@ -709,7 +733,7 @@ Sugiere peligros potenciales y controles preventivos (Jerarquía de Controles).
 Responde en formato JSON: { "hazards": [...], "controls": [...] }`;
 
       const response = await generateContentWithRetry({
-        model: "gemini-2.5-flash",
+        model: "gemini-3.7-flash",
         contents: promptText,
         config: { responseMimeType: "application/json" },
         operationType: "SUGGESTIONS",
@@ -739,7 +763,7 @@ router.post(
 Responde en formato JSON: { "dates": [{ "date": "YYYY-MM-DD", "description": "..." }] }`;
 
       const response = await generateContentWithRetry({
-        model: "gemini-2.5-flash",
+        model: "gemini-3.7-flash",
         contents: promptText,
         config: { responseMimeType: "application/json" },
         operationType: "OCR",
@@ -769,7 +793,7 @@ router.post(
 Formato: Título, Introducción, Cuerpo, Conclusión.`;
 
       const response = await generateContentWithRetry({
-        model: "gemini-2.5-flash",
+        model: "gemini-3.7-flash",
         contents: promptText,
         operationType: "DRAFTING",
       });
@@ -796,7 +820,7 @@ router.post(
 Formato JSON: { "actions": [{ "action": "...", "responsible": "...", "deadline": "..." }] }`;
 
       const response = await generateContentWithRetry({
-        model: "gemini-2.5-flash",
+        model: "gemini-3.7-flash",
         contents: promptText,
         config: { responseMimeType: "application/json" },
         operationType: "PLANNING",
@@ -808,6 +832,399 @@ Formato JSON: { "actions": [{ "action": "...", "responsible": "...", "deadline":
     } catch (error: any) {
         const publicError = mapToGeminiPublicError(error);
         return res.status(publicError.status).json({ error: publicError.code, message: publicError.message });
+    }
+  }
+);
+
+/**
+ * 12. POST /api/normative-consultation (Cost: 1 credit)
+ * Deep technical consultation on a specific norm with legal obligations, required evidence and compliance tips.
+ */
+router.post(
+  "/normative-consultation",
+  requireAiCredits("CHAT_RAG"),
+  async (req: CreditGuardedRequest, res) => {
+    try {
+      const { normaTitle, topic, companyContext, specificQuestion } = req.body;
+      const promptText = `Eres un Experto Legal y Técnico en Seguridad e Higiene Laboral (Argentina y Mercosur).
+Analiza la siguiente norma / resolución:
+Norma: "${normaTitle || "Normativa de Seguridad e Higiene"}"
+Tema: "${topic || "Higiene y Seguridad"}"
+${companyContext ? `Contexto Empresa: ${JSON.stringify(companyContext)}` : ""}
+${specificQuestion ? `Pregunta específica: "${specificQuestion}"` : ""}
+
+Realiza un análisis exhaustivo y estructurado de la norma.
+Responde únicamente en formato JSON con la siguiente estructura:
+{
+  "norma": "${normaTitle || "Normativa"}",
+  "officialSummary": "Resumen técnico oficial de la norma y su marco regulatorio",
+  "keyObligations": [
+    {
+      "article": "Art. o Anexo",
+      "obligation": "Descripción de la obligación patronal o profesional",
+      "mandatoryEvidence": "Evidencia documental o registro exigible por SRT/Inspectores"
+    }
+  ],
+  "applicableSectors": ["Sector o Actividad 1", "Sector 2"],
+  "sanctionsForNonCompliance": "Riesgo de sanción, clausura o multas según SRT / Ley 19.587",
+  "auditChecklist": [
+    {
+      "checkItem": "Aspecto a verificar",
+      "standard": "Criterio de aprobación"
+    }
+  ],
+  "expertTips": ["Consejo práctico de implementación 1", "Consejo 2"]
+}`;
+
+      const response = await generateContentWithRetry({
+        model: "gemini-3.7-flash",
+        contents: promptText,
+        config: {
+          responseMimeType: "application/json",
+          responseSchema: {
+            type: Type.OBJECT,
+            properties: {
+              norma: { type: Type.STRING },
+              officialSummary: { type: Type.STRING },
+              keyObligations: {
+                type: Type.ARRAY,
+                items: {
+                  type: Type.OBJECT,
+                  properties: {
+                    article: { type: Type.STRING },
+                    obligation: { type: Type.STRING },
+                    mandatoryEvidence: { type: Type.STRING },
+                  },
+                  required: ["article", "obligation", "mandatoryEvidence"],
+                },
+              },
+              applicableSectors: { type: Type.ARRAY, items: { type: Type.STRING } },
+              sanctionsForNonCompliance: { type: Type.STRING },
+              auditChecklist: {
+                type: Type.ARRAY,
+                items: {
+                  type: Type.OBJECT,
+                  properties: {
+                    checkItem: { type: Type.STRING },
+                    standard: { type: Type.STRING },
+                  },
+                  required: ["checkItem", "standard"],
+                },
+              },
+              expertTips: { type: Type.ARRAY, items: { type: Type.STRING } },
+            },
+            required: ["norma", "officialSummary", "keyObligations", "applicableSectors", "sanctionsForNonCompliance", "auditChecklist", "expertTips"],
+          },
+        },
+        operationType: "CHAT_RAG",
+      });
+
+      const result = JSON.parse(response.text || "{}");
+      const creditResult = req.creditContext?.commit(`Consulta Normativa: ${normaTitle}`);
+      return res.json({ ...result, creditsRemaining: creditResult?.remainingCredits });
+    } catch (error: any) {
+      const publicError = mapToGeminiPublicError(error);
+      return res.status(publicError.status).json({ error: publicError.code, message: publicError.message });
+    }
+  }
+);
+
+/**
+ * 13. POST /api/audit-normative-applicability (Cost: 2 credits)
+ * Evaluates a company's activity, sectors, and positions to suggest an entire tailored legal matrix.
+ */
+router.post(
+  "/audit-normative-applicability",
+  requireAiCredits("SUGGESTIONS"),
+  async (req: CreditGuardedRequest, res) => {
+    try {
+      const { companyName, activity, establishments, sectors, positions, employeeCount } = req.body;
+
+      const promptText = `Actúa como Auditor Principal en Higiene y Seguridad Laboral en Argentina.
+Analiza la siguiente empresa y su perfil de operaciones:
+- Razón Social: "${companyName || "Empresa Cliente"}"
+- Actividad Económica / Rubro: "${activity || "Industria / Comercio"}"
+- Establecimientos: ${Array.isArray(establishments) ? establishments.join(", ") : "1 Planta"}
+- Sectores: ${Array.isArray(sectors) ? sectors.join(", ") : "Producción, Mantenimiento, Administración"}
+- Puestos de Trabajo: ${Array.isArray(positions) ? positions.join(", ") : "Operarios, Técnicos, Administrativos"}
+- Dotación de Personal: ${employeeCount || 20} trabajadores
+
+TAREA:
+Determina todas las normas obligatorias aplicables bajo el marco regulatorio argentino (Ley 19.587, Decretos Reglamentarios 351/79, 911/96, 249/07, Res. SRT 299/11, Res. SRT 905/15, Res. SRT 84/12, Res. SRT 295/03, Res. SRT 900/15 de Puesta a Tierra, Res. SRT 886/15 Ergonomía, etc.).
+
+Para cada norma, indica si es Obligatoria, Condicional o Recomendada, la periodicidad de cumplimiento y la evidencia exacta exigida.
+
+Responde únicamente en formato JSON con la siguiente estructura:
+{
+  "companyProfile": "Resumen del perfil de riesgo de la empresa",
+  "applicableNorms": [
+    {
+      "norma": "Ej: Resolución SRT 299/11",
+      "type": "Resolución SRT | Ley | Decreto | Norma IRAM",
+      "topic": "Elementos de Protección Personal (EPP)",
+      "articleAnexo": "Anexo I",
+      "applicability": "Obligatoria | Condicional | Recomendada",
+      "reason": "Motivo por el cual aplica a la actividad de la empresa",
+      "obligation": "Descripción concisa de la exigencia patronal",
+      "evidenceRequired": "Registro o documento probatorio obligatorio",
+      "frequency": "Semestral | Anual | Permanente | Eventual",
+      "priority": "Alta | Media | Crítica"
+    }
+  ],
+  "recommendations": ["Recomendación estratégica para la gestión legal 1", "Recomendación 2"]
+}`;
+
+      const response = await generateContentWithRetry({
+        model: "gemini-3.7-flash",
+        contents: promptText,
+        config: {
+          responseMimeType: "application/json",
+          responseSchema: {
+            type: Type.OBJECT,
+            properties: {
+              companyProfile: { type: Type.STRING },
+              applicableNorms: {
+                type: Type.ARRAY,
+                items: {
+                  type: Type.OBJECT,
+                  properties: {
+                    norma: { type: Type.STRING },
+                    type: { type: Type.STRING },
+                    topic: { type: Type.STRING },
+                    articleAnexo: { type: Type.STRING },
+                    applicability: { type: Type.STRING },
+                    reason: { type: Type.STRING },
+                    obligation: { type: Type.STRING },
+                    evidenceRequired: { type: Type.STRING },
+                    frequency: { type: Type.STRING },
+                    priority: { type: Type.STRING },
+                  },
+                  required: ["norma", "type", "topic", "applicability", "reason", "obligation", "evidenceRequired", "priority"],
+                },
+              },
+              recommendations: { type: Type.ARRAY, items: { type: Type.STRING } },
+            },
+            required: ["companyProfile", "applicableNorms", "recommendations"],
+          },
+        },
+        operationType: "SUGGESTIONS",
+      });
+
+      const result = JSON.parse(response.text || "{}");
+      const creditResult = req.creditContext?.commit(`Auditoría Matriz: ${companyName || "Empresa"}`);
+      return res.json({ ...result, creditsRemaining: creditResult?.remainingCredits });
+    } catch (error: any) {
+      const publicError = mapToGeminiPublicError(error);
+      return res.status(publicError.status).json({ error: publicError.code, message: publicError.message });
+    }
+  }
+);
+
+/**
+ * 14. POST /api/analyze-hs-document (Cost: 2 credits)
+ * Uses Gemini 3.7 Flash to extract structured H&S metadata from uploaded files or text.
+ */
+router.post(
+  "/analyze-hs-document",
+  requireAiCredits("OCR"),
+  async (req: CreditGuardedRequest, res) => {
+    try {
+      const { filename, fileBase64, mimeType, sampleText, companyContext } = req.body;
+
+      const companyInfo = companyContext ? `Contexto Empresa: ${companyContext.companyName || ''} (Actividad: ${companyContext.activity || ''})` : '';
+
+      let parts: any[] = [];
+      if (fileBase64 && (mimeType?.startsWith('image/') || mimeType === 'application/pdf')) {
+        parts.push({
+          inlineData: {
+            mimeType: mimeType || 'application/pdf',
+            data: fileBase64,
+          },
+        });
+      }
+
+      const promptText = `Eres un Auditor y Especialista Senior en Higiene y Seguridad Laboral en Argentina.
+Analiza el siguiente documento técnico (${filename || 'documento'}).
+${companyInfo}
+
+${sampleText ? `MUESTRA DE TEXTO EXTRAÍDO:\n"""\n${sampleText.slice(0, 8000)}\n"""\n` : ''}
+
+TAREA:
+Extrae y clasifica con precisión técnica todos los campos necesarios para la gestión documental SG-SST:
+1. Título descriptivo oficial y profesional del documento.
+2. Categoría obligatoria exacta entre UNA de estas 12 opciones:
+   - "ART" (Pólizas, certificados de cobertura, cláusulas no repetición, avisos de obra)
+   - "Legajo empresa" (Habilitaciones, organigramas, ROL, seguros generales)
+   - "Trabajadores" (Altas, exámenes periódicos/preocupacionales, certificados psicofísicos)
+   - "EPP" (Constancias de entrega Res. SRT 299/11, fichas técnicas)
+   - "Capacitaciones" (Actas de capacitación Dec. 351/79 Cap. 21, temarios, registros de asistencia)
+   - "Inspecciones" (Actas de inspección, check-lists de campo, desvíos)
+   - "Mediciones" (Protocolos SRT 900/15 Puesta a tierra, SRT 84/12 Iluminación, SRT 85/12 Ruido, Carga Térmica, Contaminantes)
+   - "Procedimientos" (PETS, ATS, permisos de trabajo de alto riesgo, instructivos)
+   - "Informes" (Informes técnicos anuales, auditorías de ART/SRT, relevamiento RGRL)
+   - "Emergencias" (Plan de evacuación, simulacros, roles de incendio, asignación de brigadas)
+   - "Matriz de riesgos" (Matrices IPER, análisis de puestos de trabajo)
+   - "Organismos" (Inspecciones municipales, intimaciones SRT, resoluciones ministeriales)
+3. Subcategoría específica sugerida.
+4. Número de documento, póliza, protocolo o certificado (si existe).
+5. Fecha de emisión detectada (formato YYYY-MM-DD, o fecha de hoy si no se especifica).
+6. Fecha de vencimiento o próxima renovación recomendada por normativa (formato YYYY-MM-DD, o vacío si es permanente).
+7. Indicador si es de vigencia permanente (hasNoExpiry: true/false).
+8. Nombre o cargo del responsable técnico firmante / emisor con matrícula si figura.
+9. Organismo emisor / ART / Entidad certificadora.
+10. Resumen ejecutivo de 2 a 3 oraciones del contenido técnico y hallazgos.
+11. Observaciones técnicas para la auditoría.
+12. 3 a 5 etiquetas clave (tags).
+
+Responde únicamente en formato JSON con la siguiente estructura:
+{
+  "title": "...",
+  "category": "ART | Legajo empresa | Trabajadores | EPP | Capacitaciones | Inspecciones | Mediciones | Procedimientos | Informes | Emergencias | Matriz de riesgos | Organismos",
+  "subCategory": "...",
+  "documentNumber": "...",
+  "issueDate": "YYYY-MM-DD",
+  "expirationDate": "YYYY-MM-DD",
+  "hasNoExpiry": false,
+  "responsibleName": "...",
+  "issuingOrganism": "...",
+  "summary": "...",
+  "notes": "...",
+  "tags": ["..."]
+}`;
+
+      parts.push({ text: promptText });
+
+      const response = await generateContentWithRetry({
+        model: "gemini-3.7-flash",
+        contents: { parts },
+        config: {
+          responseMimeType: "application/json",
+          responseSchema: {
+            type: Type.OBJECT,
+            properties: {
+              title: { type: Type.STRING },
+              category: { type: Type.STRING },
+              subCategory: { type: Type.STRING },
+              documentNumber: { type: Type.STRING },
+              issueDate: { type: Type.STRING },
+              expirationDate: { type: Type.STRING },
+              hasNoExpiry: { type: Type.BOOLEAN },
+              responsibleName: { type: Type.STRING },
+              issuingOrganism: { type: Type.STRING },
+              summary: { type: Type.STRING },
+              notes: { type: Type.STRING },
+              tags: { type: Type.ARRAY, items: { type: Type.STRING } },
+            },
+            required: ["title", "category", "issueDate", "hasNoExpiry", "responsibleName", "issuingOrganism", "summary", "tags"],
+          },
+        },
+        operationType: "OCR",
+      });
+
+      const result = JSON.parse(response.text || "{}");
+      const creditResult = req.creditContext?.commit(`Análisis Doc IA: ${filename || "Documento"}`);
+      return res.json({ ...result, creditsRemaining: creditResult?.remainingCredits });
+    } catch (error: any) {
+      const publicError = mapToGeminiPublicError(error);
+      return res.status(publicError.status).json({ error: publicError.code, message: publicError.message });
+    }
+  }
+);
+
+/**
+ * 15. POST /api/audit-document-compliance (Cost: 2 credits)
+ * Audits an existing document against Argentine regulations and good engineering practices.
+ */
+router.post(
+  "/audit-document-compliance",
+  requireAiCredits("SUGGESTIONS"),
+  async (req: CreditGuardedRequest, res) => {
+    try {
+      const { documentTitle, category, documentNumber, issueDate, expirationDate, responsibleName, issuingOrganism, notes, tags } = req.body;
+
+      const promptText = `Actúa como Auditor Principal del Sistema de Gestión de Higiene y Seguridad Laboral en Argentina.
+Realiza una AUDITORÍA TÉCNICA Y NORMATIVA del siguiente documento registrado:
+
+DATOS DEL DOCUMENTO:
+- Título: "${documentTitle}"
+- Categoría Normativa: "${category}"
+- N° / Póliza: "${documentNumber || "No especificado"}"
+- Fecha de Emisión: "${issueDate || "No informada"}"
+- Fecha de Vencimiento: "${expirationDate || "Sin vencimiento informado"}"
+- Responsable Técnico: "${responsibleName || "No especificado"}"
+- Organismo Emisor: "${issuingOrganism || "No especificado"}"
+- Observaciones Registradas: "${notes || "Ninguna"}"
+- Etiquetas: ${Array.isArray(tags) ? tags.join(", ") : "Ninguna"}
+
+CRITERIOS DE AUDITORÍA:
+1. Evalúa el cumplimiento de formalidades legales según la legislación argentina (Ley 19.587, Dec. 351/79, Dec. 911/96, Res. SRT 900/15, Res. SRT 299/11, Res. SRT 84/12, etc.).
+2. Validez temporal (periodicidades exigidas por SRT: anual para protocolos de puesta a tierra, iluminación, extintores; mensual/semestral para capacitaciones; periódica para EPP).
+3. Requisitos técnicos críticos que debe contener (firmas con matrícula profesional, certificados de calibración trazables al INTI/IRAM, cláusula de no repetición a favor de la comitente en certificados ART, etc.).
+
+Responde únicamente en formato JSON con la siguiente estructura:
+{
+  "complianceScore": 90,
+  "complianceStatus": "Conforme | Conforme con Observaciones | No Conforme / Incompleto",
+  "executiveAuditVerdict": "Veredicto del auditor en 2-3 oraciones",
+  "legalBasis": ["Ley 19.587 Art. 9", "Res. SRT 900/15"],
+  "conformities": ["Puntos conformes y correctos identificados"],
+  "findingsAndGaps": [
+    {
+      "finding": "Descripción del hallazgo u omisión",
+      "severity": "Alta | Media | Baja",
+      "normativeImpact": "Consecuencia o artículo reglamentario afectado"
+    }
+  ],
+  "actionPlanRecommendations": ["Acción preventiva o correctiva 1", "Acción 2"]
+}`;
+
+      const response = await generateContentWithRetry({
+        model: "gemini-3.7-flash",
+        contents: promptText,
+        config: {
+          responseMimeType: "application/json",
+          responseSchema: {
+            type: Type.OBJECT,
+            properties: {
+              complianceScore: { type: Type.NUMBER },
+              complianceStatus: { type: Type.STRING },
+              executiveAuditVerdict: { type: Type.STRING },
+              legalBasis: { type: Type.ARRAY, items: { type: Type.STRING } },
+              conformities: { type: Type.ARRAY, items: { type: Type.STRING } },
+              findingsAndGaps: {
+                type: Type.ARRAY,
+                items: {
+                  type: Type.OBJECT,
+                  properties: {
+                    finding: { type: Type.STRING },
+                    severity: { type: Type.STRING },
+                    normativeImpact: { type: Type.STRING },
+                  },
+                  required: ["finding", "severity", "normativeImpact"],
+                },
+              },
+              actionPlanRecommendations: { type: Type.ARRAY, items: { type: Type.STRING } },
+            },
+            required: [
+              "complianceScore",
+              "complianceStatus",
+              "executiveAuditVerdict",
+              "legalBasis",
+              "conformities",
+              "findingsAndGaps",
+              "actionPlanRecommendations",
+            ],
+          },
+        },
+        operationType: "SUGGESTIONS",
+      });
+
+      const result = JSON.parse(response.text || "{}");
+      const creditResult = req.creditContext?.commit(`Auditoría Doc: ${documentTitle}`);
+      return res.json({ ...result, creditsRemaining: creditResult?.remainingCredits });
+    } catch (error: any) {
+      const publicError = mapToGeminiPublicError(error);
+      return res.status(publicError.status).json({ error: publicError.code, message: publicError.message });
     }
   }
 );

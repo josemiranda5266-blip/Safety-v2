@@ -1,0 +1,74 @@
+--- src/components/InspectorIA/InspectorIAScreen.tsx
++++ src/components/InspectorIA/InspectorIAScreen.tsx
+@@ -43,6 +43,7 @@
+ } from '../../types/safety';
+ import { db } from '../../services/db';
+ import { exportReportToWord, exportReportToPDF } from '../../utils/reportExport';
++import { useTenant } from '../../context/TenantContext';
+ 
+ // Realistic sample site photos for instant 1-click testing
+ const SAMPLE_SITE_IMAGES = [
+@@ -69,15 +70,12 @@
+ ];
+ 
+ export const InspectorIAScreen: React.FC = () => {
++  const { activeCompany, establishments, userRole } = useTenant();
+   const [activeSubTab, setActiveSubTab] = useState<'dashboard' | 'new_inspection' | 'history' | 'findings_followup' | 'diagnostics'>('dashboard');
+   
+   // Storage state
+   const [reports, setReports] = useState<InspectionReport[]>([]);
+   const [stats, setStats] = useState<InspectorStats | null>(null);
+   const [selectedReport, setSelectedReport] = useState<InspectionReport | null>(null);
+   
+   // New Inspection Form state
+-  const [companyName, setCompanyName] = useState('Constructora Austral S.A.');
+-  const [siteLocation, setSiteLocation] = useState('Obra Av. Libertador 4500, CABA');
+-  const [inspectorName, setInspectorName] = useState('Ing. Carlos Mendoza');
+-  const [inspectorRegistration, setInspectorRegistration] = useState('Mat. CIPBA 48.912');
++  const companyName = activeCompany?.legalName || 'Empresa no seleccionada';
++  const [selectedEstablishmentId, setSelectedEstablishmentId] = useState<string>('');
++  const siteLocation = establishments.find(e => e.id === selectedEstablishmentId)?.name || 'Ubicación no seleccionada';
++  const inspectorName = 'Inspector'; // Real name should come from auth, let's keep basic
++  const inspectorRegistration = '';
+   const [gpsCoords, setGpsCoords] = useState<string>('-34.5781, -58.4263');
+   
+   // Image / Media State
+@@ -769,32 +767,23 @@
+                     <div>
+                       <label className="block text-sm font-bold text-slate-700 dark:text-slate-300 mb-1">Empresa Auditada</label>
+                       <div className="relative">
+                         <Building className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
+-                        <input
+-                          type="text"
+-                          value={companyName}
+-                          onChange={(e) => setCompanyName(e.target.value)}
+-                          className="w-full pl-9 pr-3 py-2.5 bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl focus:outline-none focus:ring-2 focus:ring-orange-500 text-sm font-medium text-slate-900 dark:text-white"
+-                        />
++                        <div className="w-full pl-9 pr-3 py-2.5 bg-slate-100 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl text-sm font-medium text-slate-700 dark:text-slate-300 cursor-not-allowed">
++                          {companyName}
++                        </div>
+                       </div>
+                     </div>
+                     <div>
+                       <label className="block text-sm font-bold text-slate-700 dark:text-slate-300 mb-1">Establecimiento / Obra</label>
+                       <div className="relative">
+                         <MapPin className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
+-                        <input
+-                          type="text"
+-                          value={siteLocation}
+-                          onChange={(e) => setSiteLocation(e.target.value)}
+-                          className="w-full pl-9 pr-3 py-2.5 bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl focus:outline-none focus:ring-2 focus:ring-orange-500 text-sm font-medium text-slate-900 dark:text-white"
+-                        />
++                        <select
++                          value={selectedEstablishmentId}
++                          onChange={(e) => setSelectedEstablishmentId(e.target.value)}
++                          className="w-full pl-9 pr-3 py-2.5 bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl focus:outline-none focus:ring-2 focus:ring-orange-500 text-sm font-medium text-slate-900 dark:text-white"
++                        >
++                          <option value="">Seleccione un establecimiento...</option>
++                          {establishments.filter(e => e.companyId === activeCompany?.id).map(e => (
++                            <option key={e.id} value={e.id}>{e.name}</option>
++                          ))}
++                        </select>
+                       </div>
+                     </div>
+                   </div>

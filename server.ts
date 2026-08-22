@@ -12,6 +12,7 @@ import establishmentRoutes from "./server/routes/establishmentRoutes";
 import sectorRoutes from "./server/routes/sectorRoutes";
 import positionRoutes from "./server/routes/positionRoutes";
 import employeeRoutes from "./server/routes/employeeRoutes";
+import capaRoutes from "./server/routes/capaRoutes";
 import documentRoutes from "./server/routes/documentRoutes";
 import tenantContextRoutes from "./server/routes/tenantContextRoutes";
 import {
@@ -149,6 +150,7 @@ app.use("/api/v2/establishments", establishmentRoutes);
 app.use("/api/v2/sectors", sectorRoutes);
 app.use("/api/v2/positions", positionRoutes);
 app.use("/api/v2/employees", employeeRoutes);
+app.use("/api/v2/capa", capaRoutes);
 app.use("/api/v2/documents", documentRoutes);
 app.use("/api/v2/tenant", tenantContextRoutes);
 

@@ -14,12 +14,16 @@ import {
   BookOpen,
   Quote,
   ShieldCheck,
+  Building2,
+  HelpCircle,
+  Scale,
   Mic,
   MicOff
 } from 'lucide-react';
 import { ChatMessage, Citation } from '../types/safety';
 import { db } from '../services/db';
 import { exportChatAnswerPDF } from '../services/pdfExporter';
+import { useTenant } from '../context/TenantContext';
 
 interface ChatScreenProps {
   initialQuery?: string;
@@ -30,6 +34,7 @@ export const ChatScreen: React.FC<ChatScreenProps> = ({
   initialQuery,
   onClearInitialQuery,
 }) => {
+  const { activeCompany, establishments, sectors, employees } = useTenant();
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [input, setInput] = useState('');
   const [isLoading, setIsLoading] = useState(false);
@@ -45,20 +50,24 @@ export const ChatScreen: React.FC<ChatScreenProps> = ({
     if (sessions.length > 0 && sessions[0].messages.length > 0) {
       setMessages(sessions[0].messages);
     } else {
+      const companyName = activeCompany?.tradeName || activeCompany?.legalName;
+      const companyGreeting = companyName 
+        ? ` Estoy configurado para responder en el contexto de **${companyName}** (${activeCompany?.activityDescription || 'Actividad General'}).`
+        : '';
       setMessages([
         {
           id: 'welcome_msg',
           sender: 'ai',
-          text: `¡Hola! Soy **Safety IA**, tu biblioteca técnica virtual de Higiene y Seguridad Laboral.
+          text: `¡Hola! Soy **Safety IA**, tu biblioteca técnica y consultor legal en Higiene y Seguridad Laboral.${companyGreeting}
 
-Puedo responder tus consultas normativas utilizando **únicamente la información cargada en tu biblioteca** (Leyes, Decretos, Resoluciones, Manuales de EPP, etc.).
+Puedo responder tus consultas normativas utilizando **la información cargada en tu biblioteca** (Leyes, Decretos, Resoluciones SRT, Manuales de EPP, etc.).
 
-Escribe tu pregunta o selecciona una de las consultas sugeridas.`,
+Escribe tu pregunta o selecciona una de las consultas sugeridas debajo.`,
           timestamp: new Date().toLocaleTimeString('es-AR', { hour: '2-digit', minute: '2-digit' }),
         },
       ]);
     }
-  }, []);
+  }, [activeCompany?.id]);
 
   useEffect(() => {
     if (initialQuery) {
@@ -103,27 +112,6 @@ Escribe tu pregunta o selecciona una de las consultas sugeridas.`,
     const startTime = performance.now();
 
     try {
-      // Check query cache first for sub-5ms response
-      const cachedResult = db.getCachedQuery(queryText);
-      if (cachedResult) {
-        const endTime = performance.now();
-        const responseTimeMs = Math.round(endTime - startTime);
-
-        const aiMsg: ChatMessage = {
-          id: `msg_ai_${Date.now()}`,
-          sender: 'ai',
-          text: cachedResult.answer,
-          timestamp: new Date().toLocaleTimeString('es-AR', { hour: '2-digit', minute: '2-digit' }),
-          citations: cachedResult.citations,
-          responseTimeMs: responseTimeMs,
-          fromCache: true,
-        };
-
-        saveCurrentSession([...newMessages, aiMsg]);
-        setIsLoading(false);
-        return;
-      }
-
       // 1. Search local RAG database for top matching chunks
       const matchedChunks = db.searchRelevantChunks(queryText, 6);
 
@@ -137,10 +125,23 @@ Escribe tu pregunta o selecciona una de las consultas sugeridas.`,
         text: c.text,
       }));
 
-      // 2. Call backend RAG endpoint
+      // 2. Build tenant context
+      const companyDisplayName = activeCompany?.tradeName || activeCompany?.legalName;
+      const tenantContext = activeCompany ? {
+        companyName: companyDisplayName || 'Empresa',
+        legalName: activeCompany.legalName,
+        taxId: activeCompany.cuit,
+        activity: activeCompany.activityDescription,
+        establishmentName: establishments[0]?.name,
+        sectors: sectors.map((s) => s.name).join(', '),
+        totalEmployees: employees.length,
+      } : undefined;
+
+      // 3. Call backend RAG endpoint
       const data = await db.callAiApi<{ answer: string; creditsRemaining?: number }>('/api/chat-rag', {
         question: queryText,
         contextChunks: formattedChunks,
+        tenantContext,
       });
 
       const aiAnswer = data.answer || 'No encontré información suficiente sobre este tema dentro de tu biblioteca documental.';
@@ -288,7 +289,7 @@ Escribe tu pregunta o selecciona una de las consultas sugeridas.`,
               </span>
             </h2>
             <p className="text-[11px] text-slate-500 dark:text-slate-400">
-              Respuestas strictly grounded en tu biblioteca técnica
+              Respuestas técnicamente fundamentadas y grounded en tu biblioteca
             </p>
           </div>
         </div>
@@ -325,8 +326,58 @@ Escribe tu pregunta o selecciona una de las consultas sugeridas.`,
         </div>
       </div>
 
+      {/* Active Company Context Banner */}
+      <div className="px-4 sm:px-6 py-2 bg-emerald-50/70 dark:bg-emerald-950/30 border-b border-emerald-100 dark:border-emerald-900/40 flex items-center justify-between gap-2 text-xs">
+        <div className="flex items-center gap-2 text-emerald-800 dark:text-emerald-300 font-medium">
+          <Building2 className="w-4 h-4 text-emerald-600 dark:text-emerald-400 shrink-0" />
+          {activeCompany ? (
+            <span>
+              Contexto Activo: <strong className="font-semibold">{activeCompany.tradeName || activeCompany.legalName}</strong>
+              {activeCompany.activityDescription ? ` (${activeCompany.activityDescription})` : ''}
+              {activeCompany.cuit ? ` • CUIT: ${activeCompany.cuit}` : ''}
+            </span>
+          ) : (
+            <span className="text-slate-600 dark:text-slate-400">
+              Modo General de Consulta (Selecciona una empresa en la barra superior para contextualizar)
+            </span>
+          )}
+        </div>
+        <div className="hidden md:flex items-center gap-1 text-[11px] text-emerald-700 dark:text-emerald-400/80">
+          <Scale className="w-3.5 h-3.5" />
+          <span>Marco Legal SRT / Ley 19.587</span>
+        </div>
+      </div>
+
       {/* Messages Stream View */}
       <div className="flex-1 overflow-y-auto p-4 sm:p-6 space-y-6">
+        {/* Quick Suggested Queries Chips */}
+        {messages.length <= 1 && (
+          <div className="p-4 rounded-2xl bg-slate-50 dark:bg-slate-800/60 border border-slate-200 dark:border-slate-700/60 space-y-2.5">
+            <div className="flex items-center gap-1.5 text-xs font-bold text-slate-700 dark:text-slate-300">
+              <Sparkles className="w-3.5 h-3.5 text-amber-500" />
+              <span>Consultas Rápidas Sugeridas {activeCompany ? `para ${activeCompany.tradeName || activeCompany.legalName}` : ''}:</span>
+            </div>
+            <div className="flex flex-wrap gap-2">
+              {[
+                `¿Qué EPPs son obligatorios según la Res. SRT 299/11?`,
+                `¿Cuáles son las obligaciones del Servicio de Higiene según Res. SRT 905/15?`,
+                `¿Cómo se realiza el protocolo de medición de iluminación bajo Res. SRT 84/12?`,
+                `¿Qué requisitos exige la Res. SRT 900/15 para puesta a tierra?`,
+                `¿Cuáles son los límites de carga y ergonomía según Res. 295/03 y 886/15?`,
+                `¿Qué condiciones de protección contra incendios exige el Dec. 351/79?`,
+              ].map((suggestion, idx) => (
+                <button
+                  key={idx}
+                  onClick={() => handleSendMessage(suggestion)}
+                  disabled={isLoading}
+                  className="px-3 py-1.5 rounded-xl bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 hover:border-emerald-500 dark:hover:border-emerald-400 text-xs text-slate-700 dark:text-slate-200 hover:text-emerald-600 dark:hover:text-emerald-400 transition-all text-left shadow-sm hover:shadow"
+                >
+                  {suggestion}
+                </button>
+              ))}
+            </div>
+          </div>
+        )}
         {filteredMessages.length === 0 ? (
           <div className="text-center py-12 text-slate-400 space-y-2">
             <BookOpen className="w-10 h-10 mx-auto text-slate-500 opacity-50" />

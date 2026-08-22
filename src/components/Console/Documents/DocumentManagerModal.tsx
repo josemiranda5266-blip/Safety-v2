@@ -14,7 +14,9 @@ import {
   Clock, 
   Hash, 
   Info,
-  Layers
+  Layers,
+  Sparkles,
+  Loader2
 } from 'lucide-react';
 import { useTenant } from '../../../context/TenantContext';
 import { 
@@ -70,6 +72,8 @@ export const DocumentManagerModal: React.FC<DocumentManagerModalProps> = ({
   const [fileBase64, setFileBase64] = useState<string>('');
   const [dragActive, setDragActive] = useState<boolean>(false);
   const [isUploading, setIsUploading] = useState<boolean>(false);
+  const [isAnalyzingAI, setIsAnalyzingAI] = useState<boolean>(false);
+  const [aiSuccessMsg, setAiSuccessMsg] = useState<string | null>(null);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
 
   const fileInputRef = useRef<HTMLInputElement | null>(null);
@@ -80,6 +84,75 @@ export const DocumentManagerModal: React.FC<DocumentManagerModalProps> = ({
   const availableEstablishments = establishments.filter(
     (e) => !companyId || e.companyId === companyId
   );
+
+  const handleAnalyzeWithAI = async () => {
+    if (!selectedFile && !fileBase64 && !title) {
+      setErrorMsg('Selecciona primero un archivo o escribe un título preliminar para que la IA extraiga los metadatos.');
+      return;
+    }
+
+    setIsAnalyzingAI(true);
+    setErrorMsg(null);
+    setAiSuccessMsg(null);
+
+    try {
+      const selectedComp = companies.find((c) => c.id === companyId);
+      const companyContext = selectedComp
+        ? {
+            companyName: selectedComp.tradeName || selectedComp.legalName,
+            activity: selectedComp.activityDescription,
+          }
+        : undefined;
+
+      const token = localStorage.getItem('auth_token') || 'dev-token';
+      const res = await fetch('/api/analyze-hs-document', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify({
+          filename: selectedFile?.name || title,
+          fileBase64: fileBase64 || undefined,
+          mimeType: selectedFile?.type || 'application/pdf',
+          sampleText: `${title} ${notes}`.trim() || undefined,
+          companyContext,
+        }),
+      });
+
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}));
+        throw new Error(err.message || 'Error al analizar el documento con IA.');
+      }
+
+      const data = await res.json();
+      if (data.title) setTitle(data.title);
+      if (data.category && DOCUMENT_CATEGORIES.includes(data.category as DocumentCategory)) {
+        setCategory(data.category as DocumentCategory);
+      }
+      if (data.subCategory) setSubCategory(data.subCategory);
+      if (data.documentNumber) setDocumentNumber(data.documentNumber);
+      if (data.issueDate) setIssueDate(data.issueDate);
+      if (data.hasNoExpiry) {
+        setHasNoExpiry(true);
+        setExpirationDate('');
+      } else if (data.expirationDate) {
+        setHasNoExpiry(false);
+        setExpirationDate(data.expirationDate);
+      }
+      if (data.responsibleName) setResponsibleName(data.responsibleName);
+      if (data.issuingOrganism) setIssuingOrganism(data.issuingOrganism);
+      if (data.notes || data.summary) setNotes(data.summary || data.notes);
+      if (data.tags && Array.isArray(data.tags)) setTagsInput(data.tags.join(', '));
+
+      setAiSuccessMsg(`✨ Metadatos autocompletados: Categoría clasificada como "${data.category}".`);
+    } catch (err: any) {
+      console.error('Error in handleAnalyzeWithAI:', err);
+      setErrorMsg(err.message || 'No se pudo completar el análisis con IA.');
+    } finally {
+      setIsAnalyzingAI(false);
+    }
+  };
 
   const handleFile = (file: File) => {
     setErrorMsg(null);
@@ -260,6 +333,43 @@ export const DocumentManagerModal: React.FC<DocumentManagerModalProps> = ({
                 </div>
               )}
             </div>
+
+            {/* AI Smart Extraction Bar */}
+            <div className="mt-2.5 flex items-center justify-between gap-3 p-3 rounded-xl bg-gradient-to-r from-orange-500/10 via-amber-500/10 to-orange-500/5 border border-orange-500/20">
+              <div className="flex items-center gap-2">
+                <Sparkles className="w-4 h-4 text-orange-500 shrink-0" />
+                <span className="text-xs text-slate-700 dark:text-slate-300 font-medium">
+                  {isAnalyzingAI
+                    ? 'Analizando documento con IA (extrayendo fechas, emisor y categoría)...'
+                    : '¿Quieres que la IA autocomplete el título, categoría, fechas y tags?'}
+                </span>
+              </div>
+              <button
+                type="button"
+                onClick={handleAnalyzeWithAI}
+                disabled={isAnalyzingAI}
+                className="px-3 py-1.5 rounded-lg bg-orange-500 hover:bg-orange-600 active:scale-95 text-white font-bold text-xs flex items-center gap-1.5 transition-all shrink-0 shadow-sm disabled:opacity-50"
+              >
+                {isAnalyzingAI ? (
+                  <>
+                    <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                    <span>Analizando...</span>
+                  </>
+                ) : (
+                  <>
+                    <Sparkles className="w-3.5 h-3.5" />
+                    <span>Autocompletar con IA</span>
+                  </>
+                )}
+              </button>
+            </div>
+
+            {aiSuccessMsg && (
+              <div className="mt-2 p-3 rounded-xl bg-emerald-50 dark:bg-emerald-950/40 border border-emerald-200 dark:border-emerald-800/60 text-emerald-700 dark:text-emerald-300 text-xs font-semibold flex items-center gap-2">
+                <CheckCircle2 className="w-4 h-4 shrink-0 text-emerald-500" />
+                <span>{aiSuccessMsg}</span>
+              </div>
+            )}
           </div>
 
           {/* 2. Scope & Category Selection */}

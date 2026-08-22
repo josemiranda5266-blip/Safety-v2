@@ -45,6 +45,9 @@ import {
 } from '../../types/safety';
 import { db } from '../../services/db';
 import { exportReportToWord, exportReportToPDF } from '../../utils/reportExport';
+import { useTenant } from '../../context/TenantContext';
+import { inspectionService } from '../../services/inspectionService';
+import { capaApi } from '../../services/capaApi';
 
 // Realistic sample site photos for instant 1-click testing
 const SAMPLE_SITE_IMAGES = [
@@ -54,6 +57,7 @@ const SAMPLE_SITE_IMAGES = [
     category: 'Altura',
     thumbnail: 'https://images.unsplash.com/photo-1541888946425-d0fbb186a5b3?w=800&auto=format&fit=crop&q=60&ixlib=rb-4.0.3',
     description: 'Andamio tubular a 4 metros de altura con operario sin arnés y tablones sueltos.',
+    suggestedActivity: 'Montaje de estructura metálica sobre andamio tubular a 4 metros de altura. Se observan operarios trabajando con herramientas manuales en altura sin línea de vida ni arnés de seguridad anclado.',
   },
   {
     id: 'sample-electrical',
@@ -61,6 +65,7 @@ const SAMPLE_SITE_IMAGES = [
     category: 'Eléctrico',
     thumbnail: 'https://images.unsplash.com/photo-1621905251189-08b45d6a269e?w=800&auto=format&fit=crop&q=60&ixlib=rb-4.0.3',
     description: 'Tablero primario de distribución con tapa abierta, cables sin peinar y sin disyuntor.',
+    suggestedActivity: 'Mantenimiento preventivo en sala de tableros eléctricos principales de 380V. Intervención en bornes y cableado sin bloqueo LOTO ni señalización de riesgo eléctrico.',
   },
   {
     id: 'sample-order',
@@ -68,10 +73,25 @@ const SAMPLE_SITE_IMAGES = [
     category: 'Incendio',
     thumbnail: 'https://images.unsplash.com/photo-1581092160607-ee22621dd758?w=800&auto=format&fit=crop&q=60&ixlib=rb-4.0.3',
     description: 'Cajas y pallets tapando el extintor de CO2 e impidiendo el paso seguro por pasillo.',
+    suggestedActivity: 'Operación de carga y descarga de materiales en depósito y pasillos principales de evacuación. Obstrucción directa de extintores de incendios y vías de escape.',
   },
 ];
 
+const QUICK_CRITICAL_TAGS = [
+  'Trabajos en Altura (>2m)',
+  'Riesgo Eléctrico / LOTO',
+  'Soldadura / Oxicorte',
+  'Espacio Confinado',
+  'Izaje y Cargas Suspendidas',
+  'Manejo de Sustancias Químicas',
+  'Herramientas Eléctricas / Amoladora',
+  'Excavaciones y Zanjas',
+  'Tránsito de Autoelevadores',
+  'Orden y Limpieza / Vías de Escape',
+];
+
 export const InspectorIAScreen: React.FC = () => {
+  const { activeCompany, establishments } = useTenant();
   const [activeSubTab, setActiveSubTab] = useState<'dashboard' | 'new_inspection' | 'history' | 'findings_followup' | 'diagnostics'>('dashboard');
   
   // Storage state
@@ -80,16 +100,25 @@ export const InspectorIAScreen: React.FC = () => {
   const [selectedReport, setSelectedReport] = useState<InspectionReport | null>(null);
   
   // New Inspection Form state
-  const [companyName, setCompanyName] = useState('Constructora Austral S.A.');
-  const [siteLocation, setSiteLocation] = useState('Obra Av. Libertador 4500, CABA');
-  const [inspectorName, setInspectorName] = useState('Ing. Carlos Mendoza');
-  const [inspectorRegistration, setInspectorRegistration] = useState('Mat. CIPBA 48.912');
+  const companyName = activeCompany?.legalName || 'Empresa no seleccionada';
+  const [selectedEstablishmentId, setSelectedEstablishmentId] = useState<string>('');
+  const siteLocation = establishments.find(e => e.id === selectedEstablishmentId)?.name || 'Ubicación no seleccionada';
+  const inspectorName = 'Inspector';
+  const inspectorRegistration = '';
   const [gpsCoords, setGpsCoords] = useState<string>('-34.5781, -58.4263');
   
+  // Activity Description & Critical Elements State
+  const [activityDescription, setActivityDescription] = useState<string>('');
+
   // Image / Media State
   const [selectedImageBase64, setSelectedImageBase64] = useState<string | null>(null);
   const [imageMimeType, setImageMimeType] = useState<string>('image/jpeg');
   const [selectedSampleId, setSelectedSampleId] = useState<string | null>(null);
+
+  // Live Camera State
+  const [isCameraActive, setIsCameraActive] = useState<boolean>(false);
+  const videoRef = useRef<HTMLVideoElement | null>(null);
+  const streamRef = useRef<MediaStream | null>(null);
   
   // Analysis State
   const [isAnalyzing, setIsAnalyzing] = useState(false);
@@ -125,6 +154,11 @@ export const InspectorIAScreen: React.FC = () => {
 
   useEffect(() => {
     loadData();
+    return () => {
+      if (streamRef.current) {
+        streamRef.current.getTracks().forEach((track) => track.stop());
+      }
+    };
   }, []);
 
   const loadData = () => {
@@ -150,11 +184,69 @@ export const InspectorIAScreen: React.FC = () => {
     }
   };
 
+  // Handle adding quick activity tag
+  const handleAddActivityTag = (tag: string) => {
+    if (!activityDescription.includes(tag)) {
+      setActivityDescription((prev) => (prev ? `${prev}. ${tag}` : tag));
+    }
+  };
+
+  // Start live webcam / mobile camera stream
+  const handleStartCamera = async () => {
+    try {
+      if (navigator.mediaDevices && navigator.mediaDevices.getUserMedia) {
+        const stream = await navigator.mediaDevices.getUserMedia({
+          video: { facingMode: { ideal: 'environment' }, width: { ideal: 1280 }, height: { ideal: 720 } },
+          audio: false,
+        });
+        streamRef.current = stream;
+        setIsCameraActive(true);
+        if (videoRef.current) {
+          videoRef.current.srcObject = stream;
+          videoRef.current.play();
+        }
+      } else {
+        alert('Cámara no compatible directamente en este navegador. Puedes usar el botón de subir/tomar archivo.');
+      }
+    } catch (err: any) {
+      console.warn('No se pudo acceder a la cámara WebRTC:', err);
+      alert('No se pudo acceder a la cámara en vivo. Puedes usar el selector de archivos para capturar foto.');
+    }
+  };
+
+  // Stop live camera stream
+  const handleStopCamera = () => {
+    if (streamRef.current) {
+      streamRef.current.getTracks().forEach((track) => track.stop());
+      streamRef.current = null;
+    }
+    setIsCameraActive(false);
+  };
+
+  // Capture frame from live video stream
+  const handleCaptureLivePhoto = () => {
+    if (videoRef.current) {
+      const canvas = document.createElement('canvas');
+      canvas.width = videoRef.current.videoWidth || 1280;
+      canvas.height = videoRef.current.videoHeight || 720;
+      const ctx = canvas.getContext('2d');
+      if (ctx) {
+        ctx.drawImage(videoRef.current, 0, 0, canvas.width, canvas.height);
+        const dataUrl = canvas.toDataURL('image/jpeg', 0.9);
+        setSelectedImageBase64(dataUrl);
+        setImageMimeType('image/jpeg');
+        setSelectedSampleId(null);
+        handleStopCamera();
+      }
+    }
+  };
+
   // Convert File to Base64
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
 
+    handleStopCamera();
     setSelectedSampleId(null);
     setImageMimeType(file.type || 'image/jpeg');
 
@@ -168,8 +260,12 @@ export const InspectorIAScreen: React.FC = () => {
 
   // Handle selecting a sample site photo
   const handleSelectSample = (sample: typeof SAMPLE_SITE_IMAGES[0]) => {
+    handleStopCamera();
     setSelectedSampleId(sample.id);
     setImageMimeType('image/jpeg');
+    if (sample.suggestedActivity) {
+      setActivityDescription(sample.suggestedActivity);
+    }
 
     // Convert sample image URL to Base64 via Canvas
     const img = new Image();
@@ -199,7 +295,7 @@ export const InspectorIAScreen: React.FC = () => {
     setAnalysisError(null);
 
     try {
-      setAnalysisProgressStep('1/4 Extrayendo fotogramas y optimizando matriz de píxeles...');
+      setAnalysisProgressStep('1/4 Extrayendo fotogramas y analizando contexto operativo...');
       await new Promise((r) => setTimeout(r, 600));
 
       setAnalysisProgressStep('2/4 Consultando biblioteca documental local (RAG) para normas de referencia...');
@@ -207,7 +303,7 @@ export const InspectorIAScreen: React.FC = () => {
       const allChunks = db.getChunks();
       const sampleChunks = allChunks.slice(0, 8); // Top relevant chunks
 
-      setAnalysisProgressStep('3/4 Escaneando riesgos de EPP, Altura, Eléctrico y Orden con visión artificial...');
+      setAnalysisProgressStep('3/4 Escaneando riesgos de EPP, Altura, Eléctrico y Actividad con visión artificial...');
       
       // Remove header prefix from base64 string if present
       const rawBase64 = selectedImageBase64.replace(/^data:image\/\w+;base64,/, '');
@@ -219,6 +315,7 @@ export const InspectorIAScreen: React.FC = () => {
         siteLocation,
         inspectorName,
         inspectorRegistration,
+        activityDescription: activityDescription.trim() || undefined,
         relevantLibraryChunks: sampleChunks,
       });
 
@@ -234,6 +331,7 @@ export const InspectorIAScreen: React.FC = () => {
         inspectorRegistration,
         date: new Date().toISOString().split('T')[0],
         gpsLocation: gpsCoords,
+        activityDescription: activityDescription.trim() || undefined,
         executiveSummary: resultReport.executiveSummary || 'Se realizó la inspección visual en el área designada.',
         findings: (resultReport.findings || []).map((f: any, idx: number) => ({
           id: `find-${Date.now()}-${idx}`,
@@ -278,9 +376,55 @@ export const InspectorIAScreen: React.FC = () => {
   };
 
   // Save Report to Database
-  const handleSaveReport = async () => {
+    const handleSaveReport = async () => {
     if (!generatedDraftReport) return;
     await db.saveInspectionReport(generatedDraftReport);
+    
+    // Generate real Inspection record
+    if (activeCompany && selectedEstablishmentId) {
+      try {
+        const newInspectionId = await inspectionService.createInspection({
+          companyId: activeCompany.id,
+          establishmentId: selectedEstablishmentId,
+          sectorId: '', // To be refined
+          date: new Date().toISOString().split('T')[0],
+          type: 'InspectorIA AI',
+          status: 'Closed',
+          findings: generatedDraftReport.findings.map(f => ({
+            id: f.id,
+            description: f.description,
+            hazard: f.hazardTitle,
+            risk: f.riskLevel,
+            severity: f.riskLevel === 'Crítico' ? 'Critical' : f.riskLevel === 'Alto' ? 'High' : f.riskLevel === 'Medio' ? 'Medium' : 'Low',
+            photoUrl: f.photoUrl,
+            location: siteLocation,
+            responsible: inspectorName,
+            dueDate: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString().split('T')[0],
+            status: 'Pendiente'
+          }))
+        });
+
+        // Generate CAPA actions for High/Critical
+        for (const finding of generatedDraftReport.findings) {
+          if (finding.riskLevel === 'Alto' || finding.riskLevel === 'Crítico') {
+            await capaApi.createCorrectiveAction({
+              companyId: activeCompany.id,
+              description: `[InspectorIA] ${finding.hazardTitle}: ${finding.description}`,
+              actionRequired: finding.suggestedAction,
+              responsibleName: 'Por asignar',
+              deadlineDate: new Date(Date.now() + 3 * 24 * 60 * 60 * 1000).toISOString().split('T')[0],
+              sourceType: 'Inspección',
+              sourceId: newInspectionId,
+              riskLevel: finding.riskLevel,
+              status: 'Pendiente'
+            }).catch(err => console.error("Error creating CAPA from InspectorIA", err));
+          }
+        }
+      } catch (err) {
+        console.error("Error integrating to CAPA/Inspections", err);
+      }
+    }
+
     loadData();
     setSelectedReport(generatedDraftReport);
     setGeneratedDraftReport(null);
@@ -770,13 +914,7 @@ export const InspectorIAScreen: React.FC = () => {
                   <Building className="w-3.5 h-3.5 text-orange-500" />
                   Empresa / Cliente
                 </label>
-                <input
-                  type="text"
-                  value={companyName}
-                  onChange={(e) => setCompanyName(e.target.value)}
-                  className="w-full px-3.5 py-2.5 rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 text-slate-900 dark:text-white text-xs font-medium focus:ring-2 focus:ring-orange-500 outline-none"
-                  placeholder="Ej: Techint S.A."
-                />
+                <div className="w-full pl-9 pr-3 py-2.5 bg-slate-100 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl text-sm font-medium text-slate-700 dark:text-slate-300 cursor-not-allowed">{companyName}</div>
               </div>
 
               <div className="space-y-1.5">
@@ -784,13 +922,7 @@ export const InspectorIAScreen: React.FC = () => {
                   <MapPin className="w-3.5 h-3.5 text-orange-500" />
                   Ubicación / Obra
                 </label>
-                <input
-                  type="text"
-                  value={siteLocation}
-                  onChange={(e) => setSiteLocation(e.target.value)}
-                  className="w-full px-3.5 py-2.5 rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 text-slate-900 dark:text-white text-xs font-medium focus:ring-2 focus:ring-orange-500 outline-none"
-                  placeholder="Ej: Obra Puerto Madero Módulo 2"
-                />
+                <select value={selectedEstablishmentId} onChange={(e) => setSelectedEstablishmentId(e.target.value)} className="w-full pl-9 pr-3 py-2.5 bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl focus:outline-none focus:ring-2 focus:ring-orange-500 text-sm font-medium text-slate-900 dark:text-white"><option value="">Seleccione un establecimiento...</option>{establishments.filter(e => e.companyId === activeCompany?.id).map(e => (<option key={e.id} value={e.id}>{e.name}</option>))}</select>
               </div>
 
               <div className="space-y-1.5">
@@ -801,7 +933,7 @@ export const InspectorIAScreen: React.FC = () => {
                 <input
                   type="text"
                   value={inspectorName}
-                  onChange={(e) => setInspectorName(e.target.value)}
+                  disabled
                   className="w-full px-3.5 py-2.5 rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 text-slate-900 dark:text-white text-xs font-medium focus:ring-2 focus:ring-orange-500 outline-none"
                   placeholder="Ej: Ing. Juan Perez"
                 />
@@ -815,7 +947,7 @@ export const InspectorIAScreen: React.FC = () => {
                 <input
                   type="text"
                   value={inspectorRegistration}
-                  onChange={(e) => setInspectorRegistration(e.target.value)}
+                  disabled
                   className="w-full px-3.5 py-2.5 rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 text-slate-900 dark:text-white text-xs font-medium focus:ring-2 focus:ring-orange-500 outline-none"
                   placeholder="Ej: Mat. COPIME 1234"
                 />
@@ -861,9 +993,42 @@ export const InspectorIAScreen: React.FC = () => {
               </div>
             </div>
 
-            {/* Upload Zone / Media Preview */}
+            {/* Upload Zone / Media Preview & Live Camera */}
             <div className="border-2 border-dashed border-slate-300 dark:border-slate-700 rounded-3xl p-6 text-center bg-slate-50 dark:bg-slate-800/30 space-y-4">
-              {selectedImageBase64 ? (
+              {isCameraActive ? (
+                <div className="space-y-4">
+                  <div className="relative inline-block max-w-lg w-full rounded-2xl overflow-hidden border-2 border-orange-500 shadow-xl bg-black">
+                    <video
+                      ref={videoRef}
+                      autoPlay
+                      playsInline
+                      muted
+                      className="w-full max-h-80 object-cover"
+                    />
+                    <div className="absolute top-3 left-3 bg-red-600 text-white text-[10px] font-bold px-2 py-1 rounded-md flex items-center gap-1.5 animate-pulse">
+                      <span className="w-2 h-2 rounded-full bg-white"></span>
+                      CÁMARA EN VIVO
+                    </div>
+                  </div>
+                  <div className="flex items-center justify-center gap-3">
+                    <button
+                      type="button"
+                      onClick={handleCaptureLivePhoto}
+                      className="px-6 py-2.5 rounded-xl bg-orange-500 hover:bg-orange-600 text-white text-xs font-bold flex items-center gap-2 shadow-lg shadow-orange-500/30 transition-all hover:scale-105"
+                    >
+                      <Camera className="w-4 h-4" />
+                      <span>Capturar Fotografía</span>
+                    </button>
+                    <button
+                      type="button"
+                      onClick={handleStopCamera}
+                      className="px-4 py-2.5 rounded-xl bg-slate-700 hover:bg-slate-600 text-white text-xs font-semibold transition-all"
+                    >
+                      Cancelar
+                    </button>
+                  </div>
+                </div>
+              ) : selectedImageBase64 ? (
                 <div className="space-y-4">
                   <div className="relative inline-block max-w-lg rounded-2xl overflow-hidden border-2 border-orange-500 shadow-xl">
                     <img
@@ -884,7 +1049,7 @@ export const InspectorIAScreen: React.FC = () => {
                   </div>
                   <p className="text-xs font-bold text-emerald-600 dark:text-emerald-400 flex items-center justify-center gap-1">
                     <CheckCircle2 className="w-4 h-4" />
-                    Fotografía de inspección cargada y lista para análisis
+                    Fotografía de inspección cargada y lista para análisis conjunto
                   </p>
                 </div>
               ) : (
@@ -894,24 +1059,79 @@ export const InspectorIAScreen: React.FC = () => {
                   </div>
                   <div>
                     <p className="text-sm font-bold text-slate-800 dark:text-slate-200">
-                      Sube o toma una fotografía / fotograma de video
+                      Sube o toma una fotografía / fotograma de la inspección
                     </p>
                     <p className="text-xs text-slate-500 dark:text-slate-400 mt-1">
-                      Formatos soportados: JPG, PNG, WEBP, MP4
+                      Formatos soportados: JPG, PNG, WEBP
                     </p>
                   </div>
-                  <label className="inline-flex items-center gap-2 px-5 py-2.5 rounded-2xl bg-orange-500 hover:bg-orange-600 text-white text-xs font-bold cursor-pointer shadow-lg shadow-orange-500/20 transition-all hover:scale-105">
-                    <Camera className="w-4 h-4" />
-                    <span>Seleccionar / Abrir Cámara</span>
-                    <input
-                      type="file"
-                      accept="image/*,video/*"
-                      onChange={handleFileChange}
-                      className="hidden"
-                    />
-                  </label>
+                  <div className="flex flex-wrap items-center justify-center gap-3">
+                    <button
+                      type="button"
+                      onClick={handleStartCamera}
+                      className="inline-flex items-center gap-2 px-5 py-2.5 rounded-2xl bg-gradient-to-r from-orange-500 to-amber-500 hover:from-orange-600 hover:to-amber-600 text-white text-xs font-bold cursor-pointer shadow-lg shadow-orange-500/20 transition-all hover:scale-105"
+                    >
+                      <Camera className="w-4 h-4" />
+                      <span>Abrir Cámara en Vivo</span>
+                    </button>
+                    <label className="inline-flex items-center gap-2 px-5 py-2.5 rounded-2xl bg-slate-800 hover:bg-slate-700 text-white text-xs font-bold cursor-pointer shadow-md transition-all hover:scale-105">
+                      <UploadCloud className="w-4 h-4" />
+                      <span>Seleccionar Archivo</span>
+                      <input
+                        type="file"
+                        accept="image/*"
+                        capture="environment"
+                        onChange={handleFileChange}
+                        className="hidden"
+                      />
+                    </label>
+                  </div>
                 </div>
               )}
+            </div>
+
+            {/* Context & Critical Elements Description Zone */}
+            <div className="p-5 rounded-3xl bg-slate-50 dark:bg-slate-800/50 border-2 border-orange-500/30 space-y-3">
+              <div className="flex items-center justify-between">
+                <label className="text-xs font-bold text-slate-900 dark:text-white flex items-center gap-1.5">
+                  <FileText className="w-4 h-4 text-orange-500" />
+                  <span>Descripción de la Actividad & Elementos Críticos a Evaluar:</span>
+                </label>
+                <span className="text-[11px] font-medium text-slate-400">
+                  {activityDescription.length} caracteres
+                </span>
+              </div>
+
+              <p className="text-xs text-slate-600 dark:text-slate-300 leading-relaxed">
+                Detalla la tarea operativa observada o especifica los elementos críticos de seguridad (alturas, bloqueo de energía, sustancias peligrosas, herramientas en uso, etc.). <strong>La IA analizará la imagen y esta descripción como un todo integrado</strong> para auditar el cumplimiento normativo.
+              </p>
+
+              <textarea
+                value={activityDescription}
+                onChange={(e) => setActivityDescription(e.target.value)}
+                rows={3}
+                placeholder="Ej: Montaje de andamio a 4m de altura con uso de amoladora angular. Se solicita a la IA evaluar fijación de tablones, línea de vida, EPP auditivo/ocular y señalización perimetral..."
+                className="w-full p-3.5 rounded-2xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 text-xs text-slate-900 dark:text-white placeholder:text-slate-400 focus:ring-2 focus:ring-orange-500 outline-none resize-none transition-all shadow-inner"
+              />
+
+              {/* Quick Tags Pills */}
+              <div className="space-y-1.5 pt-1">
+                <p className="text-[11px] font-bold text-slate-500 dark:text-slate-400">
+                  Insertar elemento crítico frecuente:
+                </p>
+                <div className="flex flex-wrap gap-1.5">
+                  {QUICK_CRITICAL_TAGS.map((tag) => (
+                    <button
+                      key={tag}
+                      type="button"
+                      onClick={() => handleAddActivityTag(tag)}
+                      className="px-2.5 py-1 rounded-xl text-[10px] font-bold bg-orange-500/10 text-orange-600 dark:text-orange-400 hover:bg-orange-500/20 border border-orange-500/20 transition-all hover:scale-105 active:scale-95"
+                    >
+                      + {tag}
+                    </button>
+                  ))}
+                </div>
+              </div>
             </div>
 
             {/* Run Button */}
@@ -1008,6 +1228,19 @@ export const InspectorIAScreen: React.FC = () => {
                   {generatedDraftReport.executiveSummary}
                 </p>
               </div>
+
+              {/* Context & Critical Elements Inspected */}
+              {generatedDraftReport.activityDescription && (
+                <div className="space-y-2">
+                  <h4 className="text-sm font-extrabold text-slate-900 dark:text-white uppercase tracking-wider flex items-center gap-2">
+                    <Sparkles className="w-4 h-4 text-orange-500" />
+                    Contexto Operativo y Elementos Críticos Inspeccionados
+                  </h4>
+                  <div className="text-sm text-slate-800 dark:text-slate-200 bg-orange-500/10 p-4 rounded-2xl border border-orange-500/30 leading-relaxed italic">
+                    "{generatedDraftReport.activityDescription}"
+                  </div>
+                </div>
+              )}
 
               {/* Hallazgos Visuales & Citas Normativas RAG */}
               <div className="space-y-4">
@@ -1302,6 +1535,19 @@ export const InspectorIAScreen: React.FC = () => {
                       <p><strong>GPS:</strong> {selectedReport.gpsLocation || 'N/A'}</p>
                     </div>
                   </div>
+
+                  {/* Context & Critical Elements Inspected */}
+                  {selectedReport.activityDescription && (
+                    <div className="space-y-2">
+                      <h4 className="font-bold text-sm text-slate-900 dark:text-white uppercase flex items-center gap-1.5">
+                        <Sparkles className="w-4 h-4 text-orange-500" />
+                        Contexto Operativo y Elementos Críticos Declarados
+                      </h4>
+                      <p className="text-xs text-slate-800 dark:text-slate-200 leading-relaxed bg-orange-500/10 p-4 rounded-xl border border-orange-500/30 italic">
+                        "{selectedReport.activityDescription}"
+                      </p>
+                    </div>
+                  )}
 
                   {/* Executive Summary */}
                   <div className="space-y-2">

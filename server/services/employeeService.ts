@@ -680,6 +680,125 @@ export async function addEmployeeTimelineEvent(
   }
 }
 
+export async function bulkCreateEmployees(
+  employeesData: Array<{
+    id?: string;
+    companyId: string;
+    establishmentId: string;
+    sectorId?: string;
+    positionId?: string;
+    orgId: string;
+    cuil: string;
+    dni?: string;
+    firstName: string;
+    lastName: string;
+    hireDate?: string;
+    shift?: EmployeeShift;
+    category?: string;
+    associatedRisks?: string[];
+    medicalFitness?: MedicalFitnessRecord;
+    notes?: string;
+    isContractorStaff?: boolean;
+    contractorId?: string;
+  }>
+): Promise<{ created: Employee[]; errors: Array<{ row: number; cuil?: string; error: string }> }> {
+  const db = getAdminFirestore();
+  const created: Employee[] = [];
+  const errors: Array<{ row: number; cuil?: string; error: string }> = [];
+
+  // Group into batches of 50 for Firestore write limits
+  const batchSize = 50;
+  for (let i = 0; i < employeesData.length; i += batchSize) {
+    const chunk = employeesData.slice(i, i + batchSize);
+    const batch = db.batch();
+    const chunkCreated: Employee[] = [];
+
+    for (let j = 0; j < chunk.length; j++) {
+      const data = chunk[j];
+      const rowIndex = i + j + 1;
+      try {
+        const now = new Date().toISOString();
+        const id = data.id || `emp_${Date.now()}_${Math.random().toString(36).slice(2, 8)}_${j}`;
+        const hireDate = data.hireDate || now.slice(0, 10);
+        const dni = data.dni || extractDniFromCuil(data.cuil);
+
+        const initialTimeline: EmployeeTimelineEvent[] = [
+          {
+            id: `evt_hire_${Date.now()}_${j}`,
+            employeeId: id,
+            type: "hire",
+            date: hireDate,
+            title: "Alta de Ingreso y Registro de Legajo (Carga Masiva)",
+            description: `Incorporación en nómina para el establecimiento. Puesto/Categoría: ${data.category || "Operario"}`,
+            severity: "normal",
+            authorName: "Sistema / Carga Masiva",
+          },
+        ];
+
+        const employee: Employee = {
+          id,
+          companyId: data.companyId,
+          establishmentId: data.establishmentId,
+          sectorId: data.sectorId || undefined,
+          positionId: data.positionId || undefined,
+          orgId: data.orgId,
+          cuil: data.cuil.trim(),
+          dni: dni.trim(),
+          firstName: data.firstName.trim(),
+          lastName: data.lastName.trim(),
+          hireDate,
+          shift: data.shift || "morning",
+          category: data.category?.trim() || "Operario",
+          active: true,
+          isContractorStaff: data.isContractorStaff || false,
+          contractorId: data.contractorId || undefined,
+          associatedRisks: data.associatedRisks || [],
+          medicalFitness: data.medicalFitness || {
+            status: "fit",
+            examType: "pre_occupational",
+            examDate: hireDate,
+          },
+          ppeDeliveries: [],
+          trainings: [],
+          accidents: [],
+          documents: [],
+          history: [],
+          timeline: initialTimeline,
+          notes: data.notes || undefined,
+          createdAt: now,
+          updatedAt: now,
+        };
+
+        const docRef = db.collection("employees").doc(id);
+        batch.set(docRef, employee);
+        chunkCreated.push(employee);
+      } catch (err: any) {
+        errors.push({
+          row: rowIndex,
+          cuil: data.cuil,
+          error: err.message || "Error procesando fila",
+        });
+      }
+    }
+
+    try {
+      await batch.commit();
+      created.push(...chunkCreated);
+    } catch (batchErr: any) {
+      console.error("Error committing batch:", batchErr);
+      chunk.forEach((item, idx) => {
+        errors.push({
+          row: i + idx + 1,
+          cuil: item.cuil,
+          error: batchErr.message || "Fallo al persistir en base de datos",
+        });
+      });
+    }
+  }
+
+  return { created, errors };
+}
+
 export async function clearEmployeeStore(): Promise<void> {
   const db = getAdminFirestore();
   const snapshot = await db.collection("employees").get();
@@ -688,3 +807,4 @@ export async function clearEmployeeStore(): Promise<void> {
   snapshot.docs.forEach((doc) => batch.delete(doc.ref));
   await batch.commit();
 }
+

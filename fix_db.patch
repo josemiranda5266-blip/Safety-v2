@@ -1,0 +1,150 @@
+--- src/services/db.ts
++++ src/services/db.ts
+@@ -19,136 +19,7 @@
+ };
+ 
+ // Seed initial legal norms for Argentina and International Safety Standards
+-const INITIAL_SAFETY_NORMS: Omit<DocumentItem, 'id'>[] = [
+-  {
+-    title: 'Ley 19.587 - Higiene y Seguridad en el Trabajo',
+-    category: 'Ley',
+-    author: 'Congreso de la Nación Argentina',
+-    uploadDate: new Date('2026-01-10').toISOString(),
+-    documentDate: '1972-04-21',
+-    tags: ['Ley', 'General', 'Obligaciones', 'EPP', 'Extintores', 'Capacitación'],
+-    pageCount: 12,
+-    fileType: 'pdf',
+-    fileSize: 450000,
+-    chunksCount: 8,
+-    version: 1,
+-    status: 'Vigente',
+-    issuingOrganism: 'Congreso de la Nación Argentina',
+-    summary: 'Ley marco fundamental que establece las condiciones de higiene y seguridad en el trabajo para toda la República Argentina. Define obligaciones de empleadores y trabajadores.',
+-    content: `LEY 19.587 DE HIGIENE Y SEGURIDAD EN EL TRABAJO
+-Capítulo 1 - Obligaciones Generales
+-Artículo 4° — La higiene y seguridad en el trabajo comprenderá las normas técnicas y medidas sanitarias, precautorias, de tutela o de cualquier otra índole que tengan por objeto: a) proteger la vida, preservar y mantener la integridad psicofísica de los trabajadores; b) prevenir, reducir, eliminar o aislar los riesgos de los distintos centros o puestos de trabajo.
+-
+-Capítulo 2 - Obligaciones del Empleador
+-Artículo 8° — Todo empleador debe adoptar y poner en práctica las medidas adecuadas de higiene y seguridad para proteger la vida y la integridad de los trabajadores, especialmente en lo relativo a:
+-a) La construcción, adaptación, instalación y equipamiento de los edificios y lugares de trabajo en condiciones ambientales y sanitarias adecuadas.
+-b) La provisión y mantenimiento de equipos de protección personal (EPP) homologados según los riesgos de las tareas (cascos, calzado de seguridad, protección auditiva, guantes).
+-c) La realización de exámenes médicos pre-ocupacionales y periódicos obligatorios.
+-d) La capacitación del personal en prevención de riesgos específicos de sus tareas.
+-
+-Capítulo 3 - Obligaciones del Trabajador
+-Artículo 10° — El trabajador está obligado a cumplir con las normas de seguridad, usar y conservar adecuadamente los EPP provistos y asistir a los cursos de capacitación dictados por el empleador.
+-`,
+-  },
+-  {
+-    title: 'Decreto 351/79 - Reglamentación de la Ley 19.587 (Industria en General)',
+-    category: 'Decreto',
+-    author: 'Poder Ejecutivo Nacional',
+-    uploadDate: new Date('2026-01-12').toISOString(),
+-    documentDate: '1979-02-05',
+-    tags: ['Decreto Reglamentario', 'Iluminación', 'Ruido', 'Riesgo Eléctrico', 'Incendio'],
+-    pageCount: 120,
+-    fileType: 'pdf',
+-    fileSize: 3500000,
+-    chunksCount: 45,
+-    version: 1,
+-    status: 'Vigente',
+-    issuingOrganism: 'Poder Ejecutivo Nacional',
+-    summary: 'Reglamento general de la Ley 19.587 para establecimientos industriales y comerciales. Define parámetros técnicos de carga térmica, ruido, iluminación, protección contra incendios e instalaciones eléctricas.',
+-    content: `DECRETO N° 351/1979 - REGLAMENTO GENERAL DE HIGIENE Y SEGURIDAD
+-Anexo II - Ruido Industrial
+-Capítulo 13 - En todos los lugares de trabajo donde el Nivel Sonoro Continuo Equivalente supere los 85 dB(A), es obligatorio el uso de protectores auditivos provistos por el empleador. Para niveles superiores se debe reducir el tiempo de exposición según la escala logarítmica:
+-- 85 dB(A) -> Máximo 8 horas por día.
+-- 88 dB(A) -> Máximo 4 horas por día.
+-- 91 dB(A) -> Máximo 2 horas por día.
+-- 94 dB(A) -> Máximo 1 hora por día.
+-- Ningún trabajador podrá estar expuesto a ruidos de impacto o pico superiores a 140 dB(C) sin protección auditiva doble (tapón de inserción + copa auricular).
+-
+-Anexo IV - Iluminación Mínima por Puestos de Trabajo
+-Capítulo 12 - Los niveles mínimos de iluminación en luxes (lx) requeridos son:
+-- Pasillos, depósitos y zonas de tránsito: 100 lx.
+-- Tareas ordinarias (montaje general, oficinas de archivo): 300 lx.
+-- Tareas moderadamente finas (lectura continua, dibujo, costura, control de calidad): 500 lx.
+-- Tareas muy finas de alta precisión (reparación de relojería, electrónica fina): 1000 a 1500 lx.
+-Las fuentes de luz no deben provocar deslumbramiento directo ni reflejos sobre las superficies de trabajo.
+-
+-Anexo VI - Protección contra Incendios y Extintores
+-Artículo 160° — Todo establecimiento debe contar con extintores portátiles cuya cantidad se determinará a razón de 1 extintor triclase ABC de 5 kg o 10 kg por cada 200 m² de superficie cubierta o fracción. La distancia máxima a recorrer hasta alcanzar un extintor no superará los 20 metros. Los extintores deben ubicarse a una altura entre 1,20 m y 1,50 m del suelo, señalizados con placa fotoluminiscente y mantener vigentes la prueba hidráulica quinquenal y la recarga anual.`,
+-  },
+-  {
+-    title: 'Decreto 911/96 - Reglamento de Seguridad en la Construcción',
+-    category: 'Decreto',
+-    author: 'Poder Ejecutivo Nacional',
+-    uploadDate: new Date('2026-01-15').toISOString(),
+-    documentDate: '1996-08-05',
+-    tags: ['Construcción', 'Trabajo en Altura', 'Andamios', 'Excavaciones', 'Redes de Protección'],
+-    pageCount: 42,
+-    fileType: 'pdf',
+-    fileSize: 1200000,
+-    chunksCount: 10,
+-    version: 1,
+-    status: 'Vigente',
+-    issuingOrganism: 'Poder Ejecutivo Nacional',
+-    summary: 'Reglamento de Higiene y Seguridad específico para la industria de la construcción. Regula trabajos en altura, armados de andamios tubulares, excavaciones y submuraciones, arneses anticaídas y protecciones colectivas.',
+-    content: `DECRETO N° 911/1996 - REGLAMENTO DE HIGIENE Y SEGURIDAD PARA LA INDUSTRIA DE LA CONSTRUCCIÓN
+-Capítulo 4 - Protecciones Colectivas e Individuales
+-Artículo 50° — En todo trabajo con riesgo de caída a distinto nivel (altura superior a 1,50 metros respecto del plano inferior) es obligatorio instalar protecciones colectivas como barandas rígidas compuestas por pasamanos a 1,00 m de altura, travesaño intermedio a 0,50 m y zócalo de 0,15 m de altura en todo el contorno libre.
+-Artículo 54° — Cuando las protecciones colectivas no sean técnicamente viables, el trabajador debe utilizar arnés de seguridad anticaídas tipo paracaidista con cabo de amarre provisto de absorbedor de energía cinemática, amarrado a un punto de anclaje firme estructurado capaz de resistir 22 KN (2.200 kgf) o línea de vida de acero de 8 mm de diámetro.
+-
+-Capítulo 6 - Andamios Tubulares y Suspendidos
+-Artículo 72° — Los andamios tubulares deben apoyarse sobre suelas de madera dura de al menos 2" de espesor con placas de base de acero. Deben estar firmemente arriostrados a la estructura del edificio en forma vertical y horizontal cada 6 metros. Las plataformas de trabajo deben tener un ancho mínimo de 0,60 m, estar constituidas por tablones de madera de primera calidad sin nudos ni fisuras o plataformas metálicas antideslizantes trabadas mediante grapas de seguridad. Prohibido usar tablones en voladizo o ladrillos como apoyo.
+-
+-Capítulo 8 - Excavaciones, Zanjas y Submuraciones
+-Artículo 130° — Antes de iniciar excavaciones de más de 1,20 metros de profundidad se deben realizar entibaciones o apuntalamientos continuos o discontinuos en función de la cohesión del suelo y nivel freático. El material extraído debe acopiarse a una distancia mínima del borde equivalente a la mitad de la profundidad de la zanja (mínimo 0,60 metros del borde) para evitar derrumbes. Obligatorio verificar ausencia de interferencias de gas, agua y líneas eléctricas subterráneas antes de excavar.`,
+-  },
+-  {
+-    title: 'Resolución SRT 295/2003 - Especificaciones sobre Ergonomía y NIOSH',
+-    category: 'Resolución SRT',
+-    author: 'Superintendencia de Riesgos del Trabajo (SRT)',
+-    uploadDate: new Date('2026-01-20').toISOString(),
+-    documentDate: '2003-11-10',
+-    tags: ['Ergonomía', 'Levantamiento de Cargas', 'NIOSH', 'Trastornos Musculoesqueléticos', 'LPM'],
+-    pageCount: 30,
+-    fileType: 'pdf',
+-    fileSize: 980000,
+-    chunksCount: 8,
+-    version: 1,
+-    status: 'Vigente',
+-    issuingOrganism: 'Superintendencia de Riesgos del Trabajo',
+-    summary: 'Especificaciones técnicas detalladas sobre ergonomía en el trabajo. Introduce la ecuación de NIOSH para límites de peso recomendado en el levantamiento manual de cargas (LPM max 25 kg en condiciones ideales) y tablas de esfuerzos repetitivos.',
+-    content: `RESOLUCIÓN SRT N° 295/2003 - ANEXO I: ERGONOMÍA EN PUESTOS DE TRABAJO
+-1. Levantamiento Manual de Cargas
+-El límite máximo recomendado de carga para el levantamiento manual por un trabajador en condiciones ideales (carga pegada al cuerpo, altura de nudillos, sin rotación de tronco) es de 25 kg para hombres y 15 kg para mujeres o trabajadores jóvenes.
+-Para determinar el Límite de Peso Recomendado (LPR) real se aplica la ecuación de NIOSH modificada:
+-LPR = LC x HM x VM x DM x AM x FM x CM
+-Donde LC es la Constante de Carga (25 kg), HM es el Factor de Distancia Horizontal, VM el Factor de Altura Vertical, AM el Factor de Asimetría (ángulo de giro), FM el Factor de Frecuencia y CM el Acoplamiento de agarre.
+-
+-2. Trastornos Musculoesqueléticos y Movimientos Repetitivos
+-Para tareas que involucren movimientos repetitivos de miembros superiores (manos, muñecas, codos) con una frecuencia superior a 4 segundos por ciclo, el empleador debe realizar la evaluación mediante el método NAM-TLVs (Threshold Limit Values para nivel de actividad manual). Se deben programar pausas activas de 5 minutos por cada hora de trabajo continuo en tareas repetitivas o de alta exigencia física.`,
+-  },
+-  {
+-    title: 'Decreto 1338/96 - Servicios de Medicina y de Higiene y Seguridad',
+-    category: 'Decreto',
+-    author: 'Poder Ejecutivo Nacional',
+-    uploadDate: new Date('2026-01-22').toISOString(),
+-    documentDate: '1996-11-25',
+-    tags: ['Servicios de Seguridad', 'Horas Profesional', 'Medicina del Trabajo', 'Categorías de Riesgo'],
+-    pageCount: 16,
+-    fileType: 'pdf',
+-    fileSize: 520000,
+-    chunksCount: 5,
+-    version: 1,
+-    status: 'Vigente',
+-    issuingOrganism: 'Poder Ejecutivo Nacional',
+-    summary: 'Establece la obligatoriedad de contar con Servicios de Medicina del Trabajo y Servicios de Higiene y Seguridad en el Trabajo en todos los establecimientos, determinando la asignación de horas-profesional mensuales en función de la cantidad de trabajadores y categoría de riesgo.',
+-    content: `DECRETO N° 1338/1996 - SERVICIOS DE MEDICINA Y DE HIGIENE Y SEGURIDAD LABORAL
+-Artículo 3° — Todo establecimiento debe disponer de un Servicio de Higiene y Seguridad en el Trabajo dirigido por un profesional con título universitario de Ingeniero Especialista en Higiene y Seguridad o Licenciado en Higiene y Seguridad Laboral con matrícula habilitante.
+-
+-Artículo 12° — Las horas-profesional mensuales asignadas al Servicio de Higiene y Seguridad se determinan según el número de trabajadores equivalentes y la Categoría de Riesgo del establecimiento (A: Riesgo Bajo, B: Riesgo Medio, C: Riesgo Alto):
+-- Establecimientos Categoría C (Riesgo Alto): Requieren presencia asignada desde 5 trabajadores (mínimo 4 horas/mes profesional). Para más de 150 trabajadores de categoría C se exige Servicio Interno Permanente con dedicación exclusiva.
+-- Excepciones de asignación de horas: Quedan exceptuados de la asignación de horas profesionales los establecimientos agrícolas, comerciales o de servicios de hasta 5 trabajadores que no manipulen sustancias tóxicas ni utilicen maquinaria peligrosa.`,
+-  },
+-];
++const INITIAL_SAFETY_NORMS: Omit<DocumentItem, 'id'>[] = [];
+ 
+ export class LocalSafetyDB {
+   private constructor() {}

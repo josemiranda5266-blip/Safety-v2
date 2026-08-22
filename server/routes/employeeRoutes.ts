@@ -172,6 +172,81 @@ router.post("/", requirePermission("employee:create"), async (req: TenantRequest
 });
 
 /**
+ * POST /api/v2/employees/bulk
+ * Bulk registers multiple employees validating company and establishment.
+ */
+router.post("/bulk", requirePermission("employee:create"), async (req: TenantRequest, res: Response) => {
+  const context = req.authContext!;
+  const { employees, companyId, establishmentId } = req.body;
+
+  if (!Array.isArray(employees) || employees.length === 0) {
+    res.status(400).json({
+      error: "Se requiere un array 'employees' no vacío",
+      code: "INVALID_BULK_PAYLOAD",
+    });
+    return;
+  }
+
+  if (employees.length > 500) {
+    res.status(400).json({
+      error: "El límite máximo por lote de carga masiva es de 500 trabajadores",
+      code: "BULK_LIMIT_EXCEEDED",
+    });
+    return;
+  }
+
+  // Validate company access
+  const targetCompanyId = companyId || employees[0]?.companyId;
+  const parentCompany = await companyService.getCompanyById(targetCompanyId, context.orgId);
+  if (!parentCompany || !canAccessCompany(context, parentCompany, "company:update")) {
+    res.status(404).json({
+      error: "La empresa especificada no existe o no tiene permisos",
+      code: "PARENT_COMPANY_NOT_FOUND",
+    });
+    return;
+  }
+
+  // Validate establishment access
+  const targetEstId = establishmentId || employees[0]?.establishmentId;
+  const parentEst = await establishmentService.getEstablishmentById(targetEstId, context.orgId);
+  if (!parentEst || !canAccessEstablishment(context, parentEst, "establishment:update")) {
+    res.status(404).json({
+      error: "El establecimiento especificado no existe o no tiene permisos",
+      code: "PARENT_ESTABLISHMENT_NOT_FOUND",
+    });
+    return;
+  }
+
+  // Map and prepare items
+  const preparedEmployees = employees.map((item: any) => ({
+    ...item,
+    companyId: targetCompanyId,
+    establishmentId: targetEstId,
+    orgId: context.orgId,
+  }));
+
+  const result = await employeeService.bulkCreateEmployees(preparedEmployees);
+
+  logStructured("info", "employees_bulk_created", {
+    orgId: context.orgId,
+    userId: context.userId,
+    companyId: targetCompanyId,
+    establishmentId: targetEstId,
+    countCreated: result.created.length,
+    countErrors: result.errors.length,
+  });
+
+  res.status(201).json({
+    message: `Se procesaron ${result.created.length} trabajadores exitosamente.`,
+    createdCount: result.created.length,
+    errorCount: result.errors.length,
+    created: result.created,
+    errors: result.errors,
+  });
+});
+
+
+/**
  * PATCH /api/v2/employees/:id
  * Updates an employee record within the authorized tenant.
  */

@@ -1,0 +1,45 @@
+--- src/services/inspectionService.ts
++++ src/services/inspectionService.ts
+@@ -1,22 +1,38 @@
+ import { dbFirestore } from './firebase';
+-import { collection, addDoc, getDocs, doc, getDoc, updateDoc, query, where, Timestamp } from 'firebase/firestore';
++import { collection, addDoc, getDocs, doc, getDoc, updateDoc } from 'firebase/firestore';
+ import { Inspection, Finding } from '../types/safety';
+ import { auditService } from './auditService';
+ import { auth } from './firebase';
+ 
+ export const inspectionService = {
++  getOrgId() {
++    return localStorage.getItem('safetyia_active_org_id');
++  },
++  getCollectionRef() {
++    const orgId = this.getOrgId();
++    if (!orgId) throw new Error("No organization selected");
++    return collection(dbFirestore, 'organizations', orgId, 'inspections');
++  },
++  getDocRef(id: string) {
++    const orgId = this.getOrgId();
++    if (!orgId) throw new Error("No organization selected");
++    return doc(dbFirestore, 'organizations', orgId, 'inspections', id);
++  },
++
+   async createInspection(inspection: Omit<Inspection, 'id'>): Promise<string> {
+-    const docRef = await addDoc(collection(dbFirestore, 'inspections'), inspection);
++    const docRef = await addDoc(this.getCollectionRef(), inspection);
+     await auditService.logAction('CREATE_INSPECTION', 'Inspection', docRef.id, auth.currentUser?.uid || 'system', inspection);
+     return docRef.id;
+   },
+ 
+   async getInspections(): Promise<Inspection[]> {
+-    const snapshot = await getDocs(collection(dbFirestore, 'inspections'));
++    if (!this.getOrgId()) return [];
++    const snapshot = await getDocs(this.getCollectionRef());
+     return snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Inspection));
+   },
+   
+   async updateFindingStatus(inspectionId: string, findingId: string, status: Finding['status']): Promise<void> {
+-    const inspectionRef = doc(dbFirestore, 'inspections', inspectionId);
++    const inspectionRef = this.getDocRef(inspectionId);
+     const inspectionSnap = await getDoc(inspectionRef);
+     if (!inspectionSnap.exists()) {
+       throw new Error("Inspection not found");

@@ -5,8 +5,18 @@ import { TrainingScreen } from './TrainingScreen';
 import { IncidentScreen } from './IncidentScreen';
 import { EmergencyScreen } from './EmergencyScreen';
 
-export const SafetyScreen: React.FC = () => {
-  const [activeTab, setActiveTab] = useState<'epp' | 'training' | 'incident' | 'emergency'>('epp');
+interface SafetyScreenProps {
+  initialTab?: 'epp' | 'training' | 'incident' | 'emergency';
+}
+
+export const SafetyScreen: React.FC<SafetyScreenProps> = ({ initialTab = 'epp' }) => {
+  const [activeTab, setActiveTab] = useState<'epp' | 'training' | 'incident' | 'emergency'>(initialTab);
+
+  React.useEffect(() => {
+    if (initialTab) {
+      setActiveTab(initialTab);
+    }
+  }, [initialTab]);
 
   return (
     <div className="space-y-6">

@@ -21,7 +21,9 @@ import {
   Activity,
   MoreVertical,
   ChevronRight,
-  Download
+  Download,
+  FileSpreadsheet,
+  UploadCloud
 } from 'lucide-react';
 import { useTenant } from '../../context/TenantContext';
 import { Employee, EmployeeShift, MedicalFitnessStatus } from '../../types/tenant';
@@ -35,6 +37,7 @@ import {
   AddDocumentModal 
 } from './EmployeeModals';
 import { EmployeeLegajoDetailModal } from './EmployeeLegajoDetailModal';
+import { EmployeesBulkUploadModal } from './EmployeesBulkUploadModal';
 
 export const EmployeesScreen: React.FC = () => {
   const { 
@@ -59,6 +62,7 @@ export const EmployeesScreen: React.FC = () => {
 
   // Active Modals State
   const [isCreateModalOpen, setIsCreateModalOpen] = useState(false);
+  const [isBulkUploadModalOpen, setIsBulkUploadModalOpen] = useState(false);
   const [editingEmployee, setEditingEmployee] = useState<Employee | null>(null);
   const [selectedEmployeeForDetail, setSelectedEmployeeForDetail] = useState<Employee | null>(null);
   
@@ -166,15 +170,27 @@ export const EmployeesScreen: React.FC = () => {
           </p>
         </div>
 
-        <button
-          onClick={() => {
-            setEditingEmployee(null);
-            setIsCreateModalOpen(true);
-          }}
-          className="px-4 py-2.5 rounded-xl bg-blue-600 hover:bg-blue-500 text-white text-xs font-semibold flex items-center gap-2 shadow-lg shadow-blue-600/20 transition-colors self-start sm:self-auto"
-        >
-          <UserPlus className="w-4 h-4" /> Alta de Trabajador
-        </button>
+        <div className="flex items-center gap-2.5 self-start sm:self-auto">
+          <button
+            onClick={() => setIsBulkUploadModalOpen(true)}
+            className="px-3.5 py-2.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700 text-xs font-semibold flex items-center gap-2 transition-colors active:scale-95 shadow-sm"
+            title="Importación masiva mediante planilla CSV o Excel"
+          >
+            <FileSpreadsheet className="w-4 h-4 text-emerald-400" />
+            <span>Carga Masiva</span>
+          </button>
+
+          <button
+            onClick={() => {
+              setEditingEmployee(null);
+              setIsCreateModalOpen(true);
+            }}
+            className="px-4 py-2.5 rounded-xl bg-blue-600 hover:bg-blue-500 text-white text-xs font-semibold flex items-center gap-2 shadow-lg shadow-blue-600/20 transition-colors active:scale-95"
+          >
+            <UserPlus className="w-4 h-4" />
+            <span>Alta de Trabajador</span>
+          </button>
+        </div>
       </div>
 
       {/* KPI Cards */}
@@ -630,6 +646,14 @@ export const EmployeesScreen: React.FC = () => {
           isOpen={!!documentModalEmployee}
           onClose={() => setDocumentModalEmployee(null)}
           employee={documentModalEmployee}
+        />
+      )}
+
+      {/* 9. Bulk Upload Modal */}
+      {isBulkUploadModalOpen && (
+        <EmployeesBulkUploadModal
+          isOpen={isBulkUploadModalOpen}
+          onClose={() => setIsBulkUploadModalOpen(false)}
         />
       )}
     </div>

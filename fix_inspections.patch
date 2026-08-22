@@ -1,0 +1,25 @@
+--- src/App.tsx
++++ src/App.tsx
+@@ -29,6 +29,7 @@
+ import { EmployeesScreen } from './components/Console/EmployeesScreen';
+ import { InspectorIAScreen } from './components/InspectorIA/InspectorIAScreen';
+ import { CapaScreen } from './components/CAPA/CapaScreen';
++import { InspectionsScreen } from './components/Console/Inspections/InspectionsScreen';
+ import { ErrorBoundary } from './components/ErrorBoundary';
+ 
+ // ... (keep auth flow as is)
+@@ -223,12 +224,12 @@
+         {activeTab === 'inspector_ia' && <InspectorIAScreen />}
+ 
+         {activeTab === 'corrective_actions' && <CapaScreen />}
++        {activeTab === 'inspections' && <InspectionsScreen />}
+ 
+         {(
+           activeTab === 'ppe' ||
+           activeTab === 'trainings' ||
+           activeTab === 'reports' ||
+           activeTab === 'calendar' ||
+-          activeTab === 'documentation' ||
+-          activeTab === 'inspections') && (
++          activeTab === 'documentation') && (
+           <ModulePlaceholder

@@ -109,9 +109,50 @@ export async function exportReportToWord(report: InspectionReport): Promise<void
     rows: metadataRows,
   });
 
-  // Section 1: Executive Summary
+  // Section 1: Activity Description & Critical Elements (if provided)
+  const activitySecElements: (Paragraph | Table)[] = [];
+  if (report.activityDescription) {
+    activitySecElements.push(
+      new Paragraph({
+        text: '1. Contexto Operativo y Elementos Críticos Inspeccionados',
+        heading: HeadingLevel.HEADING_2,
+        spacing: { before: 360, after: 120 },
+      }),
+      new Table({
+        width: { size: 100, type: WidthType.PERCENTAGE },
+        borders: {
+          left: { style: BorderStyle.SINGLE, size: 24, color: 'EA580C' },
+          top: { style: BorderStyle.NONE, size: 0, color: 'FFFFFF' },
+          right: { style: BorderStyle.NONE, size: 0, color: 'FFFFFF' },
+          bottom: { style: BorderStyle.NONE, size: 0, color: 'FFFFFF' },
+        },
+        rows: [
+          new TableRow({
+            children: [
+              new TableCell({
+                children: [
+                  new Paragraph({
+                    children: [
+                      new TextRun({
+                        text: report.activityDescription,
+                        size: 21,
+                        color: '1E293B',
+                      }),
+                    ],
+                  }),
+                ],
+                shading: { fill: 'FFF7ED', type: ShadingType.CLEAR },
+              }),
+            ],
+          }),
+        ],
+      })
+    );
+  }
+
+  // Section 2: Executive Summary
   const sec1Heading = new Paragraph({
-    text: '1. Resumen Ejecutivo',
+    text: report.activityDescription ? '2. Resumen Ejecutivo' : '1. Resumen Ejecutivo',
     heading: HeadingLevel.HEADING_2,
     spacing: { before: 360, after: 120 },
   });
@@ -471,6 +512,7 @@ export async function exportReportToWord(report: InspectionReport): Promise<void
           titleParagraph,
           subtitleParagraph,
           metadataTable,
+          ...activitySecElements,
           sec1Heading,
           execSummaryBox,
           sec2Heading,

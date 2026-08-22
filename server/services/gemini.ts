@@ -12,7 +12,7 @@ export function getGenAI(): GoogleGenAI {
       apiKey,
       httpOptions: {
         headers: {
-          "User-Agent": "safety-ia-production",
+          "User-Agent": "aistudio-build",
         },
       },
     });
@@ -127,8 +127,8 @@ export interface GenerateWithRetryOptions {
  * Also supports fallback model degradation if primary model remains overloaded.
  */
 export async function generateContentWithRetry(options: GenerateWithRetryOptions): Promise<any> {
-  const primaryModel = options.model || "gemini-2.5-flash";
-  const fallbackModel = "gemini-2.5-flash";
+  const primaryModel = options.model || "gemini-3.7-flash";
+  const fallbackModel = "gemini-3.7-flash";
   const maxRetries = options.maxRetries ?? 3;
   let delay = options.initialDelayMs ?? 1000;
 

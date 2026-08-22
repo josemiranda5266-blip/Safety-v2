@@ -9,11 +9,11 @@ import { PositionsScreen } from './components/Console/PositionsScreen';
 import { EmployeesScreen } from './components/Console/EmployeesScreen';
 import { DocumentsScreen } from './components/Console/Documents/DocumentsScreen';
 import { SafetyScreen } from './components/Console/Safety/SafetyScreen';
-import { InspectionsScreen } from './components/Console/Inspections/InspectionsScreen';
 import { IPERScreen } from './components/Console/IPER/IPERScreen';
 import { HygieneScreen } from './components/Console/Hygiene/HygieneScreen';
 import { NormativeScreen } from './components/Console/Normative/NormativeScreen';
 import { ModulePlaceholder } from './components/Console/ModulePlaceholder';
+import { ReportsScreen } from './components/Console/Reports/ReportsScreen';
 import { CompanyModal, EstablishmentModal, SectorModal, PositionModal } from './components/Console/EntityModals';
 import { auditService } from './services/auditService';
 import { useTenant, TenantProvider } from './context/TenantContext';
@@ -26,6 +26,8 @@ import { ChatScreen } from './components/ChatScreen';
 import { LibraryScreen } from './components/LibraryScreen';
 import { NormativeCenterScreen } from './components/NormativeCenterScreen';
 import { InspectorIAScreen } from './components/InspectorIA/InspectorIAScreen';
+import { CapaScreen } from './components/CAPA/CapaScreen';
+import { InspectionsScreen } from './components/Console/Inspections/InspectionsScreen';
 import { FavoritesScreen } from './components/FavoritesScreen';
 import { HistoryScreen } from './components/HistoryScreen';
 import { SummariesScreen } from './components/SummariesScreen';
@@ -40,6 +42,12 @@ function AppContent() {
   const [activeTab, setActiveTab] = useState<TabType>('home');
   const [isDarkMode, setIsDarkMode] = useState<boolean>(true);
   
+  useEffect(() => {
+    const handleNavigate = (e: any) => setActiveTab(e.detail);
+    window.addEventListener('navigate', handleNavigate);
+    return () => window.removeEventListener('navigate', handleNavigate);
+  }, []);
+
   useEffect(() => {
     auditService.logAction('TAB_ACCESS', 'Navigation', activeTab, 'user', { role: userRole });
   }, [activeTab, userRole]);
@@ -195,12 +203,20 @@ function AppContent() {
           <EmployeesScreen />
         )}
 
-        {(activeTab === 'documentation' || activeTab === 'calendar') && (
-          <DocumentsScreen />
+        {activeTab === 'documentation' && (
+          <DocumentsScreen initialTab="explorer" />
         )}
 
-        {(activeTab === 'ppe' || activeTab === 'trainings') && (
-          <SafetyScreen />
+        {activeTab === 'calendar' && (
+          <DocumentsScreen initialTab="calendar" />
+        )}
+
+        {activeTab === 'ppe' && (
+          <SafetyScreen initialTab="epp" />
+        )}
+
+        {activeTab === 'trainings' && (
+          <SafetyScreen initialTab="training" />
         )}
 
         {activeTab === 'inspections' && (
@@ -220,13 +236,9 @@ function AppContent() {
         )}
 
         {/* Roadmap Modules with Context Placeholders */}
-        {(activeTab === 'corrective_actions' ||
-          activeTab === 'reports') && (
-          <ModulePlaceholder
-            moduleKey={activeTab}
-            onNavigateHome={() => setActiveTab('home')}
-          />
-        )}
+        {activeTab === 'corrective_actions' && <CapaScreen />}
+
+        {activeTab === 'reports' && <ReportsScreen />}
 
         {/* Existing Technical & AI Utilities preserved */}
         {activeTab === 'chat' && (

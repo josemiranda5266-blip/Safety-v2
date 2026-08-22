@@ -9,7 +9,8 @@ import {
   FolderOpen,
   ShieldCheck,
   Building2,
-  FileCheck
+  FileCheck,
+  FileSpreadsheet
 } from 'lucide-react';
 import { 
   ProfessionalDocument, 
@@ -23,14 +24,25 @@ import { DocumentsExplorer } from './DocumentsExplorer';
 import { DocumentsDashboard } from './DocumentsDashboard';
 import { DocumentsAlerts } from './DocumentsAlerts';
 import { DocumentsCalendar } from './DocumentsCalendar';
+import { DocumentsTemplates } from './DocumentsTemplates';
 import { DocumentManagerModal } from './DocumentManagerModal';
 import { DocumentDetailModal } from './DocumentDetailModal';
 import { DocumentRenewModal } from './DocumentRenewModal';
 
-export const DocumentsScreen: React.FC = () => {
+interface DocumentsScreenProps {
+  initialTab?: 'explorer' | 'dashboard' | 'alerts' | 'calendar' | 'templates';
+}
+
+export const DocumentsScreen: React.FC<DocumentsScreenProps> = ({ initialTab = 'explorer' }) => {
   const { activeOrg, activeCompanyId } = useTenant();
 
-  const [activeTab, setActiveTab] = useState<'explorer' | 'dashboard' | 'alerts' | 'calendar'>('explorer');
+  const [activeTab, setActiveTab] = useState<'explorer' | 'dashboard' | 'alerts' | 'calendar' | 'templates'>(initialTab);
+
+  useEffect(() => {
+    if (initialTab) {
+      setActiveTab(initialTab);
+    }
+  }, [initialTab]);
   const [documents, setDocuments] = useState<ProfessionalDocument[]>([]);
   const [metrics, setMetrics] = useState<DocumentDashboardMetrics | null>(null);
   const [alerts, setAlerts] = useState<ProfessionalDocument[]>([]);
@@ -203,6 +215,18 @@ export const DocumentsScreen: React.FC = () => {
           <CalendarIcon className="w-4 h-4" />
           <span>Calendario de Vencimientos</span>
         </button>
+
+        <button
+          onClick={() => setActiveTab('templates')}
+          className={`py-3.5 px-4 text-xs font-bold border-b-2 transition-all flex items-center gap-2 ${
+            activeTab === 'templates'
+              ? 'border-orange-500 text-orange-600 dark:text-orange-400'
+              : 'border-transparent text-slate-500 hover:text-slate-800 dark:hover:text-slate-300'
+          }`}
+        >
+          <FileSpreadsheet className="w-4 h-4" />
+          <span>Plantillas & Modelos SRT</span>
+        </button>
       </div>
 
       {/* Tab Panels */}
@@ -243,6 +267,10 @@ export const DocumentsScreen: React.FC = () => {
           isLoading={isLoading}
           onSelectDocument={(doc) => setSelectedDocument(doc)}
         />
+      )}
+
+      {activeTab === 'templates' && (
+        <DocumentsTemplates />
       )}
 
       {/* Modals */}

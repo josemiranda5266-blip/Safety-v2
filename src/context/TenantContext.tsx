@@ -37,6 +37,7 @@ interface TenantContextType {
   // Employee Legajo Methods
   fetchEmployees: (companyId?: string, establishmentId?: string, includeInactive?: boolean) => Promise<Employee[]>;
   createEmployee: (payload: any) => Promise<Employee>;
+  bulkCreateEmployees: (payload: { companyId: string; establishmentId: string; employees: Partial<Employee>[] }) => Promise<{ message: string; createdCount: number; errorCount: number; created: Employee[]; errors: any[] }>;
   updateEmployee: (id: string, payload: any) => Promise<Employee>;
   deleteEmployee: (id: string, reason?: string, terminationDate?: string) => Promise<void>;
   terminateEmployee: (id: string, reason: string, date: string) => Promise<Employee>;
@@ -216,6 +217,12 @@ export const TenantProvider: React.FC<{ children: ReactNode }> = ({ children }) 
     return created;
   };
 
+  const handleBulkCreateEmployees = async (payload: { companyId: string; establishmentId: string; employees: Partial<Employee>[] }) => {
+    const result = await tenantApi.bulkCreateEmployees(payload);
+    await refreshTenantData();
+    return result;
+  };
+
   const handleUpdateEmployee = async (id: string, payload: any) => {
     const updated = await tenantApi.updateEmployee(id, payload);
     await refreshTenantData();
@@ -280,10 +287,10 @@ export const TenantProvider: React.FC<{ children: ReactNode }> = ({ children }) 
     
     const permissions: Record<UserRole, string[]> = {
       professional: [],
-      empresa: ['dashboard', 'documentation', 'calendar'],
-      rrhh: ['employees', 'documentation', 'trainings'],
-      supervisor: ['inspections', 'corrective_actions'],
-      trabajador: ['trainings', 'ppe', 'documentation']
+      empresa: ['dashboard', 'home', 'documentation', 'calendar', 'reports', 'normative', 'normative_center', 'library', 'summaries'],
+      rrhh: ['home', 'employees', 'documentation', 'trainings', 'calendar', 'reports'],
+      supervisor: ['home', 'inspections', 'corrective_actions', 'inspector_ia', 'iper', 'hygiene', 'checklists', 'image_analysis', 'ppe'],
+      trabajador: ['home', 'trainings', 'ppe', 'documentation', 'chat']
     };
     
     return permissions[userRole]?.includes(tab) || false;
@@ -324,6 +331,7 @@ export const TenantProvider: React.FC<{ children: ReactNode }> = ({ children }) 
         deletePosition: handleDeletePosition,
         fetchEmployees: handleFetchEmployees,
         createEmployee: handleCreateEmployee,
+        bulkCreateEmployees: handleBulkCreateEmployees,
         updateEmployee: handleUpdateEmployee,
         deleteEmployee: handleDeleteEmployee,
         terminateEmployee: handleTerminateEmployee,

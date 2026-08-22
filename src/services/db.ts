@@ -738,13 +738,14 @@ export class LocalSafetyDB {
       const defaultReports: InspectionReport[] = [
         {
           id: 'insp-seed-001',
+          organizationId: 'org_default',
           title: 'Auditoría Técnica de Campo - Obra Estructura Norte',
           companyName: 'Constructora Austral S.A.',
           siteLocation: 'Obra Av. Libertador 4500, CABA',
           inspectorName: 'Ing. Carlos Mendoza',
           inspectorRegistration: 'Mat. CIPBA 48.912',
           date: '2026-08-01',
-          gpsLocation: '-34.5781, -58.4263',
+          gpsLocation: null,
           executiveSummary: 'Se realizó la inspección visual en el sector de armado de encofrados y tableros eléctricos principales. Se detectó trabajo en altura con arnés desenganchado y línea de vida sin certificar, además de tablero eléctrico temporal sin protección diferencial.',
           appliedNorms: [
             'Decreto 911/1996 (Reglamento de Higiene y Seguridad en la Construcción)',
@@ -1014,8 +1015,10 @@ export class LocalSafetyDB {
   private async getAuthHeaders(): Promise<Record<string, string>> {
     const user = await ensureAuth();
     const token = await user.getIdToken();
+    const orgId = localStorage.getItem('safetyia_active_org_id') || 'org_default';
     return {
       'x-user-id': user.uid,
+      'x-org-id': orgId,
       'Authorization': `Bearer ${token}`,
     };
   }

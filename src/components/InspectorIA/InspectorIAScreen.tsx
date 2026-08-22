@@ -91,7 +91,7 @@ const QUICK_CRITICAL_TAGS = [
 ];
 
 export const InspectorIAScreen: React.FC = () => {
-  const { activeCompany, establishments } = useTenant();
+  const { activeOrgId, activeCompany, establishments } = useTenant();
   const [activeSubTab, setActiveSubTab] = useState<'dashboard' | 'new_inspection' | 'history' | 'findings_followup' | 'diagnostics'>('dashboard');
   
   // Storage state
@@ -105,7 +105,7 @@ export const InspectorIAScreen: React.FC = () => {
   const siteLocation = establishments.find(e => e.id === selectedEstablishmentId)?.name || 'Ubicación no seleccionada';
   const inspectorName = 'Inspector';
   const inspectorRegistration = '';
-  const [gpsCoords, setGpsCoords] = useState<string>('-34.5781, -58.4263');
+  const [gpsCoords, setGpsCoords] = useState<string | null>(null);
   
   // Activity Description & Critical Elements State
   const [activityDescription, setActivityDescription] = useState<string>('');
@@ -159,12 +159,31 @@ export const InspectorIAScreen: React.FC = () => {
         streamRef.current.getTracks().forEach((track) => track.stop());
       }
     };
-  }, []);
+  }, [activeOrgId]);
 
-  const loadData = () => {
-    const loadedReports = db.getInspectionReports();
-    setReports(loadedReports);
-    setStats(db.getInspectorStats());
+  const loadData = async () => {
+    if (!activeOrgId) {
+      setReports([]);
+      setStats(null);
+      return;
+    }
+    try {
+      const loadedReports = await inspectionService.getInspections(activeOrgId);
+      setReports(loadedReports);
+
+      const pending = loadedReports.reduce((acc, r) => acc + (r.findings?.filter(f => f.status === 'Pendiente').length || 0), 0);
+      const corrected = loadedReports.reduce((acc, r) => acc + (r.findings?.filter(f => f.status === 'Corregido').length || 0), 0);
+      const critical = loadedReports.reduce((acc, r) => acc + (r.findings?.filter(f => f.riskLevel === 'Crítico' || f.riskLevel === 'Alto').length || 0), 0);
+
+      setStats({
+        totalInspections: loadedReports.length,
+        pendingFindings: pending,
+        correctedFindings: corrected,
+        criticalRisksCount: critical,
+      });
+    } catch (err) {
+      console.warn("Error cargando informes de inspección:", err);
+    }
   };
 
   // Capture GPS Location from Browser
@@ -176,10 +195,12 @@ export const InspectorIAScreen: React.FC = () => {
           setGpsCoords(coordsStr);
         },
         (err) => {
-          alert('No se pudo acceder al GPS del dispositivo. Se usará la ubicación por defecto.');
+          setGpsCoords(null);
+          alert('No se pudo acceder al GPS del dispositivo.');
         }
       );
     } else {
+      setGpsCoords(null);
       alert('Geolocalización no soportada en este navegador.');
     }
   };
@@ -295,17 +316,11 @@ export const InspectorIAScreen: React.FC = () => {
     setAnalysisError(null);
 
     try {
-      setAnalysisProgressStep('1/4 Extrayendo fotogramas y analizando contexto operativo...');
-      await new Promise((r) => setTimeout(r, 600));
+      setAnalysisProgressStep('1/3 Extrayendo fotogramas y analizando contexto operativo...');
+      await new Promise((r) => setTimeout(r, 400));
 
-      setAnalysisProgressStep('2/4 Consultando biblioteca documental local (RAG) para normas de referencia...');
-      // Fetch relevant local chunks to send as RAG context
-      const allChunks = db.getChunks();
-      const sampleChunks = allChunks.slice(0, 8); // Top relevant chunks
-
-      setAnalysisProgressStep('3/4 Escaneando riesgos de EPP, Altura, Eléctrico y Actividad con visión artificial...');
+      setAnalysisProgressStep('2/3 Consultando biblioteca documental verificada (RAG) y procesando imagen...');
       
-      // Remove header prefix from base64 string if present
       const rawBase64 = selectedImageBase64.replace(/^data:image\/\w+;base64,/, '');
 
       const resultReport = await db.callAiApi<any>('/api/inspector-ai-analyze', {
@@ -316,14 +331,16 @@ export const InspectorIAScreen: React.FC = () => {
         inspectorName,
         inspectorRegistration,
         activityDescription: activityDescription.trim() || undefined,
-        relevantLibraryChunks: sampleChunks,
       });
 
-      setAnalysisProgressStep('4/4 Compilando informe técnico y plan de acción preventivo...');
+      setAnalysisProgressStep('3/3 Compilando informe técnico y plan de acción preventivo...');
 
       // Enrich with unique ID, metadata, signature, and timestamps
       const fullReport: InspectionReport = {
         id: `insp-${Date.now()}`,
+        organizationId: activeOrgId || '',
+        companyId: activeCompany?.id,
+        establishmentId: selectedEstablishmentId || undefined,
         title: resultReport.title || `Informe de Inspección Visual - ${companyName}`,
         companyName,
         siteLocation,
@@ -344,12 +361,13 @@ export const InspectorIAScreen: React.FC = () => {
           suggestedAction: f.suggestedAction || '',
           status: 'Pendiente',
           normativeCitation: f.normativeCitation || {
-            docTitle: 'Sin respaldo documental en la biblioteca local',
+            docTitle: 'Sin respaldo documental verificado en la biblioteca',
             hasLibraryBackup: false,
+            verificationStatus: 'no_evidence',
           },
           photoUrl: selectedImageBase64,
         })),
-        appliedNorms: resultReport.appliedNorms || ['Decreto 351/79', 'Ley 19.587'],
+        appliedNorms: resultReport.appliedNorms || [],
         generalRecommendations: resultReport.generalRecommendations || ['Implementar charlas diarias de seguridad.'],
         actionPlan: (resultReport.actionPlan || []).map((a: any, idx: number) => ({
           id: `act-${Date.now()}-${idx}`,
@@ -376,57 +394,49 @@ export const InspectorIAScreen: React.FC = () => {
   };
 
   // Save Report to Database
-    const handleSaveReport = async () => {
+  const handleSaveReport = async () => {
     if (!generatedDraftReport) return;
-    await db.saveInspectionReport(generatedDraftReport);
-    
-    // Generate real Inspection record
-    if (activeCompany && selectedEstablishmentId) {
-      try {
-        const newInspectionId = await inspectionService.createInspection({
-          companyId: activeCompany.id,
-          establishmentId: selectedEstablishmentId,
-          sectorId: '', // To be refined
-          date: new Date().toISOString().split('T')[0],
-          type: 'InspectorIA AI',
-          status: 'Closed',
-          findings: generatedDraftReport.findings.map(f => ({
-            id: f.id,
-            description: f.description,
-            hazard: f.hazardTitle,
-            risk: f.riskLevel,
-            severity: f.riskLevel === 'Crítico' ? 'Critical' : f.riskLevel === 'Alto' ? 'High' : f.riskLevel === 'Medio' ? 'Medium' : 'Low',
-            photoUrl: f.photoUrl,
-            location: siteLocation,
-            responsible: inspectorName,
-            dueDate: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString().split('T')[0],
-            status: 'Pendiente'
-          }))
-        });
+    if (!activeOrgId) {
+      alert("Debes tener una organización activa seleccionada para guardar la inspección.");
+      return;
+    }
 
-        // Generate CAPA actions for High/Critical
-        for (const finding of generatedDraftReport.findings) {
+    const reportToSave: InspectionReport = {
+      ...generatedDraftReport,
+      organizationId: activeOrgId,
+      companyId: activeCompany?.id,
+      establishmentId: selectedEstablishmentId || undefined,
+      updatedAt: new Date().toISOString(),
+    };
+
+    const savedId = await inspectionService.saveInspectionReport(reportToSave, activeOrgId);
+    
+    // Generate CAPA actions for High/Critical findings
+    if (activeCompany) {
+      try {
+        for (const finding of reportToSave.findings) {
           if (finding.riskLevel === 'Alto' || finding.riskLevel === 'Crítico') {
             await capaApi.createCorrectiveAction({
               companyId: activeCompany.id,
+              establishmentId: selectedEstablishmentId || undefined,
               description: `[InspectorIA] ${finding.hazardTitle}: ${finding.description}`,
               actionRequired: finding.suggestedAction,
               responsibleName: 'Por asignar',
               deadlineDate: new Date(Date.now() + 3 * 24 * 60 * 60 * 1000).toISOString().split('T')[0],
               sourceType: 'Inspección',
-              sourceId: newInspectionId,
+              sourceId: savedId,
               riskLevel: finding.riskLevel,
               status: 'Pendiente'
             }).catch(err => console.error("Error creating CAPA from InspectorIA", err));
           }
         }
       } catch (err) {
-        console.error("Error integrating to CAPA/Inspections", err);
+        console.error("Error integrating to CAPA", err);
       }
     }
 
-    loadData();
-    setSelectedReport(generatedDraftReport);
+    await loadData();
+    setSelectedReport(reportToSave);
     setGeneratedDraftReport(null);
     setSelectedImageBase64(null);
     setActiveSubTab('history');

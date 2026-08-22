@@ -6,8 +6,9 @@ import {
   validateImagePayload,
   validateComparisonPayload,
 } from "../middleware/payloadValidator";
-import { requireAuth } from "../authorization/middleware";
+import { requireAuth, requireTenantContext, TenantRequest } from "../authorization/middleware";
 import { generateContentWithRetry, Type, GeminiPublicError, mapToGeminiPublicError } from "../services/gemini";
+import * as documentService from "../services/documentService";
 
 const router = Router();
 
@@ -294,15 +295,106 @@ Devuelve únicamente una estructura JSON válida con el siguiente formato:
 );
 
 /**
+ * Helper: Server-side deterministic RAG retrieval for tenant library
+ */
+async function retrieveServerTenantChunks(orgId: string, assignedCompanyIds: string[] | undefined, queryKeywordsText: string) {
+  try {
+    const docs = await documentService.listDocuments(orgId, {}, assignedCompanyIds);
+    if (!docs || docs.length === 0) {
+      return {
+        topChunks: [],
+        formattedLibraryContext: "NO HAY DOCUMENTOS / FRAGMENTOS VERIFICADOS EN LA BIBLIOTECA DE LA ORGANIZACIÓN.",
+      };
+    }
+
+    const allChunks: any[] = [];
+    for (const docItem of docs) {
+      const chunks = await documentService.getDocumentChunks(orgId, docItem.id, assignedCompanyIds);
+      allChunks.push(...chunks);
+    }
+
+    if (allChunks.length === 0) {
+      return {
+        topChunks: [],
+        formattedLibraryContext: "NO HAY FRAGMENTOS VERIFICADOS EN LA BIBLIOTECA DE LA ORGANIZACIÓN.",
+      };
+    }
+
+    // Rank chunks based on query terms
+    const searchTerms = queryKeywordsText
+      .toLowerCase()
+      .split(/[^\w\dáéíóúñ]+/)
+      .filter((t) => t.length > 2);
+
+    const scoredChunks = allChunks.map((chunk) => {
+      const chunkText = (chunk.text || "").toLowerCase();
+      const docTitle = (chunk.docTitle || "").toLowerCase();
+      let score = 0;
+
+      for (const term of searchTerms) {
+        if (chunkText.includes(term)) score += 2;
+        if (docTitle.includes(term)) score += 5;
+      }
+      return { chunk, score };
+    });
+
+    scoredChunks.sort((a, b) => b.score - a.score);
+    const topChunks = scoredChunks.slice(0, 8).map((sc) => sc.chunk);
+
+    const formattedLibraryContext = topChunks
+      .map(
+        (c: any, i: number) =>
+          `[DOCUMENTO BIBLIOTECA VERIFICADO ${i + 1}]
+ID Documento: ${c.docId}
+ID Chunk: ${c.chunkId || c.id || `chunk_${i}`}
+Título: "${c.docTitle}"
+Categoría: ${c.category || "Normativa"}
+Página: ${c.pageNumber || "N/A"}
+Sección/Artículo: ${c.article || c.chapter || c.section || "N/A"}
+Texto Normativo:
+"${c.text}"`
+      )
+      .join("\n\n--------------------\n\n");
+
+    return { topChunks, formattedLibraryContext };
+  } catch (err) {
+    console.warn("Error recuperando fragmentos RAG del tenant en servidor:", err);
+    return {
+      topChunks: [],
+      formattedLibraryContext: "NO HAY DOCUMENTOS / FRAGMENTOS VERIFICADOS EN LA BIBLIOTECA DE LA ORGANIZACIÓN.",
+    };
+  }
+}
+
+/**
  * 4. POST /api/analyze-image (Cost: 4 credits)
  */
 router.post(
   "/analyze-image",
+  requireTenantContext,
   validateImagePayload,
   requireAiCredits("IMAGE_ANALYSIS"),
   async (req: CreditGuardedRequest, res) => {
     try {
-      const { imageBase64, mimeType, availableNormsContext, activityDescription } = req.body;
+      const tenantReq = req as TenantRequest & CreditGuardedRequest;
+      const orgId = tenantReq.authContext?.orgId;
+      const assignedCompanyIds = tenantReq.authContext?.assignedCompanyIds;
+
+      const { imageBase64, mimeType, activityDescription } = req.body;
+
+      if (!orgId) {
+        return res.status(403).json({
+          error: "ORG_MEMBERSHIP_REQUIRED",
+          message: "Se requiere contexto de organización válido para realizar el análisis.",
+        });
+      }
+
+      // Server-side RAG chunk retrieval
+      const { topChunks, formattedLibraryContext } = await retrieveServerTenantChunks(
+        orgId,
+        assignedCompanyIds,
+        activityDescription || "inspección de seguridad e higiene"
+      );
 
       const imagePart = {
         inlineData: {
@@ -317,15 +409,18 @@ Examina detenidamente esta fotografía tomada en un puesto o área de trabajo, E
 CONTEXTO OPERATIVO Y DESCRIPCIÓN DE LA ACTIVIDAD / ELEMENTOS CRÍTICOS:
 "${activityDescription || 'Inspección visual general del puesto o sector de trabajo.'}"
 
-BIBLIOTECA NORMATIVA DISPONIBLE EN LA APLICACIÓN:
-${availableNormsContext || "Ley 19.587, Decreto 351/79, Decreto 911/96 (Construcción), Res. SRT 295/03 (Ergonomía/Contaminantes), Normas IRAM."}
+BIBLIOTECA DOCUMENTAL DE LA ORGANIZACIÓN (RAG VERIFICADO):
+${formattedLibraryContext}
+
+REGLAS STRICTAS DE RESPALDO NORMATIVO:
+1. Solo puedes citar una norma si existe un fragmento real provisto arriba en la BIBLIOTECA DOCUMENTAL.
+2. Si no existe un fragmento verificado en la biblioteca para un riesgo, debes establecer applicableNorm: "Sin respaldo documental verificado en la biblioteca".
+3. NO INVENTES NORMAS NI USES FALLBACKS AUTOMÁTICOS COMO LEY 19.587 O DECRETO 351/79 A MENOS QUE APAREZCAN EXPLÍCITAMENTE EN LOS FRAGMENTOS PROVISTOS.
 
 TAREA:
-1. Evalúa la imagen y la descripción de la actividad como un todo: contrasta lo observado en la fotografía (posturas, herramientas, entorno, protecciones colectivas e individuales) con los elementos críticos y la tarea descripta.
-2. Detecta todos los riesgos visibles y operativos (falta o uso inadecuado de EPP, orden y limpieza, riesgo eléctrico, trabajo en altura, sustancias químicas, fuego/oxicorte, posturas forzadas, atrapamiento, falta de señalización, etc.).
-3. Para cada riesgo detectado, evalúa el Nivel de Severidad (Bajo, Medio, Alto, Crítico).
-4. Asocia cada riesgo con la normativa legal aplicable presente en la biblioteca.
-5. Recomienda las medidas preventivas y correctivas inmediatas según la jerarquía de control.
+1. Evalúa la imagen y la descripción de la actividad como un todo.
+2. Detecta todos los riesgos visibles y operativos.
+3. Asocia cada riesgo únicamente con normas verificadas presentes en la biblioteca provista o indica "Sin respaldo documental verificado en la biblioteca".
 
 Responde únicamente en formato JSON con la siguiente estructura:
 {
@@ -335,8 +430,8 @@ Responde únicamente en formato JSON con la siguiente estructura:
     {
       "hazardName": "Nombre del riesgo detectado",
       "severity": "Bajo | Medio | Alto | Crítico",
-      "description": "Descripción detallada de la condición o acto subestándar considerando la actividad en curso",
-      "applicableNorm": "Artículo y ley/decreto aplicable según la biblioteca",
+      "description": "Descripción detallada de la condición observada",
+      "applicableNorm": "Título de la norma verificada o 'Sin respaldo documental verificado en la biblioteca'",
       "preventiveAction": "Medida correctiva recomendada"
     }
   ],
@@ -375,11 +470,26 @@ Responde únicamente en formato JSON con la siguiente estructura:
         operationType: "IMAGE_ANALYSIS",
       });
 
-      const result = JSON.parse(response.text || "{}");
+      const rawResult = JSON.parse(response.text || "{}");
+
+      // Server-side post validation
+      const verifiedHazards = (rawResult.hazards || []).map((h: any) => {
+        const norm = h.applicableNorm || "";
+        const match = topChunks.find(
+          (c: any) => c.docTitle && norm.toLowerCase().includes(c.docTitle.toLowerCase())
+        );
+        return {
+          ...h,
+          applicableNorm: match ? match.docTitle : "Sin respaldo documental verificado en la biblioteca",
+          verificationStatus: match ? "verified" : "no_evidence",
+        };
+      });
+
       const creditResult = req.creditContext?.commit("Análisis fotográfico de riesgos");
 
       return res.json({
-        ...result,
+        ...rawResult,
+        hazards: verifiedHazards,
         creditsRemaining: creditResult?.remainingCredits,
       });
     } catch (error: any) {
@@ -401,10 +511,15 @@ Responde únicamente en formato JSON con la siguiente estructura:
  */
 router.post(
   "/inspector-ai-analyze",
+  requireTenantContext,
   validateImagePayload,
   requireAiCredits("INSPECTOR_IA"),
   async (req: CreditGuardedRequest, res) => {
     try {
+      const tenantReq = req as TenantRequest & CreditGuardedRequest;
+      const orgId = tenantReq.authContext?.orgId;
+      const assignedCompanyIds = tenantReq.authContext?.assignedCompanyIds;
+
       const {
         imageBase64,
         mimeType,
@@ -413,8 +528,22 @@ router.post(
         inspectorName,
         inspectorRegistration,
         activityDescription,
-        relevantLibraryChunks,
       } = req.body;
+
+      if (!orgId) {
+        return res.status(403).json({
+          error: "ORG_MEMBERSHIP_REQUIRED",
+          message: "Se requiere contexto de organización válido para realizar la inspección.",
+        });
+      }
+
+      // Server-side RAG retrieval
+      const searchTerms = `${activityDescription || ""} ${companyName || ""} ${siteLocation || ""}`;
+      const { topChunks, formattedLibraryContext } = await retrieveServerTenantChunks(
+        orgId,
+        assignedCompanyIds,
+        searchTerms
+      );
 
       const mediaPart = {
         inlineData: {
@@ -423,32 +552,16 @@ router.post(
         },
       };
 
-      const formattedLibraryContext =
-        Array.isArray(relevantLibraryChunks) && relevantLibraryChunks.length > 0
-          ? relevantLibraryChunks
-              .map(
-                (c: any, i: number) =>
-                  `[DOCUMENTO BIBLIOTECA ${i + 1}]
-Título: "${c.docTitle}"
-Categoría: ${c.category || "Normativa"}
-Página: ${c.pageNumber || "N/A"}
-Sección/Artículo: ${c.article || c.chapter || c.section || "N/A"}
-Texto Normativo:
-"${c.text}"`
-              )
-              .join("\n\n--------------------\n\n")
-          : "NO HAY DOCUMENTOS RELACIONADOS EN LA BIBLIOTECA DEL USUARIO.";
-
       const systemInstruction = `Eres "INSPECTOR IA", un Ingeniero Senior en Higiene y Seguridad Laboral y Especialista en Visión Artificial.
 
 DIRECTRICES DE ANÁLISIS INTEGRADO (IMAGEN + DESCRIPCIÓN OPERATIVA):
-1. EVALUACIÓN CONJUNTA OBLIGATORIA: Debes analizar de manera holística e integrada tanto la imagen/fotografía capturada como la DESCRIPCIÓN DE LA ACTIVIDAD Y ELEMENTOS CRÍTICOS provista por el auditor o inspector. Considera la imagen y el texto descriptivo como una sola unidad de análisis técnico.
-2. CONTEXTUALIZACIÓN DE RIESGOS: Utiliza la descripción para entender la operación en curso (ej. trabajos en caliente, espacios confinados, izajes, excavaciones, mantenimiento eléctrico, trabajos en altura) y busca activamente en la imagen las evidencias, condiciones subestándares, actos inseguros o falta de medidas de control vinculadas a dicha tarea.
-3. CATEGORÍAS DE RIESGO: Identifica todos los riesgos relevantes en: EPP, Altura, Escaleras, Eléctrico, Incendio, Orden y Limpieza, Señalización, Salidas de Emergencia, Almacenamiento, Ergonómico, Mecánico, Químico, Biológico.
-4. REGLAS DE RESPALDO NORMATIVO Y ANTI-ALUCINACIÓN:
-   - Para CADA hallazgo/riesgo detectado, busca el respaldo normativo dentro de los DOCUMENTOS DE LA BIBLIOTECA provistos en el contexto.
-   - Si la biblioteca provista CONTIENE la norma aplicable (Ley 19.587, Dec. 351/79, Dec. 911/96, etc.), cita el Título exacto, Página, Artículo/Sección y texto relevante, y establece "hasLibraryBackup": true.
-   - Si la biblioteca NO contiene respaldo normativo para un hallazgo en particular, DEBES indicar exactamente en docTitle: "Sin respaldo documental en la biblioteca local", con "hasLibraryBackup": false, y "quotedText": "No se encontró norma específica cargada en la biblioteca del usuario". NUNCA INVENTES CITAS O ARTÍCULOS QUE NO ESTÉN EN LA BIBLIOTECA.`;
+1. EVALUACIÓN CONJUNTA OBLIGATORIA: Debes analizar de manera holística e integrada tanto la imagen/fotografía capturada como la DESCRIPCIÓN DE LA ACTIVIDAD Y ELEMENTOS CRÍTICOS provista por el auditor.
+2. CONTEXTUALIZACIÓN DE RIESGOS: Utiliza la descripción para entender la operación en curso y busca evidencias de actos/condiciones inseguras en la imagen.
+3. REGLAS DE RESPALDO NORMATIVO Y ANTI-ALUCINACIÓN STRICTAS:
+   - Para CADA hallazgo/riesgo detectado, busca el respaldo dentro de los DOCUMENTOS DE LA BIBLIOTECA VERIFICADA provistos en el contexto.
+   - Si un fragmento provisto respalda la norma, cita el Título exacto, Página, Artículo y texto relevante, y establece "hasLibraryBackup": true y "verificationStatus": "verified".
+   - Si la biblioteca NO contiene fragmentos de respaldo para un hallazgo en particular, DEBES indicar exactamente docTitle: "Sin respaldo documental verificado en la biblioteca", "hasLibraryBackup": false, "verificationStatus": "no_evidence", y "quotedText": "No se encontró norma específica cargada en la biblioteca del usuario.".
+   - NUNCA INVENTES CITAS O ARTÍCULOS QUE NO ESTÉN EN LOS FRAGMENTOS DE LA BIBLIOTECA. NO USES FALLBACKS AUTOMÁTICOS.`;
 
       const promptText = `INFORMACIÓN DE LA INSPECCIÓN DE CAMPO:
 Empresa: ${companyName || "Empresa / Cliente"}
@@ -461,7 +574,7 @@ DESCRIPCIÓN DE LA ACTIVIDAD & ELEMENTOS CRÍTICOS OBSERVADOS:
 ${activityDescription || "Inspección visual general del sector/puesto de trabajo."}
 """
 
-BIBLIOTECA DOCUMENTAL DISPONIBLE EN LA APLICACIÓN:
+BIBLIOTECA DOCUMENTAL VERIFICADA EN LA APLICACIÓN (DEL TENANT):
 ${formattedLibraryContext}
 
 Realiza un informe técnico riguroso de inspección visual en formato JSON estructurado integrando la imagen y la descripción de la actividad como un todo:`;
@@ -497,6 +610,7 @@ Realiza un informe técnico riguroso de inspección visual en formato JSON estru
                         articleOrSection: { type: Type.STRING },
                         quotedText: { type: Type.STRING },
                         hasLibraryBackup: { type: Type.BOOLEAN },
+                        verificationStatus: { type: Type.STRING },
                       },
                       required: ["docTitle", "hasLibraryBackup"],
                     },
@@ -538,10 +652,61 @@ Realiza un informe técnico riguroso de inspección visual en formato JSON estru
       });
 
       const parsedReport = JSON.parse(response.text || "{}");
+
+      // Post-validation against authorized topChunks
+      const verifiedFindings = (parsedReport.findings || []).map((f: any) => {
+        const normTitle = f.normativeCitation?.docTitle || "";
+        const matchedChunk = topChunks.find(
+          (tc: any) =>
+            tc.docTitle &&
+            (normTitle.toLowerCase().includes(tc.docTitle.toLowerCase()) ||
+              tc.docTitle.toLowerCase().includes(normTitle.toLowerCase()))
+        );
+
+        if (matchedChunk && topChunks.length > 0) {
+          return {
+            ...f,
+            normativeCitation: {
+              docTitle: matchedChunk.docTitle,
+              pageNumber: f.normativeCitation?.pageNumber || matchedChunk.pageNumber || null,
+              articleOrSection:
+                f.normativeCitation?.articleOrSection || matchedChunk.article || matchedChunk.chapter || matchedChunk.section || null,
+              quotedText: f.normativeCitation?.quotedText || matchedChunk.text || "",
+              hasLibraryBackup: true,
+              verificationStatus: "verified",
+              documentId: matchedChunk.docId,
+              chunkId: matchedChunk.chunkId || matchedChunk.id,
+            },
+          };
+        } else {
+          return {
+            ...f,
+            normativeCitation: {
+              docTitle: "Sin respaldo documental verificado en la biblioteca",
+              pageNumber: null,
+              articleOrSection: null,
+              quotedText: "No se encontró norma específica cargada en la biblioteca del usuario.",
+              hasLibraryBackup: false,
+              verificationStatus: "no_evidence",
+            },
+          };
+        }
+      });
+
+      const verifiedNorms = Array.from(
+        new Set(
+          verifiedFindings
+            .filter((f: any) => f.normativeCitation?.verificationStatus === "verified")
+            .map((f: any) => f.normativeCitation.docTitle)
+        )
+      );
+
       const creditResult = req.creditContext?.commit(`Informe Inspector IA: ${companyName || "Obra"}`);
 
       return res.json({
         ...parsedReport,
+        findings: verifiedFindings,
+        appliedNorms: verifiedNorms,
         creditsRemaining: creditResult?.remainingCredits,
       });
     } catch (error: any) {

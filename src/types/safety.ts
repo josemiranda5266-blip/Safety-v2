@@ -280,12 +280,17 @@ export type RiskLevel = 'Bajo' | 'Medio' | 'Alto' | 'Crítico';
 
 export type FindingStatus = 'Pendiente' | 'En proceso' | 'Corregido';
 
+export type VerificationStatus = 'verified' | 'unverified' | 'no_evidence';
+
 export interface NormativeCitationRef {
   docTitle: string;
   pageNumber?: number | string;
   articleOrSection?: string;
   quotedText?: string;
   hasLibraryBackup: boolean; // false si no existe respaldo documental en la biblioteca
+  verificationStatus?: VerificationStatus; // 'verified' | 'unverified' | 'no_evidence'
+  documentId?: string;
+  chunkId?: string;
 }
 
 export interface VerificationEvidence {
@@ -314,6 +319,7 @@ export interface InspectionFinding {
   verifications?: VerificationEvidence[];
   closedDate?: string;
   closingNotes?: string;
+  capaId?: string;
 }
 
 export interface ActionPlanItem {
@@ -328,13 +334,17 @@ export interface ActionPlanItem {
 
 export interface InspectionReport {
   id: string;
+  organizationId: string;
+  companyId?: string;
+  establishmentId?: string;
+  sectorId?: string;
   title: string;
   companyName: string;
   siteLocation: string;
   inspectorName: string;
   inspectorRegistration?: string;
   date: string;
-  gpsLocation?: string;
+  gpsLocation?: string | null;
   activityDescription?: string;
   executiveSummary: string;
   findings: InspectionFinding[];
@@ -343,6 +353,8 @@ export interface InspectionReport {
   actionPlan: ActionPlanItem[];
   inspectorSignatureUrl?: string;
   status: 'Borrador' | 'En Proceso' | 'Completada' | 'Cerrada';
+  createdBy?: string;
+  createdByName?: string;
   createdAt: string;
   updatedAt: string;
 }

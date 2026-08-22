@@ -121,6 +121,18 @@ service cloud.firestore {
       );
       // Authority writes strictly restricted to server / admin
       allow write: if isAdmin();
+
+      // Multi-tenant Inspections
+      match /inspections/{inspectionId} {
+        allow read, delete: if isSignedIn() && (
+          exists(/databases/$(database)/documents/memberships/$(orgId + '_' + request.auth.uid)) ||
+          isAdmin()
+        );
+        allow create, update: if isSignedIn() && (
+          exists(/databases/$(database)/documents/memberships/$(orgId + '_' + request.auth.uid)) ||
+          isAdmin()
+        );
+      }
     }
 
     // Multi-tenant Memberships

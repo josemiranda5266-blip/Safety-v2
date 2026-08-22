@@ -271,9 +271,10 @@ export async function exportReportToWord(report: InspectionReport): Promise<void
     );
 
     // RAG Citation Box
-    const ragBoxText = f.normativeCitation.hasLibraryBackup
-      ? `Respaldo Normativo RAG: ${f.normativeCitation.docTitle} (Pág. ${f.normativeCitation.pageNumber || '1'}, ${f.normativeCitation.articleOrSection || 'General'})`
-      : 'Sin respaldo documental en la biblioteca local';
+    const isVerifiedNorm = f.normativeCitation.verificationStatus === 'verified' || f.normativeCitation.hasLibraryBackup;
+    const ragBoxText = isVerifiedNorm
+      ? `Respaldo Normativo Verificado (Biblioteca): ${f.normativeCitation.docTitle} (Pág. ${f.normativeCitation.pageNumber || '1'}, ${f.normativeCitation.articleOrSection || 'General'})`
+      : 'Sin respaldo documental verificado en la biblioteca';
 
     const ragChildren: Paragraph[] = [
       new Paragraph({

@@ -307,13 +307,24 @@ async function retrieveServerTenantChunks(orgId: string, assignedCompanyIds: str
       };
     }
 
+    // Limit documents to top 5 to avoid timeouts
+    const limitedDocs = docs.slice(0, 5);
     const allChunks: any[] = [];
-    for (const docItem of docs) {
-      const chunks = await documentService.getDocumentChunks(orgId, docItem.id, assignedCompanyIds);
+    
+    // Fetch chunks in parallel
+    const chunkPromises = limitedDocs.map(docItem => 
+      documentService.getDocumentChunks(orgId, docItem.id, assignedCompanyIds)
+    );
+    
+    const chunkResults = await Promise.all(chunkPromises);
+    for (const chunks of chunkResults) {
       allChunks.push(...chunks);
     }
+    
+    // Limit total chunks to prevent memory issues
+    const finalChunks = allChunks.slice(0, 50);
 
-    if (allChunks.length === 0) {
+    if (finalChunks.length === 0) {
       return {
         topChunks: [],
         formattedLibraryContext: "NO HAY FRAGMENTOS VERIFICADOS EN LA BIBLIOTECA DE LA ORGANIZACIÓN.",
@@ -326,7 +337,7 @@ async function retrieveServerTenantChunks(orgId: string, assignedCompanyIds: str
       .split(/[^\w\dáéíóúñ]+/)
       .filter((t) => t.length > 2);
 
-    const scoredChunks = allChunks.map((chunk) => {
+    const scoredChunks = finalChunks.map((chunk) => {
       const chunkText = (chunk.text || "").toLowerCase();
       const docTitle = (chunk.docTitle || "").toLowerCase();
       let score = 0;

@@ -316,9 +316,13 @@ async function retrieveServerTenantChunks(orgId: string, assignedCompanyIds: str
       documentService.getDocumentChunks(orgId, docItem.id, assignedCompanyIds)
     );
     
-    const chunkResults = await Promise.all(chunkPromises);
-    for (const chunks of chunkResults) {
-      allChunks.push(...chunks);
+    const chunkResults = await Promise.allSettled(chunkPromises);
+    for (const result of chunkResults) {
+      if (result.status === 'fulfilled') {
+        allChunks.push(...result.value);
+      } else {
+        console.warn('Error fetching chunks for a document:', result.reason);
+      }
     }
     
     // Limit total chunks to prevent memory issues
@@ -670,7 +674,8 @@ Realiza un informe técnico riguroso de inspección visual en formato JSON estru
 
       let parsedReport: any;
       try {
-        parsedReport = JSON.parse(rawResponseText.trim());
+        const cleanedJson = rawResponseText.trim().replace(/^```json\s*/, '').replace(/```$/, '');
+        parsedReport = JSON.parse(cleanedJson);
       } catch (parseError) {
         console.error("[InspectorIA Gemini JSON Parse Error] Failed to parse model response text:", {
           textLength: rawResponseText.length,

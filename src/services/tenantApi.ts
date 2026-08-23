@@ -71,9 +71,12 @@ class TenantApiService {
       throw new Error(err.message || 'Error al obtener contexto multi-tenant');
     }
     const data = await res.json();
-    // If no activeOrgId set, default to first organization
-    if (!this.activeOrgId && data.organizations && data.organizations.length > 0) {
-      this.setActiveOrgId(data.organizations[0].id);
+    // Validate activeOrgId against user's authorized organizations
+    if (data.organizations && data.organizations.length > 0) {
+      const isValidOrg = data.organizations.some((o: Organization) => o.id === this.activeOrgId);
+      if (!this.activeOrgId || !isValidOrg) {
+        this.setActiveOrgId(data.organizations[0].id);
+      }
     }
     return data;
   }

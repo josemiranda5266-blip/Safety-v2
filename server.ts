@@ -154,6 +154,25 @@ app.use("/api/v2/capa", capaRoutes);
 app.use("/api/v2/documents", documentRoutes);
 app.use("/api/v2/tenant", tenantContextRoutes);
 
+// Global API Error Handler (Ensures all Express /api errors return JSON, never HTML)
+app.use((err: any, _req: express.Request, res: express.Response, _next: express.NextFunction) => {
+  console.error("[Express API Error]", err);
+  const status = err.status || err.statusCode || 500;
+  const message = err.message || "Error interno en el servidor de API.";
+  return res.status(status).json({
+    error: err.code || "API_ERROR",
+    message,
+  });
+});
+
+// Explicit API 404 Handler (Prevents API requests from falling through to Vite index.html)
+app.use("/api/*", (_req: express.Request, res: express.Response) => {
+  return res.status(404).json({
+    error: "NOT_FOUND",
+    message: "Ruta de API no encontrada.",
+  });
+});
+
 // Vite Middleware for dev or static server in prod
 async function startServer() {
   try {

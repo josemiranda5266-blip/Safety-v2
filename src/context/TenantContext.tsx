@@ -88,9 +88,8 @@ export const TenantProvider: React.FC<{ children: ReactNode }> = ({ children }) 
       setMemberships(context.memberships || []);
 
       const currentOrgId = tenantApi.getActiveOrgId();
-      if (!currentOrgId && context.organizations && context.organizations.length > 0) {
-        tenantApi.setActiveOrgId(context.organizations[0].id);
-        setActiveOrgIdState(context.organizations[0].id);
+      if (currentOrgId && currentOrgId !== activeOrgId) {
+        setActiveOrgIdState(currentOrgId);
       }
 
       // 2. Fetch Companies

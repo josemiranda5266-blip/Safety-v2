@@ -2,6 +2,7 @@ import React, { useState, useRef } from 'react';
 import { Camera, Upload, ShieldAlert, Sparkles, Download, AlertTriangle, CheckCircle2, FileText, RefreshCw } from 'lucide-react';
 import { HazardAnalysisResult } from '../types/safety';
 import { db } from '../services/db';
+import { compressImageToDataUrl } from '../utils/imageCompressor';
 import { exportHazardAnalysisPDF } from '../services/pdfExporter';
 
 export const ImageAnalysisScreen: React.FC = () => {
@@ -32,17 +33,17 @@ export const ImageAnalysisScreen: React.FC = () => {
     }
   };
 
-  const handleImageUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+  const handleImageUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     if (e.target.files && e.target.files[0]) {
       const file = e.target.files[0];
-      setMimeType(file.type || 'image/jpeg');
-
-      const reader = new FileReader();
-      reader.onload = () => {
-        setSelectedImage(reader.result as string);
+      try {
+        const { dataUrl, mimeType } = await compressImageToDataUrl(file, 1600, 1600, 0.85);
+        setSelectedImage(dataUrl);
+        setMimeType(mimeType);
         setAnalysisResult(null);
-      };
-      reader.readAsDataURL(file);
+      } catch (err) {
+        console.error('Error al procesar la imagen:', err);
+      }
     }
   };
 

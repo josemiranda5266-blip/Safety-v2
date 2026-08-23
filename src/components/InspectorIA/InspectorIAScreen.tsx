@@ -45,6 +45,7 @@ import {
 } from '../../types/safety';
 import { db } from '../../services/db';
 import { exportReportToWord, exportReportToPDF } from '../../utils/reportExport';
+import { compressImageToDataUrl } from '../../utils/imageCompressor';
 import { useTenant } from '../../context/TenantContext';
 import { inspectionService } from '../../services/inspectionService';
 import { capaApi } from '../../services/capaApi';
@@ -91,7 +92,7 @@ const QUICK_CRITICAL_TAGS = [
 ];
 
 export const InspectorIAScreen: React.FC = () => {
-  const { activeOrgId, activeCompany, establishments } = useTenant();
+  const { activeOrgId, activeCompany, companies, establishments } = useTenant();
   const [activeSubTab, setActiveSubTab] = useState<'dashboard' | 'new_inspection' | 'history' | 'findings_followup' | 'diagnostics'>('dashboard');
   
   // Storage state
@@ -99,13 +100,32 @@ export const InspectorIAScreen: React.FC = () => {
   const [stats, setStats] = useState<InspectorStats | null>(null);
   const [selectedReport, setSelectedReport] = useState<InspectionReport | null>(null);
   
-  // New Inspection Form state
-  const companyName = activeCompany?.legalName || 'Empresa no seleccionada';
+  // New Inspection Form state - Fully Editable
+  const [customCompanyName, setCustomCompanyName] = useState<string>('');
   const [selectedEstablishmentId, setSelectedEstablishmentId] = useState<string>('');
-  const siteLocation = establishments.find(e => e.id === selectedEstablishmentId)?.name || 'Ubicación no seleccionada';
-  const inspectorName = 'Inspector';
-  const inspectorRegistration = '';
+  const [customSiteLocation, setCustomSiteLocation] = useState<string>('');
+  const [inspectorName, setInspectorName] = useState<string>('Ing. Profesional H&S');
+  const [inspectorRegistration, setInspectorRegistration] = useState<string>('Mat. MP-84920 / SRT');
   const [gpsCoords, setGpsCoords] = useState<string | null>(null);
+
+  // Sync default company name and location when activeCompany or establishment changes
+  useEffect(() => {
+    if (activeCompany?.legalName && !customCompanyName) {
+      setCustomCompanyName(activeCompany.legalName);
+    }
+  }, [activeCompany]);
+
+  useEffect(() => {
+    if (selectedEstablishmentId) {
+      const est = establishments.find((e) => e.id === selectedEstablishmentId);
+      if (est) {
+        setCustomSiteLocation(est.name);
+      }
+    }
+  }, [selectedEstablishmentId, establishments]);
+
+  const companyName = customCompanyName.trim() || activeCompany?.legalName || 'Empresa / Cliente';
+  const siteLocation = customSiteLocation.trim() || 'Ubicación no seleccionada';
   
   // Activity Description & Critical Elements State
   const [activityDescription, setActivityDescription] = useState<string>('');
@@ -268,38 +288,40 @@ export const InspectorIAScreen: React.FC = () => {
     }
   };
 
-  // Convert File to Base64
-  const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+  // Convert File to Base64 (Compressed & Optimized for AI Vision)
+  const handleFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
 
     handleStopCamera();
     setSelectedSampleId(null);
-    setImageMimeType(file.type || 'image/jpeg');
 
-    const reader = new FileReader();
-    reader.onload = (event) => {
-      const result = event.target?.result as string;
-      setSelectedImageBase64(result);
-    };
-    reader.readAsDataURL(file);
+    try {
+      const { dataUrl, mimeType } = await compressImageToDataUrl(file, 1600, 1600, 0.85);
+      setSelectedImageBase64(dataUrl);
+      setImageMimeType(mimeType);
+    } catch (err) {
+      console.error('Error al procesar la imagen seleccionada:', err);
+      alert('No se pudo optimizar la fotografía seleccionada. Por favor prueba con otra imagen.');
+    }
     e.target.value = '';
   };
 
-  // Convert Modal Verification File to Base64
-  const handleModalPhotoChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+  // Convert Modal Verification File to Base64 (Compressed)
+  const handleModalPhotoChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
-    const reader = new FileReader();
-    reader.onload = (event) => {
-      setVerificationPhoto(event.target?.result as string);
-    };
-    reader.readAsDataURL(file);
+    try {
+      const { dataUrl } = await compressImageToDataUrl(file, 1200, 1200, 0.8);
+      setVerificationPhoto(dataUrl);
+    } catch (err) {
+      console.error('Error al procesar la foto de verificación:', err);
+    }
     e.target.value = '';
   };
 
   // Handle selecting a sample site photo
-  const handleSelectSample = (sample: typeof SAMPLE_SITE_IMAGES[0]) => {
+  const handleSelectSample = async (sample: typeof SAMPLE_SITE_IMAGES[0]) => {
     handleStopCamera();
     setSelectedSampleId(sample.id);
     setImageMimeType('image/jpeg');
@@ -307,21 +329,28 @@ export const InspectorIAScreen: React.FC = () => {
       setActivityDescription(sample.suggestedActivity);
     }
 
-    // Convert sample image URL to Base64 via Canvas
-    const img = new Image();
-    img.crossOrigin = 'Anonymous';
-    img.src = sample.thumbnail;
-    img.onload = () => {
-      const canvas = document.createElement('canvas');
-      canvas.width = img.width;
-      canvas.height = img.height;
-      const ctx = canvas.getContext('2d');
-      if (ctx) {
-        ctx.drawImage(img, 0, 0);
-        const dataURL = canvas.toDataURL('image/jpeg');
-        setSelectedImageBase64(dataURL);
-      }
-    };
+    try {
+      const { dataUrl, mimeType } = await compressImageToDataUrl(sample.thumbnail, 1600, 1600, 0.85);
+      setSelectedImageBase64(dataUrl);
+      setImageMimeType(mimeType);
+    } catch (err) {
+      console.error('Error al cargar la imagen de demostración:', err);
+      // Fallback conversion via Canvas
+      const img = new Image();
+      img.crossOrigin = 'Anonymous';
+      img.src = sample.thumbnail;
+      img.onload = () => {
+        const canvas = document.createElement('canvas');
+        canvas.width = img.width;
+        canvas.height = img.height;
+        const ctx = canvas.getContext('2d');
+        if (ctx) {
+          ctx.drawImage(img, 0, 0);
+          const dataURL = canvas.toDataURL('image/jpeg', 0.85);
+          setSelectedImageBase64(dataURL);
+        }
+      };
+    }
   };
 
   // Run AI Inspection Analysis via RAG & Gemini
@@ -340,7 +369,7 @@ export const InspectorIAScreen: React.FC = () => {
 
       setAnalysisProgressStep('2/3 Consultando biblioteca documental verificada (RAG) y procesando imagen...');
       
-      const rawBase64 = selectedImageBase64.replace(/^data:image\/\w+;base64,/, '');
+      const rawBase64 = selectedImageBase64.includes(',') ? selectedImageBase64.split(',')[1] : selectedImageBase64;
 
       const resultReport = await db.callAiApi<any>('/api/inspector-ai-analyze', {
         imageBase64: rawBase64,
@@ -937,24 +966,76 @@ export const InspectorIAScreen: React.FC = () => {
               </button>
             </div>
 
-            {/* Inspection Form Grid */}
+            {/* Inspection Form Grid - Fully Editable */}
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+              {/* Field 1: Empresa / Cliente */}
               <div className="space-y-1.5">
-                <label className="text-xs font-bold text-slate-700 dark:text-slate-300 flex items-center gap-1">
-                  <Building className="w-3.5 h-3.5 text-orange-500" />
-                  Empresa / Cliente
+                <label className="text-xs font-bold text-slate-700 dark:text-slate-300 flex items-center justify-between">
+                  <span className="flex items-center gap-1">
+                    <Building className="w-3.5 h-3.5 text-orange-500" />
+                    Empresa / Cliente
+                  </span>
                 </label>
-                <div className="w-full pl-9 pr-3 py-2.5 bg-slate-100 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl text-sm font-medium text-slate-700 dark:text-slate-300 cursor-not-allowed">{companyName}</div>
+                <div className="space-y-1">
+                  <input
+                    type="text"
+                    value={customCompanyName}
+                    onChange={(e) => setCustomCompanyName(e.target.value)}
+                    placeholder="Ej: Constructora Delta S.A."
+                    className="w-full px-3.5 py-2.5 rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 text-slate-900 dark:text-white text-xs font-medium focus:ring-2 focus:ring-orange-500 outline-none"
+                  />
+                  {companies && companies.length > 0 && (
+                    <select
+                      onChange={(e) => {
+                        if (e.target.value) setCustomCompanyName(e.target.value);
+                      }}
+                      className="w-full px-2 py-1 rounded-lg border border-slate-200 dark:border-slate-700 bg-slate-100 dark:bg-slate-800 text-[11px] font-medium text-slate-600 dark:text-slate-300 outline-none"
+                    >
+                      <option value="">-- Autocompletar con empresa --</option>
+                      {companies.map((c) => (
+                        <option key={c.id} value={c.legalName}>
+                          {c.legalName}
+                        </option>
+                      ))}
+                    </select>
+                  )}
+                </div>
               </div>
 
+              {/* Field 2: Ubicación / Obra */}
               <div className="space-y-1.5">
                 <label className="text-xs font-bold text-slate-700 dark:text-slate-300 flex items-center gap-1">
                   <MapPin className="w-3.5 h-3.5 text-orange-500" />
                   Ubicación / Obra
                 </label>
-                <select value={selectedEstablishmentId} onChange={(e) => setSelectedEstablishmentId(e.target.value)} className="w-full pl-9 pr-3 py-2.5 bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl focus:outline-none focus:ring-2 focus:ring-orange-500 text-sm font-medium text-slate-900 dark:text-white"><option value="">Seleccione un establecimiento...</option>{establishments.filter(e => e.companyId === activeCompany?.id).map(e => (<option key={e.id} value={e.id}>{e.name}</option>))}</select>
+                <div className="space-y-1">
+                  <input
+                    type="text"
+                    value={customSiteLocation}
+                    onChange={(e) => setCustomSiteLocation(e.target.value)}
+                    placeholder="Ej: Planta Industrial Sector B / Obra 4"
+                    className="w-full px-3.5 py-2.5 rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 text-slate-900 dark:text-white text-xs font-medium focus:ring-2 focus:ring-orange-500 outline-none"
+                  />
+                  {establishments && establishments.length > 0 && (
+                    <select
+                      value={selectedEstablishmentId}
+                      onChange={(e) => {
+                        setSelectedEstablishmentId(e.target.value);
+                        const est = establishments.find((item) => item.id === e.target.value);
+                        if (est) setCustomSiteLocation(est.name);
+                      }}
+                      className="w-full px-2 py-1 rounded-lg border border-slate-200 dark:border-slate-700 bg-slate-100 dark:bg-slate-800 text-[11px] font-medium text-slate-600 dark:text-slate-300 outline-none"
+                    >
+                      <option value="">-- Autocompletar con establecimiento --</option>
+                      {establishments.map((e) => (
+                        <option key={e.id} value={e.id}>{e.name}</option>
+                      ))}
+                    </select>
+                  )}
+                </div>
               </div>
 
+              {/* Field 3: Inspector / Auditor */}
               <div className="space-y-1.5">
                 <label className="text-xs font-bold text-slate-700 dark:text-slate-300 flex items-center gap-1">
                   <UserCheck className="w-3.5 h-3.5 text-orange-500" />
@@ -963,12 +1044,13 @@ export const InspectorIAScreen: React.FC = () => {
                 <input
                   type="text"
                   value={inspectorName}
-                  disabled
+                  onChange={(e) => setInspectorName(e.target.value)}
                   className="w-full px-3.5 py-2.5 rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 text-slate-900 dark:text-white text-xs font-medium focus:ring-2 focus:ring-orange-500 outline-none"
-                  placeholder="Ej: Ing. Juan Perez"
+                  placeholder="Ej: Ing. Juan Pérez"
                 />
               </div>
 
+              {/* Field 4: Matrícula / Registro H&S */}
               <div className="space-y-1.5">
                 <label className="text-xs font-bold text-slate-700 dark:text-slate-300 flex items-center gap-1">
                   <Award className="w-3.5 h-3.5 text-orange-500" />
@@ -977,9 +1059,9 @@ export const InspectorIAScreen: React.FC = () => {
                 <input
                   type="text"
                   value={inspectorRegistration}
-                  disabled
+                  onChange={(e) => setInspectorRegistration(e.target.value)}
                   className="w-full px-3.5 py-2.5 rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 text-slate-900 dark:text-white text-xs font-medium focus:ring-2 focus:ring-orange-500 outline-none"
-                  placeholder="Ej: Mat. COPIME 1234"
+                  placeholder="Ej: Mat. COPIME 1234 / SRT"
                 />
               </div>
             </div>
@@ -1246,14 +1328,11 @@ export const InspectorIAScreen: React.FC = () => {
               <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 border-b border-slate-200 dark:border-slate-800 pb-4">
                 <div>
                   <span className="px-3 py-1 text-[10px] font-black bg-emerald-500/20 text-emerald-600 dark:text-emerald-400 rounded-full uppercase tracking-widest border border-emerald-500/30">
-                    Borrador de Informe Generado
+                    Borrador de Informe Generado (Editable)
                   </span>
-                  <h3 className="text-2xl font-extrabold text-slate-900 dark:text-white mt-1">
+                  <h3 className="text-xl font-extrabold text-slate-900 dark:text-white mt-1">
                     {generatedDraftReport.title}
                   </h3>
-                  <p className="text-xs text-slate-500 dark:text-slate-400">
-                    {companyName} • {siteLocation} • {generatedDraftReport.date}
-                  </p>
                 </div>
 
                 <div className="flex items-center gap-2">
@@ -1274,15 +1353,76 @@ export const InspectorIAScreen: React.FC = () => {
                 </div>
               </div>
 
+              {/* Editable Report Header Grid */}
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3 bg-slate-50 dark:bg-slate-800/50 p-4 rounded-2xl border border-slate-200 dark:border-slate-700">
+                <div>
+                  <label className="text-[10px] font-bold text-slate-500 dark:text-slate-400 uppercase">Título del Informe</label>
+                  <input
+                    type="text"
+                    value={generatedDraftReport.title}
+                    onChange={(e) => setGeneratedDraftReport({ ...generatedDraftReport, title: e.target.value })}
+                    className="w-full mt-1 px-3 py-1.5 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 text-slate-900 dark:text-white font-medium text-xs focus:ring-2 focus:ring-orange-500 outline-none"
+                  />
+                </div>
+                <div>
+                  <label className="text-[10px] font-bold text-slate-500 dark:text-slate-400 uppercase">Empresa / Cliente</label>
+                  <input
+                    type="text"
+                    value={generatedDraftReport.companyName}
+                    onChange={(e) => setGeneratedDraftReport({ ...generatedDraftReport, companyName: e.target.value })}
+                    className="w-full mt-1 px-3 py-1.5 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 text-slate-900 dark:text-white font-medium text-xs focus:ring-2 focus:ring-orange-500 outline-none"
+                  />
+                </div>
+                <div>
+                  <label className="text-[10px] font-bold text-slate-500 dark:text-slate-400 uppercase">Ubicación / Obra</label>
+                  <input
+                    type="text"
+                    value={generatedDraftReport.siteLocation}
+                    onChange={(e) => setGeneratedDraftReport({ ...generatedDraftReport, siteLocation: e.target.value })}
+                    className="w-full mt-1 px-3 py-1.5 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 text-slate-900 dark:text-white font-medium text-xs focus:ring-2 focus:ring-orange-500 outline-none"
+                  />
+                </div>
+                <div>
+                  <label className="text-[10px] font-bold text-slate-500 dark:text-slate-400 uppercase">Inspector / Auditor</label>
+                  <input
+                    type="text"
+                    value={generatedDraftReport.inspectorName}
+                    onChange={(e) => setGeneratedDraftReport({ ...generatedDraftReport, inspectorName: e.target.value })}
+                    className="w-full mt-1 px-3 py-1.5 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 text-slate-900 dark:text-white font-medium text-xs focus:ring-2 focus:ring-orange-500 outline-none"
+                  />
+                </div>
+                <div>
+                  <label className="text-[10px] font-bold text-slate-500 dark:text-slate-400 uppercase">Matrícula / Registro H&S</label>
+                  <input
+                    type="text"
+                    value={generatedDraftReport.inspectorRegistration || ''}
+                    onChange={(e) => setGeneratedDraftReport({ ...generatedDraftReport, inspectorRegistration: e.target.value })}
+                    className="w-full mt-1 px-3 py-1.5 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 text-slate-900 dark:text-white font-medium text-xs focus:ring-2 focus:ring-orange-500 outline-none"
+                  />
+                </div>
+                <div>
+                  <label className="text-[10px] font-bold text-slate-500 dark:text-slate-400 uppercase">Fecha de Inspección</label>
+                  <input
+                    type="date"
+                    value={generatedDraftReport.date}
+                    onChange={(e) => setGeneratedDraftReport({ ...generatedDraftReport, date: e.target.value })}
+                    className="w-full mt-1 px-3 py-1.5 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 text-slate-900 dark:text-white font-medium text-xs focus:ring-2 focus:ring-orange-500 outline-none"
+                  />
+                </div>
+              </div>
+
               {/* Executive Summary */}
               <div className="space-y-2">
                 <h4 className="text-sm font-extrabold text-slate-900 dark:text-white uppercase tracking-wider flex items-center gap-2">
                   <FileText className="w-4 h-4 text-orange-500" />
                   Resumen Ejecutivo de Inspección
                 </h4>
-                <p className="text-sm text-slate-700 dark:text-slate-300 bg-slate-50 dark:bg-slate-800/60 p-4 rounded-2xl border border-slate-200 dark:border-slate-700 leading-relaxed">
-                  {generatedDraftReport.executiveSummary}
-                </p>
+                <textarea
+                  rows={3}
+                  value={generatedDraftReport.executiveSummary}
+                  onChange={(e) => setGeneratedDraftReport({ ...generatedDraftReport, executiveSummary: e.target.value })}
+                  className="w-full text-sm text-slate-800 dark:text-slate-200 bg-slate-50 dark:bg-slate-800/60 p-4 rounded-2xl border border-slate-200 dark:border-slate-700 leading-relaxed focus:ring-2 focus:ring-orange-500 outline-none"
+                />
               </div>
 
               {/* Context & Critical Elements Inspected */}

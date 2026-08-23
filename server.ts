@@ -25,7 +25,7 @@ import { logStructured } from "./server/utils/logger";
 dotenv.config();
 
 const app = express();
-const PORT = 3000;
+const PORT = Number(process.env.PORT) || 3000;
 
 // Security Middlewares (H-03 Hardening)
 const isProd = process.env.NODE_ENV === "production";
@@ -175,9 +175,12 @@ app.use("/api/*", (_req: express.Request, res: express.Response) => {
 
 // Vite Middleware for dev or static server in prod
 async function startServer() {
+  logStructured("info", "STARTUP_BEGIN", { env: process.env.NODE_ENV || "development" });
   try {
     // 1. Initialize Authorization Repository (Validates config, Firestore Admin, Health Check & Fail-Closed rules)
+    logStructured("info", "AUTHORIZATION_REPOSITORY_INITIALIZING", {});
     await initializeAuthorizationRepository();
+    logStructured("info", "AUTHORIZATION_REPOSITORY_READY", {});
 
     // 2. Explicit production check: ensure active repository is NOT InMemory
     if (
@@ -188,7 +191,8 @@ async function startServer() {
         "CRITICAL SECURITY ERROR: Production authorization repository cannot be InMemory."
       );
     }
-  } catch (err) {
+  } catch (err: any) {
+    logStructured("error", "STARTUP_FAILED", { message: err?.message || "Unknown error" });
     console.error("[CRITICAL STARTUP ERROR] Failed to initialize authorization repository:", err);
     process.exit(1);
   }
@@ -208,6 +212,7 @@ async function startServer() {
   }
 
   app.listen(PORT, "0.0.0.0", () => {
+    logStructured("info", "SERVER_LISTENING", { port: PORT, environment: process.env.NODE_ENV || "development" });
     console.log(`[Safety IA] Servidor ejecutándose en http://localhost:${PORT}`);
   });
 }

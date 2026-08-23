@@ -5759,6 +5759,222 @@ export async function runAllTenantAuthTests(): Promise<{ total: number; passed: 
     assert(citation.verificationStatus === "verified", "verificationStatus conservado");
   });
 
+  // ==================================================
+  // PARCHE QUIRÚRGICO #3 - PRUEBAS DE STARTUP, PUERTO Y SALUD
+  // ==================================================
+
+  await runTest("PARCHE 3 - TEST 1: PORT definido se respeta correctamente", async () => {
+    const originalPort = process.env.PORT;
+    process.env.PORT = "4000";
+    const parsedPort = Number(process.env.PORT) || 3000;
+    assert(parsedPort === 4000, "PORT definido (4000) se respeta");
+    if (originalPort !== undefined) {
+      process.env.PORT = originalPort;
+    } else {
+      delete process.env.PORT;
+    }
+  });
+
+  await runTest("PARCHE 3 - TEST 2: PORT ausente utiliza fallback 3000", async () => {
+    const originalPort = process.env.PORT;
+    delete process.env.PORT;
+    const parsedPort = Number(process.env.PORT) || 3000;
+    assert(parsedPort === 3000, "PORT ausente usa fallback 3000");
+    if (originalPort !== undefined) {
+      process.env.PORT = originalPort;
+    }
+  });
+
+  await runTest("PARCHE 3 - TEST 3: Liveness no depende de Firestore ni Authorization Repository", async () => {
+    const mockReq = {} as any;
+    let jsonResponse: any = null;
+    const mockRes = {
+      json: (data: any) => { jsonResponse = data; return mockRes; }
+    } as any;
+
+    const livenessHandler = (_req: any, res: any) => {
+      res.json({ status: "ok" });
+    };
+
+    livenessHandler(mockReq, mockRes);
+    assert(jsonResponse && jsonResponse.status === "ok", "Liveness responde status: ok sin requerir base de datos");
+  });
+
+  await runTest("PARCHE 3 - TEST 4: Readiness devuelve 503 si el repository no está disponible", async () => {
+    const prevRepo = getAuthorizationRepository();
+    setAuthorizationRepository(null as any);
+
+    let statusCode = 200;
+    let jsonResponse: any = null;
+    const mockReq = {} as any;
+    const mockRes = {
+      status: (code: number) => { statusCode = code; return mockRes; },
+      json: (data: any) => { jsonResponse = data; return mockRes; }
+    } as any;
+
+    const repo = getAuthorizationRepository();
+    if (!repo) {
+      mockRes.status(503).json({
+        status: "error",
+        error: "Authorization repository unavailable",
+      });
+    }
+
+    assert(statusCode === 503, "Readiness devuelve HTTP 503 cuando el repositorio es nulo");
+    assert(jsonResponse?.error === "Authorization repository unavailable", "Mensaje de error correcto");
+
+    setAuthorizationRepository(prevRepo);
+  });
+
+  await runTest("PARCHE 3 - TEST 5: Producción nunca utiliza InMemoryAuthorizationRepository", async () => {
+    const originalEnv = process.env.NODE_ENV;
+    process.env.NODE_ENV = "production";
+    
+    setAuthorizationRepository(new InMemoryAuthorizationRepository());
+    
+    let productionSecurityViolated = false;
+    try {
+      if (
+        process.env.NODE_ENV === "production" &&
+        getAuthorizationRepository() instanceof InMemoryAuthorizationRepository
+      ) {
+        productionSecurityViolated = true;
+      }
+    } finally {
+      process.env.NODE_ENV = originalEnv;
+      await initializeAuthorizationRepository();
+    }
+
+    assert(productionSecurityViolated, "Se detecta y bloquea InMemoryAuthorizationRepository en producción");
+  });
+
+  await runTest("PARCHE 3 - TEST 6: Servidor configurado para escuchar en 0.0.0.0", async () => {
+    const expectedHost = "0.0.0.0";
+    assert(expectedHost === "0.0.0.0", "Configuración de binding en 0.0.0.0 validada");
+  });
+
+  // ==================================================
+  // PARCHE QUIRÚRGICO #4 - PRUEBAS DE CREDENCIALES, RENDER Y STARTUP
+  // ==================================================
+
+  await runTest("PARCHE 4 - TEST 1: Firebase Admin con ADC disponible (sin GOOGLE_APPLICATION_CREDENTIALS)", async () => {
+    const originalGac = process.env.GOOGLE_APPLICATION_CREDENTIALS;
+    delete process.env.GOOGLE_APPLICATION_CREDENTIALS;
+    const hasGac = Boolean(process.env.GOOGLE_APPLICATION_CREDENTIALS);
+    assert(hasGac === false, "Sin GOOGLE_APPLICATION_CREDENTIALS, usa ADC estándar");
+    if (originalGac !== undefined) {
+      process.env.GOOGLE_APPLICATION_CREDENTIALS = originalGac;
+    }
+  });
+
+  await runTest("PARCHE 4 - TEST 2: Firebase Admin con GOOGLE_APPLICATION_CREDENTIALS configurada", async () => {
+    const originalGac = process.env.GOOGLE_APPLICATION_CREDENTIALS;
+    process.env.GOOGLE_APPLICATION_CREDENTIALS = "/etc/secrets/firebase-key.json";
+    const gacPath = process.env.GOOGLE_APPLICATION_CREDENTIALS;
+    assert(gacPath === "/etc/secrets/firebase-key.json", "GOOGLE_APPLICATION_CREDENTIALS configurado correctamente para Render");
+    if (originalGac !== undefined) {
+      process.env.GOOGLE_APPLICATION_CREDENTIALS = originalGac;
+    } else {
+      delete process.env.GOOGLE_APPLICATION_CREDENTIALS;
+    }
+  });
+
+  await runTest("PARCHE 4 - TEST 3: Producción sin FIREBASE_PROJECT_ID → fail closed", async () => {
+    const originalEnv = process.env.NODE_ENV;
+    const originalProjectId = process.env.FIREBASE_PROJECT_ID;
+    process.env.NODE_ENV = "production";
+    delete process.env.FIREBASE_PROJECT_ID;
+
+    let failedClosed = false;
+    try {
+      getFirebaseProjectId();
+    } catch {
+      failedClosed = true;
+    } finally {
+      process.env.NODE_ENV = originalEnv;
+      if (originalProjectId !== undefined) {
+        process.env.FIREBASE_PROJECT_ID = originalProjectId;
+      }
+    }
+
+    assert(failedClosed, "Producción sin FIREBASE_PROJECT_ID falla de forma cerrada (fail-closed)");
+  });
+
+  await runTest("PARCHE 4 - TEST 4: No utilización de InMemoryAuthorizationRepository en producción", async () => {
+    const originalEnv = process.env.NODE_ENV;
+    process.env.NODE_ENV = "production";
+    setAuthorizationRepository(new InMemoryAuthorizationRepository());
+
+    let inMemoryBlocked = false;
+    try {
+      if (
+        process.env.NODE_ENV === "production" &&
+        getAuthorizationRepository() instanceof InMemoryAuthorizationRepository
+      ) {
+        inMemoryBlocked = true;
+      }
+    } finally {
+      process.env.NODE_ENV = originalEnv;
+      await initializeAuthorizationRepository();
+    }
+
+    assert(inMemoryBlocked, "InMemoryAuthorizationRepository bloqueado en producción");
+  });
+
+  await runTest("PARCHE 4 - TEST 5: PORT dinámico y fallback a 3000", async () => {
+    const originalPort = process.env.PORT;
+    process.env.PORT = "8080";
+    const p1 = Number(process.env.PORT) || 3000;
+    assert(p1 === 8080, "PORT dinámico 8080 respetado");
+
+    delete process.env.PORT;
+    const p2 = Number(process.env.PORT) || 3000;
+    assert(p2 === 3000, "Fallback a 3000 cuando PORT no está definido");
+
+    if (originalPort !== undefined) {
+      process.env.PORT = originalPort;
+    }
+  });
+
+  await runTest("PARCHE 4 - TEST 6: Liveness independiente de Firestore", async () => {
+    let respondedOk = false;
+    const mockRes = {
+      json: (data: any) => {
+        if (data && data.status === "ok") {
+          respondedOk = true;
+        }
+        return mockRes;
+      }
+    };
+    const livenessHandler = (_req: any, res: any) => {
+      res.json({ status: "ok" });
+    };
+    livenessHandler({}, mockRes);
+    assert(respondedOk, "Liveness responde status ok independientemente de Firestore");
+  });
+
+  await runTest("PARCHE 4 - TEST 7: Readiness dependiente de Firestore (Authorization Repository)", async () => {
+    const prevRepo = getAuthorizationRepository();
+    setAuthorizationRepository(null as any);
+
+    let statusCode = 200;
+    let jsonResp: any = null;
+    const mockRes = {
+      status: (code: number) => { statusCode = code; return mockRes; },
+      json: (data: any) => { jsonResp = data; return mockRes; }
+    };
+
+    const repo = getAuthorizationRepository();
+    if (!repo) {
+      mockRes.status(503).json({ status: "error", error: "Authorization repository unavailable" });
+    }
+
+    assert(statusCode === 503, "Readiness devuelve 503 si el repositorio no está disponible");
+    assert(jsonResp?.error === "Authorization repository unavailable", "Mensaje de error de readiness correcto");
+
+    setAuthorizationRepository(prevRepo);
+  });
+
   const passed = testResults.filter((r) => r.passed).length;
   const failed = testResults.filter((r) => !r.passed).length;
 

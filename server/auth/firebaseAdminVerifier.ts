@@ -1,4 +1,4 @@
-import { getApps, initializeApp, App } from "firebase-admin/app";
+import { getApps, initializeApp, App, applicationDefault } from "firebase-admin/app";
 import { getAuth } from "firebase-admin/auth";
 import { AuthVerifier, AuthenticatedIdentity, validatePlatformUserRole } from "./types";
 import { getFirebaseProjectId } from "./config";
@@ -14,9 +14,11 @@ function getFirebaseAdminApp(): App {
       // In Google Cloud Run and standard GCP environments, Application Default Credentials (ADC) are used automatically.
       // In production, getFirebaseProjectId() strictly fails closed if FIREBASE_PROJECT_ID is missing.
       const projectId = getFirebaseProjectId();
-      firebaseAdminApp = initializeApp({
-        projectId,
-      });
+      const options: any = { projectId };
+      if (process.env.GOOGLE_APPLICATION_CREDENTIALS && process.env.GOOGLE_APPLICATION_CREDENTIALS.trim() !== "") {
+        options.credential = applicationDefault();
+      }
+      firebaseAdminApp = initializeApp(options);
     }
   }
   return firebaseAdminApp;

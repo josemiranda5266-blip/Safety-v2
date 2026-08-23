@@ -1,5 +1,6 @@
 import { ensureAuth } from './firebase';
 import { CorrectiveAction } from '../../server/services/capaService';
+import { buildApiUrl } from '../utils/apiConfig';
 
 async function getAuthHeaders() {
   const user = await ensureAuth();
@@ -14,7 +15,7 @@ async function getAuthHeaders() {
 
 export const capaApi = {
   getCorrectiveActions: async (companyId?: string): Promise<CorrectiveAction[]> => {
-    let url = '/api/v2/capa';
+    let url = buildApiUrl('/v2/capa');
     if (companyId) {
       url += `?companyId=${encodeURIComponent(companyId)}`;
     }
@@ -27,7 +28,7 @@ export const capaApi = {
   
   createCorrectiveAction: async (data: Partial<CorrectiveAction>): Promise<CorrectiveAction> => {
     const headers = await getAuthHeaders();
-    const res = await fetch('/api/v2/capa', {
+    const res = await fetch(buildApiUrl('/v2/capa'), {
       method: 'POST',
       headers,
       body: JSON.stringify(data),
@@ -39,7 +40,7 @@ export const capaApi = {
   
   updateCorrectiveAction: async (id: string, data: Partial<CorrectiveAction>): Promise<CorrectiveAction> => {
     const headers = await getAuthHeaders();
-    const res = await fetch(`/api/v2/capa/${id}`, {
+    const res = await fetch(buildApiUrl(`/v2/capa/${id}`), {
       method: 'PUT',
       headers,
       body: JSON.stringify(data),

@@ -1,5 +1,6 @@
 import { Company, Establishment, Sector, Position, Employee, Organization, Membership } from '../types/tenant';
 import { ensureAuth } from './firebase';
+import { buildApiUrl } from '../utils/apiConfig';
 
 class TenantApiService {
   private activeOrgId: string | null = null;

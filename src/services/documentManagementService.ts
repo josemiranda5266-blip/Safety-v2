@@ -7,6 +7,7 @@ import {
   DocumentScope,
 } from '../types/documentManagement';
 import { enrichDocumentWithExpiration } from '../utils/expirationEngine';
+import { buildApiUrl } from '../utils/apiConfig';
 
 // In-memory fallback for local prototype testing when offline
 const localFallbackDocuments: ProfessionalDocument[] = [];
@@ -31,7 +32,7 @@ export const documentManagementService = {
       if (filters?.searchQuery) params.append('search', filters.searchQuery);
       if (filters?.includeDeleted) params.append('includeDeleted', 'true');
 
-      const res = await fetch(`/api/v2/documents?${params.toString()}`);
+      const res = await fetch(buildApiUrl(`/v2/documents?${params.toString()}`));
       if (!res.ok) {
         throw new Error(`Error ${res.status}: ${res.statusText}`);
       }
@@ -71,7 +72,7 @@ export const documentManagementService = {
    */
   async getDashboardMetrics(): Promise<DocumentDashboardMetrics> {
     try {
-      const res = await fetch('/api/v2/documents/metrics');
+      const res = await fetch(buildApiUrl('/v2/documents/metrics'));
       if (!res.ok) {
         throw new Error(`Error ${res.status}`);
       }
@@ -122,7 +123,7 @@ export const documentManagementService = {
    */
   async getAlerts(): Promise<ProfessionalDocument[]> {
     try {
-      const res = await fetch('/api/v2/documents/alerts');
+      const res = await fetch(buildApiUrl('/v2/documents/alerts'));
       if (!res.ok) throw new Error(`Error ${res.status}`);
       const data = await res.json();
       return (data.alerts || []).map((d: ProfessionalDocument) => enrichDocumentWithExpiration(d));
@@ -137,7 +138,7 @@ export const documentManagementService = {
    */
   async getCalendarEvents(): Promise<DocumentCalendarEvent[]> {
     try {
-      const res = await fetch('/api/v2/documents/calendar');
+      const res = await fetch(buildApiUrl('/v2/documents/calendar'));
       if (!res.ok) throw new Error(`Error ${res.status}`);
       const data = await res.json();
       return data.events || [];
@@ -189,7 +190,7 @@ export const documentManagementService = {
     notes?: string;
     tags?: string[];
   }): Promise<ProfessionalDocument> {
-    const res = await fetch('/api/v2/documents/upload', {
+    const res = await fetch(buildApiUrl('/v2/documents/upload'), {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(payload),
@@ -213,7 +214,7 @@ export const documentManagementService = {
     documentId: string,
     updates: Partial<Pick<ProfessionalDocument, 'title' | 'category' | 'subCategory' | 'documentNumber' | 'issueDate' | 'expirationDate' | 'responsibleName' | 'issuingOrganism' | 'status' | 'notes' | 'tags' | 'summary'>>
   ): Promise<ProfessionalDocument> {
-    const res = await fetch(`/api/v2/documents/${documentId}`, {
+    const res = await fetch(buildApiUrl(`/v2/documents/${documentId}`), {
       method: 'PUT',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(updates),
@@ -242,7 +243,7 @@ export const documentManagementService = {
       changeNotes?: string;
     }
   ): Promise<ProfessionalDocument> {
-    const res = await fetch(`/api/v2/documents/${documentId}/renew`, {
+    const res = await fetch(buildApiUrl(`/v2/documents/${documentId}/renew`), {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(payload),
@@ -261,7 +262,7 @@ export const documentManagementService = {
    * Soft deletes a document (conserved for legal traceability).
    */
   async deleteDocument(documentId: string): Promise<boolean> {
-    const res = await fetch(`/api/v2/documents/${documentId}`, {
+    const res = await fetch(buildApiUrl(`/v2/documents/${documentId}`), {
       method: 'DELETE',
     });
 
@@ -282,7 +283,7 @@ export const documentManagementService = {
    * Downloads a document file.
    */
   async downloadDocument(documentId: string, filename: string, version?: number): Promise<void> {
-    const url = `/api/v2/documents/${documentId}/download${version ? `?version=${version}` : ''}`;
+    const url = buildApiUrl(`/v2/documents/${documentId}/download${version ? `?version=${version}` : ''}`);
     const res = await fetch(url);
     if (!res.ok) {
       throw new Error(`Error descargando archivo (${res.status})`);

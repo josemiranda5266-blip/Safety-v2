@@ -1,5 +1,6 @@
 import { DocumentItem, DocChunk, FavoriteItem, ChatSession, SummaryResult, ChecklistInspection, HazardAnalysisResult, RAGQueryLog, DocComparisonResult, LibraryStats, NormativeAlert, InspectionReport, InspectionFinding, InspectorStats, UserProfile, UserPlan } from '../types/safety';
 import { dbFirestore, ensureAuth, collection, doc, setDoc, deleteDoc, onSnapshot, query, where, OperationType, handleFirestoreError, sanitizeForFirestore } from './firebase';
+import { buildApiUrl } from '../utils/apiConfig';
 
 const STORAGE_KEYS = {
   DOCUMENTS: 'safety_ia_documents_v2',
@@ -1052,7 +1053,7 @@ export class LocalSafetyDB {
 
       // Fetch from backend authority
       const headers = await this.getAuthHeaders();
-      const res = await fetch('/api/user/profile', {
+      const res = await fetch(buildApiUrl('/user/profile'), {
         headers,
       });
 
@@ -1097,7 +1098,7 @@ export class LocalSafetyDB {
 
   public async changeUserPlan(plan: UserPlan): Promise<UserProfile> {
     const headers = await this.getAuthHeaders();
-    const res = await fetch('/api/user/change-plan', {
+    const res = await fetch(buildApiUrl('/user/change-plan'), {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
@@ -1118,7 +1119,8 @@ export class LocalSafetyDB {
 
   public async callAiApi<T>(endpoint: string, payload: any): Promise<T> {
     const headers = await this.getAuthHeaders();
-    const response = await fetch(endpoint, {
+    const url = buildApiUrl(endpoint);
+    const response = await fetch(url, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',

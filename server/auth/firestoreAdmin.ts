@@ -1,4 +1,4 @@
-import { getApps, initializeApp, App } from "firebase-admin/app";
+import { getApps, initializeApp, App, applicationDefault } from "firebase-admin/app";
 import { getFirestore, Firestore } from "firebase-admin/firestore";
 import { getStorage } from "firebase-admin/storage";
 import { getFirebaseProjectId, getAuthConfig } from "./config";
@@ -21,9 +21,11 @@ export function getAdminApp(): App {
   }
 
   const projectId = getFirebaseProjectId();
-  cachedAdminApp = initializeApp({
-    projectId,
-  });
+  const options: any = { projectId };
+  if (process.env.GOOGLE_APPLICATION_CREDENTIALS && process.env.GOOGLE_APPLICATION_CREDENTIALS.trim() !== "") {
+    options.credential = applicationDefault();
+  }
+  cachedAdminApp = initializeApp(options);
 
   return cachedAdminApp;
 }

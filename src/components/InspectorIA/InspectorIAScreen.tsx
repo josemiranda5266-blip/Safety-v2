@@ -434,7 +434,13 @@ export const InspectorIAScreen: React.FC = () => {
       setGeneratedDraftReport(fullReport);
     } catch (err: any) {
       console.error('Error en análisis Inspector IA:', err);
-      setAnalysisError(err.message || 'Ocurrió un error al procesar la imagen con la IA.');
+      if (err.message === 'AUTHENTICATION_REQUIRED') {
+        setAnalysisError('Necesitás iniciar sesión para utilizar InspectorIA.');
+      } else if (err.message === 'SESSION_INVALID') {
+        setAnalysisError('No se pudo validar tu sesión. Volvé a iniciar sesión.');
+      } else {
+        setAnalysisError(err.message || 'Ocurrió un error al procesar la imagen con la IA.');
+      }
     } finally {
       setIsAnalyzing(false);
       setAnalysisProgressStep('');

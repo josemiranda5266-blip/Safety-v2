@@ -1018,22 +1018,23 @@ export class LocalSafetyDB {
   private async getAuthHeaders(): Promise<Record<string, string>> {
     try {
       const user = await ensureAuth();
-      const token = await user.getIdToken();
-      const orgId = getStorage().getItem('safetyia_active_org_id') || 'org_default';
-      return {
-        'x-user-id': user.uid,
-        'x-org-id': orgId,
-        'Authorization': `Bearer ${token}`,
-      };
-    } catch (err) {
-      console.warn('getAuthHeaders fallback active:', err);
-      const storedUid = getStorage().getItem('safetyia_user_uid') || 'user_member_a';
-      const orgId = getStorage().getItem('safetyia_active_org_id') || 'org_default';
-      return {
-        'x-user-id': storedUid,
-        'x-org-id': orgId,
-        'Authorization': `Bearer valid_token_${storedUid}`,
-      };
+      try {
+        const token = await user.getIdToken();
+        const orgId = getStorage().getItem('safetyia_active_org_id') || 'org_default';
+        return {
+          'x-user-id': user.uid,
+          'x-org-id': orgId,
+          'Authorization': `Bearer ${token}`,
+        };
+      } catch (e) {
+        throw new Error('SESSION_INVALID');
+      }
+    } catch (err: any) {
+      if (err.message === 'AUTHENTICATION_REQUIRED') {
+        throw new Error('AUTHENTICATION_REQUIRED');
+      }
+      console.error('getAuthHeaders error:', err);
+      throw new Error('SESSION_INVALID');
     }
   }
 

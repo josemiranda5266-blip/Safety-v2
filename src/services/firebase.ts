@@ -26,22 +26,25 @@ export function ensureAuth(): Promise<User> {
           resolve(userCred.user);
         } catch (err) {
           unsubscribe();
-          console.warn('Firebase signInAnonymously call fallback active (auth/admin-restricted-operation or restricted):', err);
-          const storedUid = (typeof window !== 'undefined' && localStorage.getItem('safetyia_user_uid')) || 'user_member_a';
-          const fallbackUser: any = {
-            uid: auth.currentUser?.uid || storedUid,
-            email: auth.currentUser?.email || 'profesional@safetyia.com',
-            displayName: auth.currentUser?.displayName || 'Profesional H&S',
-            getIdToken: async () => {
-              if (auth.currentUser) {
-                try {
-                  return await auth.currentUser.getIdToken();
-                } catch (_) {}
-              }
-              return `valid_token_${storedUid}`;
-            },
-          };
-          resolve(fallbackUser);
+          if (process.env.IS_RUNNING_TESTS === "true") {
+             console.warn('Firebase signInAnonymously call fallback active (test environment):', err);
+             const storedUid = (typeof window !== 'undefined' && localStorage.getItem('safetyia_user_uid')) || 'user_member_a';
+             const fallbackUser: any = {
+               uid: auth.currentUser?.uid || storedUid,
+               email: auth.currentUser?.email || 'profesional@safetyia.com',
+               displayName: auth.currentUser?.displayName || 'Profesional H&S',
+               getIdToken: async () => {
+                 if (auth.currentUser) {
+                   return await auth.currentUser.getIdToken();
+                 }
+                 return `valid_token_${storedUid}`;
+               },
+             };
+             resolve(fallbackUser);
+             return;
+          }
+          console.error('Error de autenticación Firebase:', err);
+          throw new Error("AUTHENTICATION_REQUIRED");
         }
       }
     });

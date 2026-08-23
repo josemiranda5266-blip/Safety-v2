@@ -10,7 +10,7 @@
     "preview": "vite preview",
     "clean": "rm -rf dist server.cjs",
     "lint": "tsc --noEmit",
-    "test": "tsx server/tests/tenantAuth.test.ts"
+    "test": "IS_RUNNING_TESTS=true tsx server/tests/tenantAuth.test.ts"
   },
   "dependencies": {
     "@google/genai": "^2.4.0",

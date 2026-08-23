@@ -1,0 +1,690 @@
+
+> safety-ia@1.0.0 test
+> IS_RUNNING_TESTS=true tsx server/tests/tenantAuth.test.ts
+
+[Safety IA] Seeding default legal & technical norms...
+
+=======================================================
+   SAFETY IA V2 — SUITE DE PRUEBAS MULTI-TENANT & RBAC 
+=======================================================
+
+Firebase signInAnonymously call fallback active (test environment): Error: Skipping real auth in test
+    at <anonymous> (/app/applet/src/services/firebase.ts:25:19)
+    at <anonymous> (/app/applet/node_modules/@firebase/auth/src/core/auth/auth_impl.ts:755:7)
+>>> RUNNING: TEST 1: Fallo cerrado en producción sin Project ID (General)
+✅ [PASS] TEST 1: Fallo cerrado en producción sin Project ID (General)
+>>> RUNNING: TEST 1.1: production + FIREBASE_PROJECT_ID válido -> PASS
+✅ [PASS] TEST 1.1: production + FIREBASE_PROJECT_ID válido -> PASS
+>>> RUNNING: TEST 1.2: production + FIREBASE_PROJECT_ID ausente + GCLOUD_PROJECT presente -> FAIL
+✅ [PASS] TEST 1.2: production + FIREBASE_PROJECT_ID ausente + GCLOUD_PROJECT presente -> FAIL
+>>> RUNNING: TEST 1.3: production + FIREBASE_PROJECT_ID ausente + firebase-applet-config.json presente -> FAIL
+✅ [PASS] TEST 1.3: production + FIREBASE_PROJECT_ID ausente + firebase-applet-config.json presente -> FAIL
+>>> RUNNING: TEST 1.4: development/test + fallback existente -> PASS
+✅ [PASS] TEST 1.4: development/test + fallback existente -> PASS
+>>> RUNNING: TEST 1.5: NODE_ENV=production + IS_RUNNING_TESTS ausente -> FAIL
+✅ [PASS] TEST 1.5: NODE_ENV=production + IS_RUNNING_TESTS ausente -> FAIL
+>>> RUNNING: TEST 1.6: NODE_ENV=production + IS_RUNNING_TESTS=true -> FAIL
+✅ [PASS] TEST 1.6: NODE_ENV=production + IS_RUNNING_TESTS=true -> FAIL
+>>> RUNNING: TEST 1.7: NODE_ENV=test + IS_RUNNING_TESTS=true -> PASS
+✅ [PASS] TEST 1.7: NODE_ENV=test + IS_RUNNING_TESTS=true -> PASS
+>>> RUNNING: TEST 1.8: NODE_ENV=development + IS_RUNNING_TESTS=true -> PASS
+✅ [PASS] TEST 1.8: NODE_ENV=development + IS_RUNNING_TESTS=true -> PASS
+>>> RUNNING: TEST 2: Inyección de MockAuthVerifier en runtime
+✅ [PASS] TEST 2: Inyección de MockAuthVerifier en runtime
+>>> RUNNING: TEST 3: Rechazo de token malformado o vacío
+✅ [PASS] TEST 3: Rechazo de token malformado o vacío
+>>> RUNNING: TEST 4: Validación de PlatformRole 'platform_admin'
+✅ [PASS] TEST 4: Validación de PlatformRole 'platform_admin'
+>>> RUNNING: TEST 5: Rechazo de PlatformRole 'super_root'
+✅ [PASS] TEST 5: Rechazo de PlatformRole 'super_root'
+>>> RUNNING: TEST 6: Permiso company:create permitido para rol 'owner'
+✅ [PASS] TEST 6: Permiso company:create permitido para rol 'owner'
+>>> RUNNING: TEST 7: Permiso company:create permitido para rol 'admin'
+✅ [PASS] TEST 7: Permiso company:create permitido para rol 'admin'
+>>> RUNNING: TEST 8: Permiso company:delete denegado para rol 'member'
+✅ [PASS] TEST 8: Permiso company:delete denegado para rol 'member'
+>>> RUNNING: TEST 9: Permiso employee:create permitido para rol 'member'
+✅ [PASS] TEST 9: Permiso employee:create permitido para rol 'member'
+>>> RUNNING: TEST 10: Permiso employee:create denegado para rol 'auditor'
+✅ [PASS] TEST 10: Permiso employee:create denegado para rol 'auditor'
+>>> RUNNING: TEST 11: Acceso a Empresa asignada para usuario restringido
+✅ [PASS] TEST 11: Acceso a Empresa asignada para usuario restringido
+>>> RUNNING: TEST 12: Bloqueo de Empresa no asignada para usuario restringido
+✅ [PASS] TEST 12: Bloqueo de Empresa no asignada para usuario restringido
+>>> RUNNING: TEST 13: Bloqueo de Empresa de otra Organización (Anti-IDOR)
+✅ [PASS] TEST 13: Bloqueo de Empresa de otra Organización (Anti-IDOR)
+>>> RUNNING: TEST 14: Usuario sin membresía no puede resolver AuthorizationContext
+❌ [FAIL] TEST 14: Usuario sin membresía no puede resolver AuthorizationContext: Assertion Failed: Usuario sin membresía devuelve null
+>>> RUNNING: TEST 15: userId vacío no puede resolver AuthorizationContext
+✅ [PASS] TEST 15: userId vacío no puede resolver AuthorizationContext
+>>> RUNNING: TEST 16: Listado de empresas filtra por tenant
+✅ [PASS] TEST 16: Listado de empresas filtra por tenant
+>>> RUNNING: TEST 17: Listado de empresas filtra por assignedCompanyIds
+✅ [PASS] TEST 17: Listado de empresas filtra por assignedCompanyIds
+>>> RUNNING: TEST 18: Bloqueo de Establecimiento de otra Organización
+✅ [PASS] TEST 18: Bloqueo de Establecimiento de otra Organización
+>>> RUNNING: TEST 19: Bloqueo de Empleado de otra Organización
+✅ [PASS] TEST 19: Bloqueo de Empleado de otra Organización
+>>> RUNNING: TEST 20: Usuario autenticado sin Membership → 403
+❌ [FAIL] TEST 20: Usuario autenticado sin Membership → 403: Assertion Failed: requireTenantContext debe denegar acceso a usuario sin membresía
+>>> RUNNING: TEST 21: Usuario autenticado con Membership A no puede acceder a Organization B
+❌ [FAIL] TEST 21: Usuario autenticado con Membership A no puede acceder a Organization B: Assertion Failed: Debe bloquear acceso a org_beta
+>>> RUNNING: TEST 22: x-org-id solamente selecciona contexto; nunca concede acceso
+❌ [FAIL] TEST 22: x-org-id solamente selecciona contexto; nunca concede acceso: Assertion Failed: Enviar x-org-id=org_alpha no otorga acceso si no hay membership activa
+>>> RUNNING: TEST 23: Membership role no puede modificarse desde request body
+✅ [PASS] TEST 23: Membership role no puede modificarse desde request body
+>>> RUNNING: TEST 24: Owner sí puede crear empresas
+✅ [PASS] TEST 24: Owner sí puede crear empresas
+>>> RUNNING: TEST 25: Auditor no puede crear ni editar recursos
+✅ [PASS] TEST 25: Auditor no puede crear ni editar recursos
+>>> RUNNING: TEST 26: Pure resolver no crea organizaciones
+❌ [FAIL] TEST 26: Pure resolver no crea organizaciones: Assertion Failed: Devuelve null
+>>> RUNNING: TEST 27: Pure resolver no crea membresías
+❌ [FAIL] TEST 27: Pure resolver no crea membresías: Assertion Failed: No crea membresía
+>>> RUNNING: TEST 28: Usuario restringido bloqueado de establecimiento no asignado
+✅ [PASS] TEST 28: Usuario restringido bloqueado de establecimiento no asignado
+>>> RUNNING: TEST 29: Usuario restringido bloqueado de empleado no asignado
+✅ [PASS] TEST 29: Usuario restringido bloqueado de empleado no asignado
+>>> RUNNING: TEST 30: Validation schema rechaza CUIT inválido
+✅ [PASS] TEST 30: Validation schema rechaza CUIT inválido
+>>> RUNNING: TEST 31: Validation schema acepta CUIT argentino válido
+✅ [PASS] TEST 31: Validation schema acepta CUIT argentino válido
+>>> RUNNING: TEST 32: Inmutabilidad de orgId en actualización de empresa
+✅ [PASS] TEST 32: Inmutabilidad de orgId en actualización de empresa
+>>> RUNNING: TEST 33: Soft delete de empresa
+✅ [PASS] TEST 33: Soft delete de empresa
+>>> RUNNING: TEST 34: canAccessCompany previene actualización sin permiso
+✅ [PASS] TEST 34: canAccessCompany previene actualización sin permiso
+>>> RUNNING: TEST 35: Member no puede borrar empresas
+✅ [PASS] TEST 35: Member no puede borrar empresas
+>>> RUNNING: TEST 36: Header de autenticación ausente → 401
+✅ [PASS] TEST 36: Header de autenticación ausente → 401
+>>> RUNNING: TEST 37: Header con esquema incorrecto (Basic en vez de Bearer) → 401
+✅ [PASS] TEST 37: Header con esquema incorrecto (Basic en vez de Bearer) → 401
+>>> RUNNING: TEST 38: Inyección de x-user-id no autentica
+✅ [PASS] TEST 38: Inyección de x-user-id no autentica
+>>> RUNNING: TEST 39: Inyección de body.userId no autentica
+✅ [PASS] TEST 39: Inyección de body.userId no autentica
+>>> RUNNING: TEST 40: Inyección de query.userId no autentica
+✅ [PASS] TEST 40: Inyección de query.userId no autentica
+>>> RUNNING: TEST 41: Header x-forwarded-for no otorga privilegios
+✅ [PASS] TEST 41: Header x-forwarded-for no otorga privilegios
+>>> RUNNING: TEST 42: No cross-tenant access a través de x-org-id
+❌ [FAIL] TEST 42: No cross-tenant access a través de x-org-id: Assertion Failed: Owner de Org A no puede acceder a Org B via x-org-id
+>>> RUNNING: TEST 43: Membership inactiva deniega acceso
+❌ [FAIL] TEST 43: Membership inactiva deniega acceso: Assertion Failed: Membership inactiva no resuelve contexto
+>>> RUNNING: TEST 44: Platform Admin con Membership en tenant
+✅ [PASS] TEST 44: Platform Admin con Membership en tenant
+>>> RUNNING: TEST 45: Verifier mock rechaza token expirado
+✅ [PASS] TEST 45: Verifier mock rechaza token expirado
+>>> RUNNING: TEST 46: Rutas IA requieren identidad autenticada
+✅ [PASS] TEST 46: Rutas IA requieren identidad autenticada
+>>> RUNNING: TEST 47: Flujo de autorización completo para llamada a IA
+✅ [PASS] TEST 47: Flujo de autorización completo para llamada a IA
+>>> RUNNING: TEST 48: creditGatekeeper sin identidad → fail-closed 401
+✅ [PASS] TEST 48: creditGatekeeper sin identidad → fail-closed 401
+>>> RUNNING: TEST 49: FirestoreOrganizationRepository — getById & save & getAll
+✅ [PASS] TEST 49: FirestoreOrganizationRepository — getById & save & getAll
+>>> RUNNING: TEST 50: FirestoreOrganizationRepository — Inexistente devuelve undefined (Fail-Closed)
+✅ [PASS] TEST 50: FirestoreOrganizationRepository — Inexistente devuelve undefined (Fail-Closed)
+>>> RUNNING: TEST 51: FirestoreOrganizationRepository — Sanitización y validación de campos
+✅ [PASS] TEST 51: FirestoreOrganizationRepository — Sanitización y validación de campos
+>>> RUNNING: TEST 52: FirestoreOrganizationRepository — Error en Firestore devuelve undefined (Fail-Closed)
+[FirestoreOrganizationRepository] Error fetching organization 'org_alpha': Error: Simulated Firestore network failure
+    at Object.get (/app/applet/server/tests/tenantAuth.test.ts:145:23)
+    at FirestoreOrganizationRepository.getById (/app/applet/server/authorization/firestoreRepository.ts:137:37)
+    at <anonymous> (/app/applet/server/tests/tenantAuth.test.ts:1241:41)
+    at runTest (/app/applet/server/tests/tenantAuth.test.ts:56:11)
+    at runAllTenantAuthTests (/app/applet/server/tests/tenantAuth.test.ts:1237:9)
+✅ [PASS] TEST 52: FirestoreOrganizationRepository — Error en Firestore devuelve undefined (Fail-Closed)
+>>> RUNNING: TEST 53: FirestoreMembershipRepository — getByOrgAndUser devuelve membresía activa
+✅ [PASS] TEST 53: FirestoreMembershipRepository — getByOrgAndUser devuelve membresía activa
+>>> RUNNING: TEST 54: FirestoreMembershipRepository — Cross-tenant isolation (Org A no accede a Org B)
+✅ [PASS] TEST 54: FirestoreMembershipRepository — Cross-tenant isolation (Org A no accede a Org B)
+>>> RUNNING: TEST 55: FirestoreMembershipRepository — Membresía inactiva devuelve undefined (Fail-Closed)
+✅ [PASS] TEST 55: FirestoreMembershipRepository — Membresía inactiva devuelve undefined (Fail-Closed)
+>>> RUNNING: TEST 56: FirestoreMembershipRepository — Membresía inexistente devuelve undefined
+✅ [PASS] TEST 56: FirestoreMembershipRepository — Membresía inexistente devuelve undefined
+>>> RUNNING: TEST 57: FirestoreMembershipRepository — Rol inválido rechazado por sanitizador (Fail-Closed)
+✅ [PASS] TEST 57: FirestoreMembershipRepository — Rol inválido rechazado por sanitizador (Fail-Closed)
+>>> RUNNING: TEST 58: FirestoreMembershipRepository — assignedCompanyIds preservado y sanitizado
+✅ [PASS] TEST 58: FirestoreMembershipRepository — assignedCompanyIds preservado y sanitizado
+>>> RUNNING: TEST 59: FirestoreMembershipRepository — getByUser devuelve solo membresías activas del usuario
+✅ [PASS] TEST 59: FirestoreMembershipRepository — getByUser devuelve solo membresías activas del usuario
+>>> RUNNING: TEST 60: FirestoreMembershipRepository — Error en Firestore devuelve undefined (Fail-Closed)
+[FirestoreMembershipRepository] Error fetching membership for org 'fs_org_1' and user 'fs_user_1': Error: Simulated Firestore query error
+    at Object.get (/app/applet/server/tests/tenantAuth.test.ts:182:23)
+    at FirestoreMembershipRepository.getByOrgAndUser (/app/applet/server/authorization/firestoreRepository.ts:229:10)
+    at <anonymous> (/app/applet/server/tests/tenantAuth.test.ts:1344:41)
+    at runTest (/app/applet/server/tests/tenantAuth.test.ts:56:11)
+    at runAllTenantAuthTests (/app/applet/server/tests/tenantAuth.test.ts:1340:9)
+[FirestoreMembershipRepository] Error fetching memberships for user 'fs_user_1': Error: Simulated Firestore query error
+    at Object.get (/app/applet/server/tests/tenantAuth.test.ts:182:23)
+    at FirestoreMembershipRepository.getByUser (/app/applet/server/authorization/firestoreRepository.ts:290:10)
+    at <anonymous> (/app/applet/server/tests/tenantAuth.test.ts:1347:47)
+    at async runTest (/app/applet/server/tests/tenantAuth.test.ts:56:5)
+    at async runAllTenantAuthTests (/app/applet/server/tests/tenantAuth.test.ts:1340:3)
+✅ [PASS] TEST 60: FirestoreMembershipRepository — Error en Firestore devuelve undefined (Fail-Closed)
+>>> RUNNING: TEST 61: End-to-End Context Resolution con FirestoreAuthorizationRepository
+✅ [PASS] TEST 61: End-to-End Context Resolution con FirestoreAuthorizationRepository
+>>> RUNNING: TEST 62: End-to-End Context Resolution con Firestore — Usuario en Org B denegado (403)
+❌ [FAIL] TEST 62: End-to-End Context Resolution con Firestore — Usuario en Org B denegado (403): Assertion Failed: Acceso a organización ajena denegado (403)
+>>> RUNNING: TEST 63: End-to-End Context Resolution con Firestore — Membresía inactiva denegada (403)
+❌ [FAIL] TEST 63: End-to-End Context Resolution con Firestore — Membresía inactiva denegada (403): Assertion Failed: Membresía inactiva en Firestore devuelve null (403)
+>>> RUNNING: TEST 64: End-to-End Context Resolution con Firestore — Organización inexistente denegada (403)
+❌ [FAIL] TEST 64: End-to-End Context Resolution con Firestore — Organización inexistente denegada (403): Assertion Failed: Organización inexistente devuelve null (403)
+>>> RUNNING: TEST 65: End-to-End Context Resolution con Firestore — Falla de red Firestore → Fail-Closed (null)
+[FirestoreMembershipRepository] Error fetching membership for org 'fs_e2e_org' and user 'fs_e2e_user': Error: Simulated Firestore query error
+    at Object.get (/app/applet/server/tests/tenantAuth.test.ts:182:23)
+    at FirestoreMembershipRepository.getByOrgAndUser (/app/applet/server/authorization/firestoreRepository.ts:229:10)
+    at getMembership (/app/applet/server/authorization/store.ts:82:50)
+    at resolveAuthorizationContext (/app/applet/server/authorization/context.ts:26:30)
+    at <anonymous> (/app/applet/server/tests/tenantAuth.test.ts:1424:27)
+    at runTest (/app/applet/server/tests/tenantAuth.test.ts:56:11)
+    at runAllTenantAuthTests (/app/applet/server/tests/tenantAuth.test.ts:1418:9)
+[FirestoreMembershipRepository] Error fetching memberships for user 'fs_e2e_user': Error: Simulated Firestore query error
+    at Object.get (/app/applet/server/tests/tenantAuth.test.ts:182:23)
+    at FirestoreMembershipRepository.getByUser (/app/applet/server/authorization/firestoreRepository.ts:290:10)
+    at getMembershipsByUser (/app/applet/server/authorization/store.ts:90:50)
+    at resolveAuthorizationContext (/app/applet/server/authorization/context.ts:44:34)
+    at async <anonymous> (/app/applet/server/tests/tenantAuth.test.ts:1424:21)
+    at async runTest (/app/applet/server/tests/tenantAuth.test.ts:56:5)
+    at async runAllTenantAuthTests (/app/applet/server/tests/tenantAuth.test.ts:1418:3)
+[FirestoreOrganizationRepository] Error fetching organization 'fs_e2e_org': Error: Simulated Firestore network failure
+    at Object.get (/app/applet/server/tests/tenantAuth.test.ts:145:23)
+    at FirestoreOrganizationRepository.getById (/app/applet/server/authorization/firestoreRepository.ts:137:37)
+    at getOrganization (/app/applet/server/authorization/store.ts:74:52)
+    at resolveAuthorizationContext (/app/applet/server/authorization/context.ts:66:19)
+    at async <anonymous> (/app/applet/server/tests/tenantAuth.test.ts:1424:21)
+    at async runTest (/app/applet/server/tests/tenantAuth.test.ts:56:5)
+    at async runAllTenantAuthTests (/app/applet/server/tests/tenantAuth.test.ts:1418:3)
+❌ [FAIL] TEST 65: End-to-End Context Resolution con Firestore — Falla de red Firestore → Fail-Closed (null): Simulated Firestore write failure
+>>> RUNNING: TEST 66: Restauración de In-Memory repository y validación final de aislamiento
+✅ [PASS] TEST 66: Restauración de In-Memory repository y validación final de aislamiento
+>>> RUNNING: TEST 67: Production startup selecciona FirestoreAuthorizationRepository
+✅ [PASS] TEST 67: Production startup selecciona FirestoreAuthorizationRepository
+>>> RUNNING: TEST 68: Production nunca utiliza InMemoryAuthorizationRepository
+✅ [PASS] TEST 68: Production nunca utiliza InMemoryAuthorizationRepository
+>>> RUNNING: TEST 69: Firestore unavailable → startup failure
+✅ [PASS] TEST 69: Firestore unavailable → startup failure
+>>> RUNNING: TEST 70: Firestore health check failure → startup failure
+[FirestoreAuthorizationRepository] Health check failed: TypeError: this.db.collection(...).limit is not a function
+    at FirestoreAuthorizationRepository.healthCheck (/app/applet/server/authorization/firestoreRepository.ts:367:49)
+    at <anonymous> (/app/applet/server/tests/tenantAuth.test.ts:1520:45)
+    at runTest (/app/applet/server/tests/tenantAuth.test.ts:56:11)
+    at runAllTenantAuthTests (/app/applet/server/tests/tenantAuth.test.ts:1514:9)
+✅ [PASS] TEST 70: Firestore health check failure → startup failure
+>>> RUNNING: TEST 71: Development puede utilizar InMemory
+✅ [PASS] TEST 71: Development puede utilizar InMemory
+>>> RUNNING: TEST 72: Test environment puede utilizar InMemory
+✅ [PASS] TEST 72: Test environment puede utilizar InMemory
+>>> RUNNING: TEST 73: Firestore repository sigue resolviendo Organization/Membership correctamente
+✅ [PASS] TEST 73: Firestore repository sigue resolviendo Organization/Membership correctamente
+>>> RUNNING: TEST 74: Cross-tenant access continúa denegado
+❌ [FAIL] TEST 74: Cross-tenant access continúa denegado: Assertion Failed: Cross tenant access is denied
+>>> RUNNING: TEST 75: Membership inactive continúa denegada
+❌ [FAIL] TEST 75: Membership inactive continúa denegada: Assertion Failed: Inactive membership returns null
+>>> RUNNING: TEST 76: Invalid role continúa denegado
+✅ [PASS] TEST 76: Invalid role continúa denegado
+>>> RUNNING: TEST 77: assignedCompanyIds continúa restringiendo acceso
+✅ [PASS] TEST 77: assignedCompanyIds continúa restringiendo acceso
+>>> RUNNING: TEST 78: AuthorizationContext continúa realizando únicamente las lecturas necesarias
+✅ [PASS] TEST 78: AuthorizationContext continúa realizando únicamente las lecturas necesarias
+>>> RUNNING: TEST 79: Organization con plan inválido → reject
+✅ [PASS] TEST 79: Organization con plan inválido → reject
+>>> RUNNING: TEST 80: Organization con planStatus inválido → reject
+✅ [PASS] TEST 80: Organization con planStatus inválido → reject
+>>> RUNNING: TEST 81: Membership active = "false" → reject
+✅ [PASS] TEST 81: Membership active = "false" → reject
+>>> RUNNING: TEST 82: Membership active = 1 → reject
+✅ [PASS] TEST 82: Membership active = 1 → reject
+>>> RUNNING: TEST 83: Membership active = null → reject
+✅ [PASS] TEST 83: Membership active = null → reject
+>>> RUNNING: TEST 84: assignedCompanyIds con elemento no-string → reject
+✅ [PASS] TEST 84: assignedCompanyIds con elemento no-string → reject
+>>> RUNNING: TEST 85: assignedCompanyIds con string vacío → reject
+✅ [PASS] TEST 85: assignedCompanyIds con string vacío → reject
+>>> RUNNING: TEST 86: assignedCompanyIds completamente válido → accept
+✅ [PASS] TEST 86: assignedCompanyIds completamente válido → accept
+>>> RUNNING: TEST 87: Membership role inválido → reject
+✅ [PASS] TEST 87: Membership role inválido → reject
+>>> RUNNING: TEST 88: Datos válidos existentes → continúan funcionando
+✅ [PASS] TEST 88: Datos válidos existentes → continúan funcionando
+>>> RUNNING: TEST 89: H-01 — Usuario autenticado intenta cambiar a 'pro' → 403 PLAN_CHANGE_NOT_ALLOWED
+✅ [PASS] TEST 89: H-01 — Usuario autenticado intenta cambiar a 'pro' → 403 PLAN_CHANGE_NOT_ALLOWED
+>>> RUNNING: TEST 90: H-01 — Usuario autenticado intenta cambiar a 'pro_plus' → 403 PLAN_CHANGE_NOT_ALLOWED
+✅ [PASS] TEST 90: H-01 — Usuario autenticado intenta cambiar a 'pro_plus' → 403 PLAN_CHANGE_NOT_ALLOWED
+>>> RUNNING: TEST 91: H-01 — Inyección de campos sensibles con 'pro' → rechazado 403 sin modif. de perfil
+✅ [PASS] TEST 91: H-01 — Inyección de campos sensibles con 'pro' → rechazado 403 sin modif. de perfil
+>>> RUNNING: TEST 92: H-01 — Inyección de campos sensibles con 'free' → ignora campos sensibles
+[Subscription Engine] Plan actualizado para UID user_owner_a a: free (20 créditos/mes)
+✅ [PASS] TEST 92: H-01 — Inyección de campos sensibles con 'free' → ignora campos sensibles
+>>> RUNNING: TEST 93: H-01 — GET /api/user/profile retorna perfil del usuario autenticado
+✅ [PASS] TEST 93: H-01 — GET /api/user/profile retorna perfil del usuario autenticado
+>>> RUNNING: TEST 94: H-01 — GET /api/user/transactions retorna historial de transacciones
+✅ [PASS] TEST 94: H-01 — GET /api/user/transactions retorna historial de transacciones
+>>> RUNNING: TEST 95: H-01 — creditGatekeeper permite acceso si hay créditos y deniega 401 si no hay auth
+✅ [PASS] TEST 95: H-01 — creditGatekeeper permite acceso si hay créditos y deniega 401 si no hay auth
+>>> RUNNING: TEST 96: H-02 — Request con UID como Bearer (Authorization: Bearer user_owner_a) → 401
+✅ [PASS] TEST 96: H-02 — Request con UID como Bearer (Authorization: Bearer user_owner_a) → 401
+>>> RUNNING: TEST 97: H-02 — Request con Firebase ID Token válido → 200 OK
+✅ [PASS] TEST 97: H-02 — Request con Firebase ID Token válido → 200 OK
+>>> RUNNING: TEST 98: H-02 — Request con token inválido → 401
+✅ [PASS] TEST 98: H-02 — Request con token inválido → 401
+>>> RUNNING: TEST 99: H-02 — Request con token expirado → 401
+✅ [PASS] TEST 99: H-02 — Request con token expirado → 401
+>>> RUNNING: TEST 100: H-02 — Header x-user-id sin Authorization JWT → 401
+✅ [PASS] TEST 100: H-02 — Header x-user-id sin Authorization JWT → 401
+>>> RUNNING: TEST 101: H-02 — Header x-forwarded-for sin Authorization JWT → 401
+✅ [PASS] TEST 101: H-02 — Header x-forwarded-for sin Authorization JWT → 401
+>>> RUNNING: TEST 102: H-02 — Headers alternativos (x-custom-auth, etc.) sin JWT → 401
+✅ [PASS] TEST 102: H-02 — Headers alternativos (x-custom-auth, etc.) sin JWT → 401
+>>> RUNNING: TEST 103: FASE 5 — GET /api/health/liveness responde 200 OK sin requerir Firestore
+✅ [PASS] TEST 103: FASE 5 — GET /api/health/liveness responde 200 OK sin requerir Firestore
+>>> RUNNING: TEST 104: FASE 5 — GET /api/health/readiness responde 200 OK con repositorio saludable
+✅ [PASS] TEST 104: FASE 5 — GET /api/health/readiness responde 200 OK con repositorio saludable
+>>> RUNNING: TEST 105: FASE 5 — GET /api/health/readiness responde 503 cuando healthCheck de Firestore falla
+✅ [PASS] TEST 105: FASE 5 — GET /api/health/readiness responde 503 cuando healthCheck de Firestore falla
+>>> RUNNING: TEST 106: FASE 5 — Producción rechaza MockAuthVerifier (Fail-Closed)
+✅ [PASS] TEST 106: FASE 5 — Producción rechaza MockAuthVerifier (Fail-Closed)
+>>> RUNNING: TEST 107: FASE 5 — Producción rechaza InMemoryAuthorizationRepository en startup
+✅ [PASS] TEST 107: FASE 5 — Producción rechaza InMemoryAuthorizationRepository en startup
+>>> RUNNING: TEST 108: FASE 5 — Producción rechaza AUTH_DEV_MODE=true (Fail-Closed)
+✅ [PASS] TEST 108: FASE 5 — Producción rechaza AUTH_DEV_MODE=true (Fail-Closed)
+>>> RUNNING: TEST 109: FASE 5 — Helmet activa CSP estricta y Security Headers en producción
+✅ [PASS] TEST 109: FASE 5 — Helmet activa CSP estricta y Security Headers en producción
+>>> RUNNING: TEST 110: FASE 5 — Helmet mantiene compatibilidad con Vite en desarrollo
+✅ [PASS] TEST 110: FASE 5 — Helmet mantiene compatibilidad con Vite en desarrollo
+>>> RUNNING: TEST 111: FASE 5 — Opciones seguras de lectura XLSX aplicadas correctamente
+✅ [PASS] TEST 111: FASE 5 — Opciones seguras de lectura XLSX aplicadas correctamente
+>>> RUNNING: TEST 112: FASE 5 — Logger estructurado sanitiza y redacta datos sensibles
+✅ [PASS] TEST 112: FASE 5 — Logger estructurado sanitiza y redacta datos sensibles
+>>> RUNNING: TEST 113: POST /api/v2/documents/upload asigna orgId servidor sin confiar en cliente
+[Firebase Admin] FIREBASE_CONFIG_SOURCE=render_env
+[Firebase Admin] FIREBASE_CREDENTIALS_VALIDATED=true
+Firestore Error Handled:  {"error":"Missing or insufficient permissions.","authInfo":{},"operationType":"list","path":"documents"}
+Firestore Error Handled:  {"error":"Missing or insufficient permissions.","authInfo":{},"operationType":"list","path":"favorites"}
+Firestore Error Handled:  {"error":"Missing or insufficient permissions.","authInfo":{},"operationType":"list","path":"checklists"}
+Firestore Error Handled:  {"error":"Missing or insufficient permissions.","authInfo":{},"operationType":"list","path":"chatSessions"}
+Firestore Error Handled:  {"error":"Missing or insufficient permissions.","authInfo":{},"operationType":"list","path":"summaries"}
+✅ [PASS] TEST 113: POST /api/v2/documents/upload asigna orgId servidor sin confiar en cliente
+>>> RUNNING: TEST 114: GET /api/v2/documents lista exclusivamente documentos de org_alpha
+✅ [PASS] TEST 114: GET /api/v2/documents lista exclusivamente documentos de org_alpha
+>>> RUNNING: TEST 115: GET /api/v2/documents/:documentId deniega acceso cross-tenant (404)
+✅ [PASS] TEST 115: GET /api/v2/documents/:documentId deniega acceso cross-tenant (404)
+>>> RUNNING: TEST 116: DELETE /api/v2/documents/:documentId verifica contexto y elimina documento
+✅ [PASS] TEST 116: DELETE /api/v2/documents/:documentId verifica contexto y elimina documento
+>>> RUNNING: TEST 117: Rol auditor puede leer documentos pero no crear ni eliminar (403)
+✅ [PASS] TEST 117: Rol auditor puede leer documentos pero no crear ni eliminar (403)
+>>> RUNNING: TEST 118: Upload exitoso crea metadata + Storage object
+✅ [PASS] TEST 118: Upload exitoso crea metadata + Storage object
+>>> RUNNING: TEST 119: orgId enviado por cliente diferente al tenant autenticado es ignorado/rechazado
+✅ [PASS] TEST 119: orgId enviado por cliente diferente al tenant autenticado es ignorado/rechazado
+>>> RUNNING: TEST 120: Cross-tenant document read devuelve 404/403 según contrato existente
+✅ [PASS] TEST 120: Cross-tenant document read devuelve 404/403 según contrato existente
+>>> RUNNING: TEST 121: Cross-tenant delete bloqueado
+✅ [PASS] TEST 121: Cross-tenant delete bloqueado
+>>> RUNNING: TEST 122: Storage failure en production devuelve error controlado, nunca memory fallback
+[DocumentService] Error en Storage en producción: Simulated Storage Save Failure
+✅ [PASS] TEST 122: Storage failure en production devuelve error controlado, nunca memory fallback
+>>> RUNNING: TEST 123: Firestore failure en production devuelve error controlado, nunca memory fallback
+[DocumentService] Error en Firestore en producción: Simulated Firestore Critical DB Failure
+✅ [PASS] TEST 123: Firestore failure en production devuelve error controlado, nunca memory fallback
+>>> RUNNING: TEST 124: Filename con path traversal rechazado/sanitizado
+✅ [PASS] TEST 124: Filename con path traversal rechazado/sanitizado
+>>> RUNNING: TEST 125: Archivo sobre tamaño máximo rechazado (400)
+✅ [PASS] TEST 125: Archivo sobre tamaño máximo rechazado (400)
+>>> RUNNING: TEST 126: MIME/extensión no permitida rechazada (400)
+✅ [PASS] TEST 126: MIME/extensión no permitida rechazada (400)
+>>> RUNNING: TEST 127: Base64 inválido rechazado (400)
+✅ [PASS] TEST 127: Base64 inválido rechazado (400)
+>>> RUNNING: TEST 128: Payload con chunks gigantes rechazado (400)
+✅ [PASS] TEST 128: Payload con chunks gigantes rechazado (400)
+>>> RUNNING: TEST 129: Payload intenta inyectar orgId dentro de chunks y no consigue cambiar tenant
+✅ [PASS] TEST 129: Payload intenta inyectar orgId dentro de chunks y no consigue cambiar tenant
+>>> RUNNING: TEST 130: DELETE elimina metadata + chunks + Storage object
+GET return body: {
+  document: {
+    id: 'doc_1787500780389_f1l60',
+    orgId: 'org_alpha',
+    scope: 'company',
+    companyId: undefined,
+    establishmentId: undefined,
+    employeeId: undefined,
+    companyName: undefined,
+    establishmentName: undefined,
+    employeeName: undefined,
+    employeeCuil: undefined,
+    title: 'doc full delete',
+    category: 'Informes',
+    subCategory: undefined,
+    documentNumber: undefined,
+    issueDate: '2026-08-23',
+    expirationDate: undefined,
+    responsibleName: 'Owner Alpha',
+    responsibleUid: 'user_owner_a',
+    issuingOrganism: 'Organismo / ART',
+    status: 'vigente',
+    filename: 'doc_full_delete.pdf',
+    fileSize: 25,
+    mimeType: 'application/pdf',
+    fileType: 'pdf',
+    storagePath: 'organizations/org_alpha/documents/doc_1787500780389_f1l60/doc_full_delete.pdf',
+    hash: 'd5af68b2c57b5ed039f66a854a82b343b1650e97d62f78c37c1ba67753af43c1',
+    summary: 'doc full delete - Informes',
+    tags: [],
+    notes: '',
+    version: 1,
+    versionHistory: [ [Object] ],
+    isDeleted: true,
+    createdAt: '2026-08-23T15:59:40.389Z',
+    updatedAt: '2026-08-23T15:59:40.389Z',
+    uploadedByUid: 'user_owner_a',
+    uploadedByName: 'Owner Alpha',
+    daysUntilExpiration: null,
+    expirationAlertLevel: 'no_expiry',
+    deletedAt: '2026-08-23T15:59:40.389Z',
+    deletedByUid: 'user_owner_a',
+    deletedByName: 'Owner Alpha'
+  },
+  chunks: []
+}
+✅ [PASS] TEST 130: DELETE elimina metadata + chunks + Storage object
+>>> RUNNING: TEST 131: Cliente intenta enviar storagePath arbitrario y es ignorado
+✅ [PASS] TEST 131: Cliente intenta enviar storagePath arbitrario y es ignorado
+>>> RUNNING: TEST 132: Base64 no reversible o con formato corrupto es rechazado
+✅ [PASS] TEST 132: Base64 no reversible o con formato corrupto es rechazado
+>>> RUNNING: TEST 133: Archivo PDF con firma de bytes mágicos inválida es rechazado
+✅ [PASS] TEST 133: Archivo PDF con firma de bytes mágicos inválida es rechazado
+>>> RUNNING: TEST 134: Archivo DOCX con firma de bytes mágicos inválida es rechazado
+✅ [PASS] TEST 134: Archivo DOCX con firma de bytes mágicos inválida es rechazado
+>>> RUNNING: TEST 135: Archivo XLSX con firma de bytes mágicos inválida es rechazado
+✅ [PASS] TEST 135: Archivo XLSX con firma de bytes mágicos inválida es rechazado
+>>> RUNNING: TEST 136: Documento con categoría no permitida/fuera de enum es rechazado
+✅ [PASS] TEST 136: Documento con categoría no permitida/fuera de enum es rechazado
+>>> RUNNING: TEST 137: Documento con categoría permitida es aceptado correctamente
+✅ [PASS] TEST 137: Documento con categoría permitida es aceptado correctamente
+>>> RUNNING: TEST 138: Documento con pageCount no entero o menor/igual a cero es rechazado
+✅ [PASS] TEST 138: Documento con pageCount no entero o menor/igual a cero es rechazado
+>>> RUNNING: TEST 139: Falla al escribir metadata en Firestore realiza compensación (borrado en Storage)
+[DocumentService] Error en Firestore en producción: Simulated Firestore failure
+✅ [PASS] TEST 139: Falla al escribir metadata en Firestore realiza compensación (borrado en Storage)
+>>> RUNNING: TEST 140: Falla en chunks batch commit realiza compensación completa (borra Storage + borra metadata)
+[DocumentService] Error en Firestore en producción: Simulated Firestore Batch Commit Failure
+✅ [PASS] TEST 140: Falla en chunks batch commit realiza compensación completa (borra Storage + borra metadata)
+>>> RUNNING: TEST 141: Base64 que excede el tamaño máximo antes de decodificar es rechazado
+✅ [PASS] TEST 141: Base64 que excede el tamaño máximo antes de decodificar es rechazado
+>>> RUNNING: TEST 142: MIME type y extensión incongruentes son rechazados
+✅ [PASS] TEST 142: MIME type y extensión incongruentes son rechazados
+>>> RUNNING: TEST 143: File upload con pageCount de tipo decimal es rechazado
+✅ [PASS] TEST 143: File upload con pageCount de tipo decimal es rechazado
+>>> RUNNING: TEST 144: File upload con pageCount de tipo string es rechazado
+✅ [PASS] TEST 144: File upload con pageCount de tipo string es rechazado
+>>> RUNNING: TEST FINAL A: NODE_ENV=production + MockAuthVerifier → FAIL CLOSED
+✅ [PASS] TEST FINAL A: NODE_ENV=production + MockAuthVerifier → FAIL CLOSED
+>>> RUNNING: TEST FINAL B: NODE_ENV=production + cualquier variable de bypass → FAIL CLOSED
+✅ [PASS] TEST FINAL B: NODE_ENV=production + cualquier variable de bypass → FAIL CLOSED
+>>> RUNNING: TEST FINAL B.2: NODE_ENV=production + otra variable de bypass (MOCK) → FAIL CLOSED
+✅ [PASS] TEST FINAL B.2: NODE_ENV=production + otra variable de bypass (MOCK) → FAIL CLOSED
+>>> RUNNING: TEST FINAL C: NODE_ENV=production + FirebaseAdminAuthVerifier → PASS
+✅ [PASS] TEST FINAL C: NODE_ENV=production + FirebaseAdminAuthVerifier → PASS
+>>> RUNNING: TEST FINAL D: NODE_ENV=test + MockAuthVerifier → PASS
+✅ [PASS] TEST FINAL D: NODE_ENV=test + MockAuthVerifier → PASS
+>>> RUNNING: TEST FINAL E: No existe ninguna referencia a BYPASS_PROD_VERIFIER_FOR_TESTING en el repositorio
+❌ [FAIL] TEST FINAL E: No existe ninguna referencia a BYPASS_PROD_VERIFIER_FOR_TESTING en el repositorio: Assertion Failed: Se encontró una referencia prohibida a BYPASS_PROD_VERIFIER_FOR_TESTING en el archivo: /app/applet/full_test_output.txt
+>>> RUNNING: TEST G3-A: mapToGeminiPublicError con SECRET_API_KEY no propaga clave ni mensaje original
+✅ [PASS] TEST G3-A: mapToGeminiPublicError con SECRET_API_KEY no propaga clave ni mensaje original
+>>> RUNNING: TEST G3-B: mapToGeminiPublicError con stack trace no propaga rastro de pila
+✅ [PASS] TEST G3-B: mapToGeminiPublicError con stack trace no propaga rastro de pila
+>>> RUNNING: TEST G3-C: mapToGeminiPublicError con Bearer token no propaga información de autorización
+✅ [PASS] TEST G3-C: mapToGeminiPublicError con Bearer token no propaga información de autorización
+>>> RUNNING: TEST G3-D: mapToGeminiPublicError con URL interna no propaga la dirección de infraestructura
+✅ [PASS] TEST G3-D: mapToGeminiPublicError con URL interna no propaga la dirección de infraestructura
+>>> RUNNING: TEST G3-E: mapToGeminiPublicError con 429 / RESOURCE_EXHAUSTED retorna respuesta controlada
+✅ [PASS] TEST G3-E: mapToGeminiPublicError con 429 / RESOURCE_EXHAUSTED retorna respuesta controlada
+>>> RUNNING: TEST G3-F: mapToGeminiPublicError con 503 / UNAVAILABLE retorna respuesta controlada
+✅ [PASS] TEST G3-F: mapToGeminiPublicError con 503 / UNAVAILABLE retorna respuesta controlada
+>>> RUNNING: TEST G3-G: mapToGeminiPublicError con 400 / INVALID_ARGUMENT retorna respuesta controlada
+✅ [PASS] TEST G3-G: mapToGeminiPublicError con 400 / INVALID_ARGUMENT retorna respuesta controlada
+>>> RUNNING: TEST G3-H: mapToGeminiPublicError con error desconocido retorna respuesta controlada 500
+✅ [PASS] TEST G3-H: mapToGeminiPublicError con error desconocido retorna respuesta controlada 500
+>>> RUNNING: TEST G3-I: Error con mensaje sensible pero status indeterminado mapea a 500 genérico
+✅ [PASS] TEST G3-I: Error con mensaje sensible pero status indeterminado mapea a 500 genérico
+>>> RUNNING: TEST G3-J: TEST DE NO PROPAGACIÓN — HTTP route handler no propaga secretos ni stack traces
+[FinOps Token Count Warning] {"error":{"code":400,"message":"API key not valid. Please pass a valid API key.","status":"INVALID_ARGUMENT","details":[{"@type":"type.googleapis.com/google.rpc.ErrorInfo","reason":"API_KEY_INVALID","domain":"googleapis.com","metadata":{"service":"generativelanguage.googleapis.com"}},{"@type":"type.googleapis.com/google.rpc.LocalizedMessage","locale":"en-US","message":"API key not valid. Please pass a valid API key."}]}}
+[Gemini Retry] Intento 1/3 falló con modelo gemini-3.7-flash. Causa: INTERNAL_SECRET_123 stack / Authorization [REDACTED_TOKEN]
+[Gemini API Failure] {
+  message: 'INTERNAL_SECRET_123 stack / Authorization [REDACTED_TOKEN]',
+  status: 500,
+  model: 'gemini-3.7-flash',
+  attempt: 1
+}
+[Error /api/chat-rag] { code: 'AI_SERVICE_ERROR', status: 500 }
+✅ [PASS] TEST G3-J: TEST DE NO PROPAGACIÓN — HTTP route handler no propaga secretos ni stack traces
+>>> RUNNING: TEST G3-K (TEST 1): Error con SECRET_API_KEY no se propaga a HTTP ni a logs
+✅ [PASS] TEST G3-K (TEST 1): Error con SECRET_API_KEY no se propaga a HTTP ni a logs
+>>> RUNNING: TEST G3-L (TEST 2): Error con Authorization: Bearer SECRET_TOKEN no se propaga a HTTP ni a logs
+✅ [PASS] TEST G3-L (TEST 2): Error con Authorization: Bearer SECRET_TOKEN no se propaga a HTTP ni a logs
+>>> RUNNING: TEST G3-M (TEST 3): Error con AIzaSySECRET123 no se propaga a HTTP ni a logs
+✅ [PASS] TEST G3-M (TEST 3): Error con AIzaSySECRET123 no se propaga a HTTP ni a logs
+>>> RUNNING: TEST G3-N (TEST 4): Error con stack trace y ruta interna no se propaga a HTTP ni a logs
+✅ [PASS] TEST G3-N (TEST 4): Error con stack trace y ruta interna no se propaga a HTTP ni a logs
+>>> RUNNING: TEST G3-O (TEST 5): Error desconocido devuelve 500 y mensaje amigable
+✅ [PASS] TEST G3-O (TEST 5): Error desconocido devuelve 500 y mensaje amigable
+>>> RUNNING: TEST G3-P (TEST 6): Error 429 devuelve 429 y mensaje amigable
+✅ [PASS] TEST G3-P (TEST 6): Error 429 devuelve 429 y mensaje amigable
+>>> RUNNING: TEST G3-Q (TEST 7): Error 503 devuelve 503 y mensaje amigable
+✅ [PASS] TEST G3-Q (TEST 7): Error 503 devuelve 503 y mensaje amigable
+>>> RUNNING: TEST G3-FINOPS-01: CHAT_RAG pasa si los tokens están dentro del presupuesto (20k)
+[FinOps Token Observability] {
+  operationType: 'CHAT_RAG',
+  promptTokenCount: 1000,
+  candidatesTokenCount: 100,
+  thoughtsTokenCount: 0,
+  cachedContentTokenCount: 0
+}
+✅ [PASS] TEST G3-FINOPS-01: CHAT_RAG pasa si los tokens están dentro del presupuesto (20k)
+>>> RUNNING: TEST G3-FINOPS-02: CHAT_RAG falla si excede presupuesto de entrada (20k) y NO consume créditos
+✅ [PASS] TEST G3-FINOPS-02: CHAT_RAG falla si excede presupuesto de entrada (20k) y NO consume créditos
+>>> RUNNING: TEST G3-FINOPS-03: DOCUMENT_COMPARISON falla si excede presupuesto de entrada (30k)
+✅ [PASS] TEST G3-FINOPS-03: DOCUMENT_COMPARISON falla si excede presupuesto de entrada (30k)
+>>> RUNNING: TEST G3-FINOPS-04: OCR falla si excede presupuesto de entrada (15k)
+✅ [PASS] TEST G3-FINOPS-04: OCR falla si excede presupuesto de entrada (15k)
+>>> RUNNING: TEST G3-FINOPS-05: IMAGE_ANALYSIS falla si excede presupuesto de entrada (15k)
+✅ [PASS] TEST G3-FINOPS-05: IMAGE_ANALYSIS falla si excede presupuesto de entrada (15k)
+>>> RUNNING: TEST G3-FINOPS-06: DOCUMENT_COMPARISON verifica inyección de maxOutputTokens=3000
+[FinOps Token Observability] {
+  operationType: 'DOCUMENT_COMPARISON',
+  promptTokenCount: 2000,
+  candidatesTokenCount: 150,
+  thoughtsTokenCount: 0,
+  cachedContentTokenCount: 0
+}
+✅ [PASS] TEST G3-FINOPS-06: DOCUMENT_COMPARISON verifica inyección de maxOutputTokens=3000
+>>> RUNNING: AUDIT 1: A -> A = permitido para Empresa, Establecimiento y Empleado
+✅ [PASS] AUDIT 1: A -> A = permitido para Empresa, Establecimiento y Empleado
+>>> RUNNING: AUDIT 2: A -> B = DENEGADO (Organización cruzada)
+✅ [PASS] AUDIT 2: A -> B = DENEGADO (Organización cruzada)
+>>> RUNNING: AUDIT 3: B -> A = DENEGADO (Organización cruzada)
+✅ [PASS] AUDIT 3: B -> A = DENEGADO (Organización cruzada)
+>>> RUNNING: AUDIT 4: assignedCompanyIds=[] -> DENEGADO completo (Fail-Closed)
+✅ [PASS] AUDIT 4: assignedCompanyIds=[] -> DENEGADO completo (Fail-Closed)
+>>> RUNNING: AUDIT 5: assignedCompanyIds=[A] -> A permitido, B denegado
+✅ [PASS] AUDIT 5: assignedCompanyIds=[A] -> A permitido, B denegado
+>>> RUNNING: AUDIT 6: Payload orgId diferente a JWT en POST -> ignorado/rechazado
+✅ [PASS] AUDIT 6: Payload orgId diferente a JWT en POST -> ignorado/rechazado
+>>> RUNNING: AUDIT 7: PATCH intentando modificar orgId o companyId -> inmutables e ignorados
+✅ [PASS] AUDIT 7: PATCH intentando modificar orgId o companyId -> inmutables e ignorados
+>>> RUNNING: FASE 1: Sector CRUD y validación multi-tenant
+✅ [PASS] FASE 1: Sector CRUD y validación multi-tenant
+>>> RUNNING: FASE 1: Position CRUD y validación de jerarquía y multi-tenant
+✅ [PASS] FASE 1: Position CRUD y validación de jerarquía y multi-tenant
+>>> RUNNING: FASE 1: API REST /api/v2/sectors - Creación, Jerarquía y Bloqueo Cross-Tenant
+{"timestamp":"2026-08-23T15:59:47.304Z","level":"info","event":"sector_created","orgId":"org_alpha","userId":"user_member_a","sectorId":"sec_1787500787304_eqiw3c","companyId":"comp_fase1_a","establishmentId":"est_fase1_a"}
+✅ [PASS] FASE 1: API REST /api/v2/sectors - Creación, Jerarquía y Bloqueo Cross-Tenant
+>>> RUNNING: FASE 1: API REST /api/v2/positions - Jerarquía Empresa-Establecimiento-Sector
+{"timestamp":"2026-08-23T15:59:47.306Z","level":"info","event":"position_created","orgId":"org_alpha","userId":"user_member_a","positionId":"pos_1787500787306_wgng58","companyId":"comp_fase1_a","establishmentId":"est_fase1_a","sectorId":"sec_fase1_pos_test"}
+✅ [PASS] FASE 1: API REST /api/v2/positions - Jerarquía Empresa-Establecimiento-Sector
+>>> RUNNING: FASE 1: assignedCompanyIds Restricción Granular en Sectores y Puestos
+✅ [PASS] FASE 1: assignedCompanyIds Restricción Granular en Sectores y Puestos
+>>> RUNNING: FASE 1.1 - TEST 1: Operación de inspección sin organización seleccionada es rechazada
+✅ [PASS] FASE 1.1 - TEST 1: Operación de inspección sin organización seleccionada es rechazada
+>>> RUNNING: FASE 1.1 - TEST 2: saveInspectionReport asigna organizationId del tenant activo
+✅ [PASS] FASE 1.1 - TEST 2: saveInspectionReport asigna organizationId del tenant activo
+>>> RUNNING: FASE 1.1 - TEST 3: createInspection asigna organizationId de la organización activa
+✅ [PASS] FASE 1.1 - TEST 3: createInspection asigna organizationId de la organización activa
+>>> RUNNING: FASE 1.1 - TEST 4: Inspección guarda createdBy autoritativo
+✅ [PASS] FASE 1.1 - TEST 4: Inspección guarda createdBy autoritativo
+>>> RUNNING: FASE 1.1 - TEST 5: createdBy permanece inmutable tras actualizaciones
+✅ [PASS] FASE 1.1 - TEST 5: createdBy permanece inmutable tras actualizaciones
+>>> RUNNING: FASE 1.1 - TEST 6: organizationId permanece inmutable en actualización
+✅ [PASS] FASE 1.1 - TEST 6: organizationId permanece inmutable en actualización
+>>> RUNNING: FASE 1.1 - TEST 7: getInspections de Org A retorna únicamente las inspecciones de Org A
+✅ [PASS] FASE 1.1 - TEST 7: getInspections de Org A retorna únicamente las inspecciones de Org A
+>>> RUNNING: FASE 1.1 - TEST 8: getInspections de Org B no ve las inspecciones de Org A (Aislamiento Total)
+✅ [PASS] FASE 1.1 - TEST 8: getInspections de Org B no ve las inspecciones de Org A (Aislamiento Total)
+>>> RUNNING: FASE 1.1 - TEST 9: Intento de eliminar inspección de Org A usando contexto de Org B no afecta Org A (Anti-IDOR)
+✅ [PASS] FASE 1.1 - TEST 9: Intento de eliminar inspección de Org A usando contexto de Org B no afecta Org A (Anti-IDOR)
+>>> RUNNING: FASE 1.1 - TEST 10: Intento de actualizar finding de inspección de Org A desde Org B falla (Anti-IDOR)
+✅ [PASS] FASE 1.1 - TEST 10: Intento de actualizar finding de inspección de Org A desde Org B falla (Anti-IDOR)
+>>> RUNNING: FASE 1.1 - TEST 11: updateFindingStatus actualiza hallazgo, fecha y notas de cierre correctamente
+✅ [PASS] FASE 1.1 - TEST 11: updateFindingStatus actualiza hallazgo, fecha y notas de cierre correctamente
+>>> RUNNING: FASE 1.1 - TEST 12: updateFindingStatus marca la inspección como 'Cerrada' cuando todos los hallazgos están corregidos
+✅ [PASS] FASE 1.1 - TEST 12: updateFindingStatus marca la inspección como 'Cerrada' cuando todos los hallazgos están corregidos
+>>> RUNNING: FASE 1.1 - TEST 13: CREATE_INSPECTION emite log de auditoría sanitizado sin datos de imágenes Base64 gigantes
+✅ [PASS] FASE 1.1 - TEST 13: CREATE_INSPECTION emite log de auditoría sanitizado sin datos de imágenes Base64 gigantes
+>>> RUNNING: FASE 1.1 - TEST 14: UPDATE_FINDING emite evento de auditoría
+✅ [PASS] FASE 1.1 - TEST 14: UPDATE_FINDING emite evento de auditoría
+>>> RUNNING: FASE 1.1 - TEST 15: DELETE_INSPECTION emite evento de auditoría y elimina el recurso
+✅ [PASS] FASE 1.1 - TEST 15: DELETE_INSPECTION emite evento de auditoría y elimina el recurso
+>>> RUNNING: FASE 1.1 - TEST 16: Verificación de Reglas Firestore multi-tenant para Inspecciones
+✅ [PASS] FASE 1.1 - TEST 16: Verificación de Reglas Firestore multi-tenant para Inspecciones
+>>> RUNNING: FASE 8 - TEST 1: Gemini devuelve JSON válido -> HTTP 200 + JSON válido
+Firebase signInAnonymously call fallback active (test environment): Error: Skipping real auth in test
+    at <anonymous> (/app/applet/src/services/firebase.ts:25:19)
+    at <anonymous> (/app/applet/node_modules/@firebase/auth/src/core/auth/auth_impl.ts:755:7)
+[callAiApi Diagnostic] {
+  endpoint: '/api/inspector-ai-analyze',
+  status: 200,
+  contentType: 'application/json; charset=utf-8',
+  bodyLength: 525,
+  preview: '{"title":"Informe de Inspección Sanitaria","executiveSummary":"Resumen de prueba","appliedNorms":["Ley 19587"],"generalRecommendations":["Instalar protecciones"],"findings":[{"hazardCategory":"Eléctrico","hazardTitle":"Cable expuesto","riskLevel":"Alto","description":"Desc","suggestedAction":"Acción'
+}
+✅ [PASS] FASE 8 - TEST 1: Gemini devuelve JSON válido -> HTTP 200 + JSON válido
+>>> RUNNING: FASE 8 - TEST 2: Gemini devuelve texto no JSON -> HTTP != 200 + JSON de error controlado
+Firebase signInAnonymously call fallback active (test environment): Error: Skipping real auth in test
+    at <anonymous> (/app/applet/src/services/firebase.ts:25:19)
+    at <anonymous> (/app/applet/node_modules/@firebase/auth/src/core/auth/auth_impl.ts:755:7)
+[callAiApi Diagnostic] {
+  endpoint: '/api/inspector-ai-analyze',
+  status: 500,
+  contentType: 'application/json; charset=utf-8',
+  bodyLength: 115,
+  preview: '{"error":"INVALID_AI_RESPONSE","message":"La IA devolvió una respuesta que no pudo ser procesada en formato JSON."}'
+}
+✅ [PASS] FASE 8 - TEST 2: Gemini devuelve texto no JSON -> HTTP != 200 + JSON de error controlado
+>>> RUNNING: FASE 8 - TEST 3: Backend responde HTTP 200 con Content-Type incorrecto pero body JSON válido
+Firebase signInAnonymously call fallback active (test environment): Error: Skipping real auth in test
+    at <anonymous> (/app/applet/src/services/firebase.ts:25:19)
+    at <anonymous> (/app/applet/node_modules/@firebase/auth/src/core/auth/auth_impl.ts:755:7)
+[callAiApi Diagnostic] {
+  endpoint: '/api/test-endpoint',
+  status: 200,
+  contentType: 'text/plain',
+  bodyLength: 49,
+  preview: '{"title":"Test Content Type Plain","findings":[]}'
+}
+✅ [PASS] FASE 8 - TEST 3: Backend responde HTTP 200 con Content-Type incorrecto pero body JSON válido
+>>> RUNNING: FASE 8 - TEST 4: Backend responde HTTP 200 con HTML -> error diagnóstico claro
+Firebase signInAnonymously call fallback active (test environment): Error: Skipping real auth in test
+    at <anonymous> (/app/applet/src/services/firebase.ts:25:19)
+    at <anonymous> (/app/applet/node_modules/@firebase/auth/src/core/auth/auth_impl.ts:755:7)
+[callAiApi Diagnostic] {
+  endpoint: '/api/test-endpoint',
+  status: 200,
+  contentType: 'text/html',
+  bodyLength: 53,
+  preview: '<html><body>Bad Gateway 502 Proxy Error</body></html>'
+}
+✅ [PASS] FASE 8 - TEST 4: Backend responde HTTP 200 con HTML -> error diagnóstico claro
+>>> RUNNING: FASE 8 - TEST 5: Backend responde HTTP 200 con body vacío -> error controlado
+Firebase signInAnonymously call fallback active (test environment): Error: Skipping real auth in test
+    at <anonymous> (/app/applet/src/services/firebase.ts:25:19)
+    at <anonymous> (/app/applet/node_modules/@firebase/auth/src/core/auth/auth_impl.ts:755:7)
+[callAiApi Diagnostic] {
+  endpoint: '/api/test-endpoint',
+  status: 200,
+  contentType: 'application/json',
+  bodyLength: 3,
+  preview: '   '
+}
+✅ [PASS] FASE 8 - TEST 5: Backend responde HTTP 200 con body vacío -> error controlado
+>>> RUNNING: FASE 8 - TEST 6: Backend responde HTTP 500 JSON -> cliente conserva el mensaje seguro del servidor
+Firebase signInAnonymously call fallback active (test environment): Error: Skipping real auth in test
+    at <anonymous> (/app/applet/src/services/firebase.ts:25:19)
+    at <anonymous> (/app/applet/node_modules/@firebase/auth/src/core/auth/auth_impl.ts:755:7)
+[callAiApi Diagnostic] {
+  endpoint: '/api/test-endpoint',
+  status: 500,
+  contentType: 'application/json',
+  bodyLength: 95,
+  preview: '{"error":"SERVICE_UNAVAILABLE","message":"El servicio de IA no está disponible temporalmente."}'
+}
+✅ [PASS] FASE 8 - TEST 6: Backend responde HTTP 500 JSON -> cliente conserva el mensaje seguro del servidor
+>>> RUNNING: FASE 8 - TEST 7: Respuesta JSON contiene findings completos
+✅ [PASS] FASE 8 - TEST 7: Respuesta JSON contiene findings completos
+>>> RUNNING: FASE 8 - TEST 8: Respuesta contiene normativeCitation conservado intacto
+✅ [PASS] FASE 8 - TEST 8: Respuesta contiene normativeCitation conservado intacto
+>>> RUNNING: PARCHE 3 - TEST 1: PORT definido se respeta correctamente
+✅ [PASS] PARCHE 3 - TEST 1: PORT definido se respeta correctamente
+>>> RUNNING: PARCHE 3 - TEST 2: PORT ausente utiliza fallback 3000
+✅ [PASS] PARCHE 3 - TEST 2: PORT ausente utiliza fallback 3000
+>>> RUNNING: PARCHE 3 - TEST 3: Liveness no depende de Firestore ni Authorization Repository
+✅ [PASS] PARCHE 3 - TEST 3: Liveness no depende de Firestore ni Authorization Repository
+>>> RUNNING: PARCHE 3 - TEST 4: Readiness devuelve 503 si el repository no está disponible
+✅ [PASS] PARCHE 3 - TEST 4: Readiness devuelve 503 si el repository no está disponible
+>>> RUNNING: PARCHE 3 - TEST 5: Producción nunca utiliza InMemoryAuthorizationRepository
+✅ [PASS] PARCHE 3 - TEST 5: Producción nunca utiliza InMemoryAuthorizationRepository
+>>> RUNNING: PARCHE 3 - TEST 6: Servidor configurado para escuchar en 0.0.0.0
+✅ [PASS] PARCHE 3 - TEST 6: Servidor configurado para escuchar en 0.0.0.0
+>>> RUNNING: PARCHE 4 - TEST 1: Firebase Admin con ADC disponible (sin GOOGLE_APPLICATION_CREDENTIALS)
+✅ [PASS] PARCHE 4 - TEST 1: Firebase Admin con ADC disponible (sin GOOGLE_APPLICATION_CREDENTIALS)
+>>> RUNNING: PARCHE 4 - TEST 2: Firebase Admin con GOOGLE_APPLICATION_CREDENTIALS configurada
+✅ [PASS] PARCHE 4 - TEST 2: Firebase Admin con GOOGLE_APPLICATION_CREDENTIALS configurada
+>>> RUNNING: PARCHE 4 - TEST 3: Producción sin FIREBASE_PROJECT_ID → fail closed
+✅ [PASS] PARCHE 4 - TEST 3: Producción sin FIREBASE_PROJECT_ID → fail closed
+>>> RUNNING: PARCHE 4 - TEST 4: No utilización de InMemoryAuthorizationRepository en producción
+✅ [PASS] PARCHE 4 - TEST 4: No utilización de InMemoryAuthorizationRepository en producción
+>>> RUNNING: PARCHE 4 - TEST 5: PORT dinámico y fallback a 3000
+✅ [PASS] PARCHE 4 - TEST 5: PORT dinámico y fallback a 3000
+>>> RUNNING: PARCHE 4 - TEST 6: Liveness independiente de Firestore
+✅ [PASS] PARCHE 4 - TEST 6: Liveness independiente de Firestore
+>>> RUNNING: PARCHE 4 - TEST 7: Readiness dependiente de Firestore (Authorization Repository)
+✅ [PASS] PARCHE 4 - TEST 7: Readiness dependiente de Firestore (Authorization Repository)
+>>> RUNNING: PARCHE 5 - TEST 1: Producción con las 3 variables de credenciales presentes
+✅ [PASS] PARCHE 5 - TEST 1: Producción con las 3 variables de credenciales presentes
+>>> RUNNING: PARCHE 5 - TEST 2: Private key con \n escapado se procesa correctamente
+✅ [PASS] PARCHE 5 - TEST 2: Private key con \n escapado se procesa correctamente
+>>> RUNNING: PARCHE 5 - TEST 3: Falta FIREBASE_CLIENT_EMAIL en producción falla de forma cerrada
+✅ [PASS] PARCHE 5 - TEST 3: Falta FIREBASE_CLIENT_EMAIL en producción falla de forma cerrada
+>>> RUNNING: PARCHE 5 - TEST 4: Falta FIREBASE_PRIVATE_KEY en producción falla de forma cerrada
+✅ [PASS] PARCHE 5 - TEST 4: Falta FIREBASE_PRIVATE_KEY en producción falla de forma cerrada
+>>> RUNNING: PARCHE 5 - TEST 5: parsePrivateKey procesa \n escapados correctamente
+✅ [PASS] PARCHE 5 - TEST 5: parsePrivateKey procesa \n escapados correctamente
+>>> RUNNING: PARCHE 5 - TEST 6: parsePrivateKey preserva saltos reales y remueve comillas
+✅ [PASS] PARCHE 5 - TEST 6: parsePrivateKey preserva saltos reales y remueve comillas
+>>> RUNNING: PARCHE 5 - TEST 7: parsePrivateKey rechaza clave sin BEGIN
+✅ [PASS] PARCHE 5 - TEST 7: parsePrivateKey rechaza clave sin BEGIN
+>>> RUNNING: PARCHE 5 - TEST 8: resolveAdminCredentials soporta JSON válido en GAC
+✅ [PASS] PARCHE 5 - TEST 8: resolveAdminCredentials soporta JSON válido en GAC
+>>> RUNNING: PARCHE 5 - TEST 9: resolveAdminCredentials lanza error con JSON inválido o incompleto
+✅ [PASS] PARCHE 5 - TEST 9: resolveAdminCredentials lanza error con JSON inválido o incompleto
+>>> RUNNING: PARCHE 5 - TEST 10: resolveAdminCredentials lanza error con archivo inexistente
+✅ [PASS] PARCHE 5 - TEST 10: resolveAdminCredentials lanza error con archivo inexistente
+
+=======================================================
+   RESULTADO DE PRUEBAS: 225/240 EXITOSAS
+   ⚠️ 15 PRUEBAS FALLIDAS
+=======================================================
+
+[2026-08-23T16:01:10.132Z]  @firebase/firestore: Firestore (12.17.0): GrpcConnection RPC 'Listen' stream 0x7d234cb6 error. Code: 1 Message: 1 CANCELLED: Disconnecting idle stream. Timed out waiting for new targets.

@@ -51,6 +51,7 @@ function assert(condition: boolean, message: string) {
 }
 
 async function runTest(name: string, fn: () => void | Promise<void>) {
+  console.log(`>>> RUNNING: ${name}`);
   try {
     await fn();
     testResults.push({ name, passed: true });

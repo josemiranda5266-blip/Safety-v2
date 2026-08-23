@@ -21,6 +21,9 @@ export function ensureAuth(): Promise<User> {
         resolve(user);
       } else {
         try {
+          if (process.env.IS_RUNNING_TESTS === "true") {
+            throw new Error("Skipping real auth in test");
+          }
           const userCred = await signInAnonymously(auth);
           unsubscribe();
           resolve(userCred.user);

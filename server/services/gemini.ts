@@ -249,3 +249,14 @@ export async function generateContentWithRetry(options: GenerateWithRetryOptions
 }
 
 export { Type };
+
+export async function generateContentWithRetryWithTimeout(options: GenerateWithRetryOptions, timeoutMs = 25000): Promise<any> {
+  const timeoutPromise = new Promise((_, reject) =>
+    setTimeout(() => reject(new GeminiPublicError(504, 'AI_PROVIDER_TIMEOUT', 'El proveedor de IA superó el tiempo de espera.')), timeoutMs)
+  );
+
+  return Promise.race([
+    generateContentWithRetry(options),
+    timeoutPromise
+  ]);
+}

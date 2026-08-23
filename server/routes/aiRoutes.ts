@@ -7,7 +7,7 @@ import {
   validateComparisonPayload,
 } from "../middleware/payloadValidator";
 import { requireAuth, requireTenantContext, TenantRequest } from "../authorization/middleware";
-import { generateContentWithRetry, Type, GeminiPublicError, mapToGeminiPublicError } from "../services/gemini";
+import { generateContentWithRetry, generateContentWithRetryWithTimeout, Type, GeminiPublicError, mapToGeminiPublicError } from "../services/gemini";
 import * as documentService from "../services/documentService";
 
 const router = Router();
@@ -579,7 +579,7 @@ ${formattedLibraryContext}
 
 Realiza un informe técnico riguroso de inspección visual en formato JSON estructurado integrando la imagen y la descripción de la actividad como un todo:`;
 
-      const response = await generateContentWithRetry({
+      const response = await generateContentWithRetryWithTimeout({
         model: "gemini-3.7-flash",
         contents: { parts: [mediaPart, { text: promptText }] },
         config: {

@@ -1121,95 +1121,105 @@ export class LocalSafetyDB {
   public async callAiApi<T>(endpoint: string, payload: any): Promise<T> {
     const headers = await this.getAuthHeaders();
     const url = buildApiUrl(endpoint);
-    const response = await fetch(url, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        ...headers,
-      },
-      body: JSON.stringify(payload),
-    });
+    
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 30000);
 
-    const contentType = response.headers.get('content-type') || '';
-    const rawText = await response.text().catch(() => '');
+    try {
+      const response = await fetch(url, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          ...headers,
+        },
+        body: JSON.stringify(payload),
+        signal: controller.signal,
+      });
+      clearTimeout(timeoutId);
 
-    // Log diagnostic info safely (without body secrets like base64 images or tokens)
-    const safePreview = rawText
-      .slice(0, 300)
-      .replace(/("imageBase64":\s*")[^"]+"/g, '$1[REDACTED_BASE64]"');
+      const contentType = response.headers.get('content-type') || '';
+      const rawText = await response.text().catch(() => '');
 
-    console.log(`[callAiApi Diagnostic]`, {
-      endpoint,
-      status: response.status,
-      contentType,
-      bodyLength: rawText.length,
-      preview: safePreview,
-    });
+      // Log diagnostic info safely (without body secrets like base64 images or tokens)
+      const safePreview = rawText
+        .slice(0, 300)
+        .replace(/("imageBase64":\s*")[^"]+"/g, '$1[REDACTED_BASE64]"');
 
-    let data: any = null;
-    let isJsonValid = false;
+      console.log(`[callAiApi Diagnostic]`, {
+        endpoint,
+        status: response.status,
+        contentType,
+        bodyLength: rawText.length,
+        preview: safePreview,
+      });
 
-    if (rawText && rawText.trim().length > 0) {
-      try {
-        data = JSON.parse(rawText);
-        isJsonValid = true;
-      } catch (_e) {
-        isJsonValid = false;
-      }
-    }
+      let data: any = null;
+      let isJsonValid = false;
 
-    const isContentTypeJson = contentType.toLowerCase().includes('application/json');
-
-    if (response.ok) {
-      if (!rawText || rawText.trim().length === 0) {
-        throw new Error(`El servidor respondió HTTP ${response.status}, pero el cuerpo está vacío y no contiene JSON válido.`);
-      }
-
-      if (isJsonValid && data !== null) {
-        if (!isContentTypeJson) {
-          console.warn(`[callAiApi Warning] Contrato incorrecto: Content-Type no es JSON (${contentType}) pero el cuerpo contiene JSON válido para ${endpoint}.`);
+      if (rawText && rawText.trim().length > 0) {
+        try {
+          data = JSON.parse(rawText);
+          isJsonValid = true;
+        } catch (_e) {
+          isJsonValid = false;
         }
-        return data as T;
       }
 
-      // HTTP 200 / ok but invalid JSON
-      const safeBodyPreview = safePreview;
-      throw new Error(`El servidor respondió HTTP ${response.status}, pero el cuerpo no contiene JSON válido. [ContentType: ${contentType}] [Preview: ${safeBodyPreview}]`);
-    }
+      if (response.ok) {
+        if (!rawText || rawText.trim().length === 0) {
+          throw new Error(`El servidor respondió HTTP ${response.status}, pero el cuerpo está vacío y no contiene JSON válido.`);
+        }
 
-    // response.ok === false
-    if (isJsonValid && data) {
-      if (response.status === 402) {
-        const error: any = new Error(data.message || 'Has alcanzado el límite mensual de créditos para tu plan.');
-        error.code = 'AI_CREDITS_EXHAUSTED';
-        error.details = data;
-        throw error;
+        if (isJsonValid && data !== null) {
+          return data as T;
+        }
+
+        // HTTP 200 / ok but invalid JSON
+        const safeBodyPreview = safePreview;
+        throw new Error(`El servidor respondió HTTP ${response.status}, pero el cuerpo no contiene JSON válido. [ContentType: ${contentType}] [Preview: ${safeBodyPreview}]`);
       }
 
-      if (response.status === 429) {
-        const error: any = new Error(data.message || 'Demasiadas operaciones simultáneas. Espera un momento.');
-        error.code = 'RATE_LIMIT_EXCEEDED';
-        throw error;
+      // response.ok === false
+      if (isJsonValid && data) {
+        if (response.status === 402) {
+          const error: any = new Error(data.message || 'Has alcanzado el límite mensual de créditos para tu plan.');
+          error.code = 'AI_CREDITS_EXHAUSTED';
+          error.details = data;
+          throw error;
+        }
+
+        if (response.status === 429) {
+          const error: any = new Error(data.message || 'Demasiadas operaciones simultáneas. Espera un momento.');
+          error.code = 'RATE_LIMIT_EXCEEDED';
+          throw error;
+        }
+
+        throw new Error(data.message || data.error || `Error en el servidor de IA (HTTP ${response.status}).`);
       }
 
-      throw new Error(data.message || data.error || `Error en el servidor de IA (HTTP ${response.status}).`);
-    }
+      // response.ok === false and NOT valid JSON
+      if (response.status === 413) {
+        throw new Error('La imagen capturada excede el tamaño máximo. Por favor intenta tomar otra fotografía o reduce la resolución.');
+      }
+      if (response.status === 404) {
+        throw new Error('Servicio de IA no disponible temporalmente (Endpoint 404).');
+      }
+      if (response.status === 403) {
+        throw new Error('Acceso denegado a la organización o servicio de IA (HTTP 403).');
+      }
+      if (response.status === 401) {
+        throw new Error('Sesión no autenticada. Por favor recarga la página para iniciar sesión.');
+      }
 
-    // response.ok === false and NOT valid JSON
-    if (response.status === 413) {
-      throw new Error('La imagen capturada excede el tamaño máximo. Por favor intenta tomar otra fotografía o reduce la resolución.');
+      throw new Error(`El servidor respondió HTTP ${response.status}, pero el cuerpo no contiene JSON válido. [ContentType: ${contentType}] [Preview: ${safePreview}]`);
+    } catch (err: any) {
+      clearTimeout(timeoutId);
+      if (err.name === 'AbortError') {
+        console.error(`[callAiApi] AI_REQUEST_TIMEOUT para ${endpoint}`);
+        throw new Error('AI_REQUEST_TIMEOUT');
+      }
+      throw err;
     }
-    if (response.status === 404) {
-      throw new Error('Servicio de IA no disponible temporalmente (Endpoint 404).');
-    }
-    if (response.status === 403) {
-      throw new Error('Acceso denegado a la organización o servicio de IA (HTTP 403).');
-    }
-    if (response.status === 401) {
-      throw new Error('Sesión no autenticada. Por favor recarga la página para iniciar sesión.');
-    }
-
-    throw new Error(`El servidor respondió HTTP ${response.status}, pero el cuerpo no contiene JSON válido. [ContentType: ${contentType}] [Preview: ${safePreview}]`);
   }
 }
 

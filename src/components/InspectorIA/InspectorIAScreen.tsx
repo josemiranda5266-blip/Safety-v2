@@ -434,7 +434,9 @@ export const InspectorIAScreen: React.FC = () => {
       setGeneratedDraftReport(fullReport);
     } catch (err: any) {
       console.error('Error en análisis Inspector IA:', err);
-      if (err.message === 'AUTHENTICATION_REQUIRED') {
+      if (err.message === 'AI_REQUEST_TIMEOUT') {
+        setAnalysisError('El análisis está tardando demasiado. Por favor, intenta de nuevo o reduce la complejidad de la imagen.');
+      } else if (err.message === 'AUTHENTICATION_REQUIRED') {
         setAnalysisError('Necesitás iniciar sesión para utilizar InspectorIA.');
       } else if (err.message === 'SESSION_INVALID') {
         setAnalysisError('No se pudo validar tu sesión. Volvé a iniciar sesión.');

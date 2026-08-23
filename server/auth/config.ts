@@ -77,9 +77,19 @@ export function validateAuthConfig(): void {
         "CRITICAL SECURITY CONFIGURATION ERROR: AUTH_DEV_MODE cannot be enabled when NODE_ENV is production."
       );
     }
+    const missing: string[] = [];
     if (!config.firebaseProjectId || config.firebaseProjectId.trim() === "") {
+      missing.push("FIREBASE_PROJECT_ID");
+    }
+    if (!process.env.FIREBASE_CLIENT_EMAIL || process.env.FIREBASE_CLIENT_EMAIL.trim() === "") {
+      missing.push("FIREBASE_CLIENT_EMAIL");
+    }
+    if (!process.env.FIREBASE_PRIVATE_KEY || process.env.FIREBASE_PRIVATE_KEY.trim() === "") {
+      missing.push("FIREBASE_PRIVATE_KEY");
+    }
+    if (missing.length > 0) {
       throw new Error(
-        "CRITICAL SECURITY CONFIGURATION ERROR: FIREBASE_PROJECT_ID is missing in production environment."
+        `CRITICAL SECURITY CONFIGURATION ERROR: Missing required Firebase configuration in production: ${missing.join(", ")}.`
       );
     }
   }

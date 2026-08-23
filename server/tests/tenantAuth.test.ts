@@ -8,7 +8,7 @@ import { MockAuthVerifier } from "../auth/mockAuthVerifier";
 import { FirebaseAdminAuthVerifier } from "../auth/firebaseAdminVerifier";
 import { setGlobalAuthVerifier, resetGlobalAuthVerifier, getAuthVerifier } from "../auth/verifier";
 import { validatePlatformUserRole } from "../auth/types";
-import { getFirebaseProjectId } from "../auth/config";
+import { getFirebaseProjectId, validateAuthConfig } from "../auth/config";
 import { createCompanySchema } from "../authorization/validation";
 import { AuthorizationContext } from "../authorization/types";
 import * as companyService from "../services/companyService";
@@ -16,7 +16,7 @@ import * as establishmentService from "../services/establishmentService";
 import * as sectorService from "../services/sectorService";
 import * as positionService from "../services/positionService";
 import * as employeeService from "../services/employeeService";
-import { setAdminFirestoreForTesting, setAdminStorageBucketForTesting } from "../auth/firestoreAdmin";
+import { setAdminFirestoreForTesting, setAdminStorageBucketForTesting, parsePrivateKey, resolveAdminCredentials } from "../auth/firestoreAdmin";
 import { requireAiCredits, CreditGuardedRequest } from "../middleware/creditGatekeeper";
 import {
   FirestoreOrganizationRepository,
@@ -5973,6 +5973,204 @@ export async function runAllTenantAuthTests(): Promise<{ total: number; passed: 
     assert(jsonResp?.error === "Authorization repository unavailable", "Mensaje de error de readiness correcto");
 
     setAuthorizationRepository(prevRepo);
+  });
+
+  // ==================================================
+  // PARCHE 5 - PRUEBAS DE CREDENCIALES RENDER (PROJECT_ID, CLIENT_EMAIL, PRIVATE_KEY)
+  // ==================================================
+
+  await runTest("PARCHE 5 - TEST 1: Producción con las 3 variables de credenciales presentes", async () => {
+    const origEnv = process.env.NODE_ENV;
+    const origPid = process.env.FIREBASE_PROJECT_ID;
+    const origEmail = process.env.FIREBASE_CLIENT_EMAIL;
+    const origKey = process.env.FIREBASE_PRIVATE_KEY;
+
+    process.env.NODE_ENV = "production";
+    process.env.FIREBASE_PROJECT_ID = "safetyia-prod";
+    process.env.FIREBASE_CLIENT_EMAIL = "firebase-adminsdk-abc@safetyia-prod.iam.gserviceaccount.com";
+    process.env.FIREBASE_PRIVATE_KEY = "-----BEGIN PRIVATE KEY-----\\nMIIEvgIBADANBgkqhkiG9w0BAQEFAASCBKgwggSkAgEAAoIBAQC3...\\n-----END PRIVATE KEY-----\\n";
+
+    let passed = false;
+    try {
+      validateAuthConfig();
+      passed = true;
+    } finally {
+      process.env.NODE_ENV = origEnv;
+      if (origPid !== undefined) process.env.FIREBASE_PROJECT_ID = origPid; else delete process.env.FIREBASE_PROJECT_ID;
+      if (origEmail !== undefined) process.env.FIREBASE_CLIENT_EMAIL = origEmail; else delete process.env.FIREBASE_CLIENT_EMAIL;
+      if (origKey !== undefined) process.env.FIREBASE_PRIVATE_KEY = origKey; else delete process.env.FIREBASE_PRIVATE_KEY;
+    }
+
+    assert(passed, "Validación exitosa en producción con FIREBASE_PROJECT_ID, CLIENT_EMAIL y PRIVATE_KEY");
+  });
+
+  await runTest("PARCHE 5 - TEST 2: Private key con \\n escapado se procesa correctamente", async () => {
+    const rawKey = "line1\\nline2\\nline3";
+    const processed = rawKey.replace(/\\n/g, "\n");
+    assert(processed === "line1\nline2\nline3", "Reemplazo de \\n por saltos de línea reales correcto");
+  });
+
+  await runTest("PARCHE 5 - TEST 3: Falta FIREBASE_CLIENT_EMAIL en producción falla de forma cerrada", async () => {
+    const origEnv = process.env.NODE_ENV;
+    const origPid = process.env.FIREBASE_PROJECT_ID;
+    const origEmail = process.env.FIREBASE_CLIENT_EMAIL;
+    const origKey = process.env.FIREBASE_PRIVATE_KEY;
+
+    process.env.NODE_ENV = "production";
+    process.env.FIREBASE_PROJECT_ID = "safetyia-prod";
+    delete process.env.FIREBASE_CLIENT_EMAIL;
+    process.env.FIREBASE_PRIVATE_KEY = "-----BEGIN PRIVATE KEY-----\\nkey\\n-----END PRIVATE KEY-----\\n";
+
+    let failedClosed = false;
+    let errMsg = "";
+    try {
+      validateAuthConfig();
+    } catch (err: any) {
+      failedClosed = true;
+      errMsg = err.message;
+    } finally {
+      process.env.NODE_ENV = origEnv;
+      if (origPid !== undefined) process.env.FIREBASE_PROJECT_ID = origPid; else delete process.env.FIREBASE_PROJECT_ID;
+      if (origEmail !== undefined) process.env.FIREBASE_CLIENT_EMAIL = origEmail; else delete process.env.FIREBASE_CLIENT_EMAIL;
+      if (origKey !== undefined) process.env.FIREBASE_PRIVATE_KEY = origKey; else delete process.env.FIREBASE_PRIVATE_KEY;
+    }
+
+    assert(failedClosed, "Falla cerradamente si falta FIREBASE_CLIENT_EMAIL");
+    assert(errMsg.includes("FIREBASE_CLIENT_EMAIL"), "Error identifica la variable faltante sin revelar secretos");
+  });
+
+  await runTest("PARCHE 5 - TEST 4: Falta FIREBASE_PRIVATE_KEY en producción falla de forma cerrada", async () => {
+    const origEnv = process.env.NODE_ENV;
+    const origPid = process.env.FIREBASE_PROJECT_ID;
+    const origEmail = process.env.FIREBASE_CLIENT_EMAIL;
+    const origKey = process.env.FIREBASE_PRIVATE_KEY;
+
+    process.env.NODE_ENV = "production";
+    process.env.FIREBASE_PROJECT_ID = "safetyia-prod";
+    process.env.FIREBASE_CLIENT_EMAIL = "sa@test.iam.gserviceaccount.com";
+    delete process.env.FIREBASE_PRIVATE_KEY;
+
+    let failedClosed = false;
+    let errMsg = "";
+    try {
+      validateAuthConfig();
+    } catch (err: any) {
+      failedClosed = true;
+      errMsg = err.message;
+    } finally {
+      process.env.NODE_ENV = origEnv;
+      if (origPid !== undefined) process.env.FIREBASE_PROJECT_ID = origPid; else delete process.env.FIREBASE_PROJECT_ID;
+      if (origEmail !== undefined) process.env.FIREBASE_CLIENT_EMAIL = origEmail; else delete process.env.FIREBASE_CLIENT_EMAIL;
+      if (origKey !== undefined) process.env.FIREBASE_PRIVATE_KEY = origKey; else delete process.env.FIREBASE_PRIVATE_KEY;
+    }
+
+    assert(failedClosed, "Falla cerradamente si falta FIREBASE_PRIVATE_KEY");
+    assert(errMsg.includes("FIREBASE_PRIVATE_KEY"), "Error identifica la variable faltante sin revelar secretos");
+  });
+
+  await runTest("PARCHE 5 - TEST 5: parsePrivateKey procesa \\n escapados correctamente", async () => {
+    const raw = "-----BEGIN PRIVATE KEY-----\\nline1\\nline2\\n-----END PRIVATE KEY-----";
+    const res = parsePrivateKey(raw);
+    assert(res === "-----BEGIN PRIVATE KEY-----\nline1\nline2\n-----END PRIVATE KEY-----", "Convierte \\n escapados a saltos reales");
+  });
+
+  await runTest("PARCHE 5 - TEST 6: parsePrivateKey preserva saltos reales y remueve comillas", async () => {
+    const raw = '"-----BEGIN PRIVATE KEY-----\\nreal\nkey\\n-----END PRIVATE KEY-----\\n"';
+    const res = parsePrivateKey(raw);
+    assert(res.includes("BEGIN PRIVATE KEY"), "Conserva header");
+    assert(res.includes("\nreal\nkey\n"), "Conserva saltos reales y remueve comillas externas");
+  });
+
+  await runTest("PARCHE 5 - TEST 7: parsePrivateKey rechaza clave sin BEGIN", async () => {
+    let thrown = false;
+    try {
+      parsePrivateKey("no header key");
+    } catch {
+      thrown = true;
+    }
+    assert(thrown, "Lanza error si falta BEGIN PRIVATE KEY");
+  });
+
+  await runTest("PARCHE 5 - TEST 8: resolveAdminCredentials soporta JSON válido en GAC", async () => {
+    const origEnv = process.env.NODE_ENV;
+    const origGac = process.env.GOOGLE_APPLICATION_CREDENTIALS;
+    const origEmail = process.env.FIREBASE_CLIENT_EMAIL;
+    const origKey = process.env.FIREBASE_PRIVATE_KEY;
+
+    process.env.NODE_ENV = "production";
+    delete process.env.FIREBASE_CLIENT_EMAIL;
+    delete process.env.FIREBASE_PRIVATE_KEY;
+    process.env.GOOGLE_APPLICATION_CREDENTIALS = JSON.stringify({
+      project_id: "gac-proj",
+      client_email: "gac@proj.iam.gserviceaccount.com",
+      private_key: "-----BEGIN PRIVATE KEY-----\\nkey\\n-----END PRIVATE KEY-----\\n"
+    });
+
+    let creds: any = null;
+    let passed = false;
+    try {
+      creds = resolveAdminCredentials();
+      passed = creds.source === "gac_json" && creds.projectId === "gac-proj";
+    } finally {
+      process.env.NODE_ENV = origEnv;
+      if (origGac !== undefined) process.env.GOOGLE_APPLICATION_CREDENTIALS = origGac; else delete process.env.GOOGLE_APPLICATION_CREDENTIALS;
+      if (origEmail !== undefined) process.env.FIREBASE_CLIENT_EMAIL = origEmail; else delete process.env.FIREBASE_CLIENT_EMAIL;
+      if (origKey !== undefined) process.env.FIREBASE_PRIVATE_KEY = origKey; else delete process.env.FIREBASE_PRIVATE_KEY;
+    }
+
+    assert(passed, "Resuelve correctamente credenciales JSON desde GOOGLE_APPLICATION_CREDENTIALS");
+  });
+
+  await runTest("PARCHE 5 - TEST 9: resolveAdminCredentials lanza error con JSON inválido o incompleto", async () => {
+    const origEnv = process.env.NODE_ENV;
+    const origGac = process.env.GOOGLE_APPLICATION_CREDENTIALS;
+    const origEmail = process.env.FIREBASE_CLIENT_EMAIL;
+    const origKey = process.env.FIREBASE_PRIVATE_KEY;
+
+    process.env.NODE_ENV = "production";
+    delete process.env.FIREBASE_CLIENT_EMAIL;
+    delete process.env.FIREBASE_PRIVATE_KEY;
+    process.env.GOOGLE_APPLICATION_CREDENTIALS = "{ invalid_json }";
+
+    let failed = false;
+    try {
+      resolveAdminCredentials();
+    } catch {
+      failed = true;
+    } finally {
+      process.env.NODE_ENV = origEnv;
+      if (origGac !== undefined) process.env.GOOGLE_APPLICATION_CREDENTIALS = origGac; else delete process.env.GOOGLE_APPLICATION_CREDENTIALS;
+      if (origEmail !== undefined) process.env.FIREBASE_CLIENT_EMAIL = origEmail; else delete process.env.FIREBASE_CLIENT_EMAIL;
+      if (origKey !== undefined) process.env.FIREBASE_PRIVATE_KEY = origKey; else delete process.env.FIREBASE_PRIVATE_KEY;
+    }
+
+    assert(failed, "Falla al parsear JSON inválido en GAC");
+  });
+
+  await runTest("PARCHE 5 - TEST 10: resolveAdminCredentials lanza error con archivo inexistente", async () => {
+    const origEnv = process.env.NODE_ENV;
+    const origGac = process.env.GOOGLE_APPLICATION_CREDENTIALS;
+    const origEmail = process.env.FIREBASE_CLIENT_EMAIL;
+    const origKey = process.env.FIREBASE_PRIVATE_KEY;
+
+    process.env.NODE_ENV = "production";
+    delete process.env.FIREBASE_CLIENT_EMAIL;
+    delete process.env.FIREBASE_PRIVATE_KEY;
+    process.env.GOOGLE_APPLICATION_CREDENTIALS = "./non-existent-service-account-file.json";
+
+    let failed = false;
+    try {
+      resolveAdminCredentials();
+    } catch {
+      failed = true;
+    } finally {
+      process.env.NODE_ENV = origEnv;
+      if (origGac !== undefined) process.env.GOOGLE_APPLICATION_CREDENTIALS = origGac; else delete process.env.GOOGLE_APPLICATION_CREDENTIALS;
+      if (origEmail !== undefined) process.env.FIREBASE_CLIENT_EMAIL = origEmail; else delete process.env.FIREBASE_CLIENT_EMAIL;
+      if (origKey !== undefined) process.env.FIREBASE_PRIVATE_KEY = origKey; else delete process.env.FIREBASE_PRIVATE_KEY;
+    }
+
+    assert(failed, "Falla cerradamente si la ruta de GAC no existe en producción");
   });
 
   const passed = testResults.filter((r) => r.passed).length;

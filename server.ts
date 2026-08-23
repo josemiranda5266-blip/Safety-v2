@@ -22,7 +22,7 @@ import {
 import { InMemoryAuthorizationRepository } from "./server/authorization/repository";
 import { logStructured } from "./server/utils/logger";
 
-dotenv.config();
+dotenv.config({ override: false });
 
 const app = express();
 const PORT = Number(process.env.PORT) || 3000;

@@ -1,28 +1,6 @@
-import { getApps, initializeApp, App, applicationDefault } from "firebase-admin/app";
 import { getAuth } from "firebase-admin/auth";
 import { AuthVerifier, AuthenticatedIdentity, validatePlatformUserRole } from "./types";
-import { getFirebaseProjectId } from "./config";
-
-let firebaseAdminApp: App | null = null;
-
-function getFirebaseAdminApp(): App {
-  if (!firebaseAdminApp) {
-    const existingApps = getApps();
-    if (existingApps.length > 0 && existingApps[0]) {
-      firebaseAdminApp = existingApps[0];
-    } else {
-      // In Google Cloud Run and standard GCP environments, Application Default Credentials (ADC) are used automatically.
-      // In production, getFirebaseProjectId() strictly fails closed if FIREBASE_PROJECT_ID is missing.
-      const projectId = getFirebaseProjectId();
-      const options: any = { projectId };
-      if (process.env.GOOGLE_APPLICATION_CREDENTIALS && process.env.GOOGLE_APPLICATION_CREDENTIALS.trim() !== "") {
-        options.credential = applicationDefault();
-      }
-      firebaseAdminApp = initializeApp(options);
-    }
-  }
-  return firebaseAdminApp;
-}
+import { getAdminApp } from "./firestoreAdmin";
 
 let mockVerifyHook: ((token: string) => Promise<AuthenticatedIdentity>) | null = null;
 
@@ -55,7 +33,7 @@ export class FirebaseAdminAuthVerifier implements AuthVerifier {
     }
 
     try {
-      const app = getFirebaseAdminApp();
+      const app = getAdminApp();
       const auth = getAuth(app);
       const decoded = await auth.verifyIdToken(token.trim(), true);
 

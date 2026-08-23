@@ -120,6 +120,12 @@ export const InspectorIAScreen: React.FC = () => {
   const videoRef = useRef<HTMLVideoElement | null>(null);
   const streamRef = useRef<MediaStream | null>(null);
   
+  // Camera & Gallery File Input Refs
+  const nativeCameraInputRef = useRef<HTMLInputElement | null>(null);
+  const galleryFileInputRef = useRef<HTMLInputElement | null>(null);
+  const modalCameraRef = useRef<HTMLInputElement | null>(null);
+  const modalGalleryRef = useRef<HTMLInputElement | null>(null);
+  
   // Analysis State
   const [isAnalyzing, setIsAnalyzing] = useState(false);
   const [analysisProgressStep, setAnalysisProgressStep] = useState<string>('');
@@ -212,7 +218,7 @@ export const InspectorIAScreen: React.FC = () => {
     }
   };
 
-  // Start live webcam / mobile camera stream
+  // Start live webcam / mobile camera stream with seamless native fallback
   const handleStartCamera = async () => {
     try {
       if (navigator.mediaDevices && navigator.mediaDevices.getUserMedia) {
@@ -227,11 +233,11 @@ export const InspectorIAScreen: React.FC = () => {
           videoRef.current.play();
         }
       } else {
-        alert('Cámara no compatible directamente en este navegador. Puedes usar el botón de subir/tomar archivo.');
+        nativeCameraInputRef.current?.click();
       }
     } catch (err: any) {
-      console.warn('No se pudo acceder a la cámara WebRTC:', err);
-      alert('No se pudo acceder a la cámara en vivo. Puedes usar el selector de archivos para capturar foto.');
+      console.warn('No se pudo acceder a la cámara WebRTC en vivo, abriendo cámara nativa:', err);
+      nativeCameraInputRef.current?.click();
     }
   };
 
@@ -277,6 +283,19 @@ export const InspectorIAScreen: React.FC = () => {
       setSelectedImageBase64(result);
     };
     reader.readAsDataURL(file);
+    e.target.value = '';
+  };
+
+  // Convert Modal Verification File to Base64
+  const handleModalPhotoChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = (event) => {
+      setVerificationPhoto(event.target?.result as string);
+    };
+    reader.readAsDataURL(file);
+    e.target.value = '';
   };
 
   // Handle selecting a sample site photo
@@ -1077,25 +1096,51 @@ export const InspectorIAScreen: React.FC = () => {
                     </p>
                   </div>
                   <div className="flex flex-wrap items-center justify-center gap-3">
+                    {/* Botón 1: Abrir cámara nativa del teléfono */}
                     <button
                       type="button"
-                      onClick={handleStartCamera}
+                      onClick={() => nativeCameraInputRef.current?.click()}
                       className="inline-flex items-center gap-2 px-5 py-2.5 rounded-2xl bg-gradient-to-r from-orange-500 to-amber-500 hover:from-orange-600 hover:to-amber-600 text-white text-xs font-bold cursor-pointer shadow-lg shadow-orange-500/20 transition-all hover:scale-105"
                     >
                       <Camera className="w-4 h-4" />
-                      <span>Abrir Cámara en Vivo</span>
+                      <span>Tomar Foto con Cámara</span>
                     </button>
-                    <label className="inline-flex items-center gap-2 px-5 py-2.5 rounded-2xl bg-slate-800 hover:bg-slate-700 text-white text-xs font-bold cursor-pointer shadow-md transition-all hover:scale-105">
-                      <UploadCloud className="w-4 h-4" />
-                      <span>Seleccionar Archivo</span>
-                      <input
-                        type="file"
-                        accept="image/*"
-                        capture="environment"
-                        onChange={handleFileChange}
-                        className="hidden"
-                      />
-                    </label>
+                    <input
+                      ref={nativeCameraInputRef}
+                      type="file"
+                      accept="image/*"
+                      capture="environment"
+                      onChange={handleFileChange}
+                      className="hidden"
+                    />
+
+                    {/* Botón 2: Abrir Galería de fotos (sin el atributo capture para abrir el álbum) */}
+                    <button
+                      type="button"
+                      onClick={() => galleryFileInputRef.current?.click()}
+                      className="inline-flex items-center gap-2 px-5 py-2.5 rounded-2xl bg-slate-800 hover:bg-slate-700 text-white text-xs font-bold cursor-pointer shadow-md transition-all hover:scale-105"
+                    >
+                      <UploadCloud className="w-4 h-4 text-orange-400" />
+                      <span>Cargar de Galería</span>
+                    </button>
+                    <input
+                      ref={galleryFileInputRef}
+                      type="file"
+                      accept="image/*"
+                      onChange={handleFileChange}
+                      className="hidden"
+                    />
+
+                    {/* Botón 3: Transmisión en vivo por Webcam (para laptops / PC con visor) */}
+                    <button
+                      type="button"
+                      onClick={handleStartCamera}
+                      className="inline-flex items-center gap-2 px-4 py-2.5 rounded-2xl bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-200 text-xs font-bold transition-all hover:scale-105 border border-slate-200 dark:border-slate-700"
+                      title="Visor de cámara web en vivo"
+                    >
+                      <Eye className="w-4 h-4 text-orange-500" />
+                      <span>Visor en Vivo (Webcam)</span>
+                    </button>
                   </div>
                 </div>
               )}
@@ -1781,6 +1826,59 @@ export const InspectorIAScreen: React.FC = () => {
                     placeholder="Ej: Se colocó baranda reglamentaria de 1m con zócalo y se capacitó al personal."
                     className="w-full p-3 rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 text-xs text-slate-900 dark:text-white outline-none"
                   />
+                </div>
+
+                <div className="space-y-2">
+                  <label className="text-xs font-bold text-slate-700 dark:text-slate-300">
+                    Foto de Verificación de Cierre (Opcional):
+                  </label>
+                  {verificationPhoto ? (
+                    <div className="relative rounded-xl overflow-hidden border border-emerald-500 max-h-36 bg-black flex items-center justify-center">
+                      <img src={verificationPhoto} alt="Foto de verificación" className="max-h-36 object-cover" />
+                      <button
+                        type="button"
+                        onClick={() => setVerificationPhoto(null)}
+                        className="absolute top-2 right-2 p-1.5 bg-slate-900/80 text-white rounded-full hover:bg-rose-600"
+                        title="Eliminar foto"
+                      >
+                        <X className="w-4 h-4" />
+                      </button>
+                    </div>
+                  ) : (
+                    <div className="flex gap-2">
+                      <button
+                        type="button"
+                        onClick={() => modalCameraRef.current?.click()}
+                        className="flex-1 py-2 px-3 rounded-xl bg-orange-500/10 text-orange-600 dark:text-orange-400 font-bold text-xs flex items-center justify-center gap-1.5 hover:bg-orange-500/20"
+                      >
+                        <Camera className="w-3.5 h-3.5" />
+                        <span>Tomar Foto</span>
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => modalGalleryRef.current?.click()}
+                        className="flex-1 py-2 px-3 rounded-xl bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300 font-bold text-xs flex items-center justify-center gap-1.5 hover:bg-slate-200 dark:hover:bg-slate-700"
+                      >
+                        <UploadCloud className="w-3.5 h-3.5" />
+                        <span>Elegir Galería</span>
+                      </button>
+                      <input
+                        ref={modalCameraRef}
+                        type="file"
+                        accept="image/*"
+                        capture="environment"
+                        onChange={handleModalPhotoChange}
+                        className="hidden"
+                      />
+                      <input
+                        ref={modalGalleryRef}
+                        type="file"
+                        accept="image/*"
+                        onChange={handleModalPhotoChange}
+                        className="hidden"
+                      />
+                    </div>
+                  )}
                 </div>
 
                 <div className="flex justify-end gap-3 pt-2">

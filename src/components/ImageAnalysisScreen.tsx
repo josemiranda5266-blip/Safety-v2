@@ -11,7 +11,8 @@ export const ImageAnalysisScreen: React.FC = () => {
   const [isAnalyzing, setIsAnalyzing] = useState(false);
   const [analysisResult, setAnalysisResult] = useState<HazardAnalysisResult | null>(null);
 
-  const fileInputRef = useRef<HTMLInputElement>(null);
+  const cameraInputRef = useRef<HTMLInputElement>(null);
+  const galleryInputRef = useRef<HTMLInputElement>(null);
 
   const QUICK_CRITICAL_TAGS = [
     'Trabajos en Altura (>2m)',
@@ -114,10 +115,17 @@ export const ImageAnalysisScreen: React.FC = () => {
       {/* Upload / Camera Action Zone */}
       <div className="p-6 rounded-3xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 shadow-md space-y-4">
         <input
-          ref={fileInputRef}
+          ref={cameraInputRef}
           type="file"
           accept="image/*"
           capture="environment"
+          onChange={handleImageUpload}
+          className="hidden"
+        />
+        <input
+          ref={galleryInputRef}
+          type="file"
+          accept="image/*"
           onChange={handleImageUpload}
           className="hidden"
         />
@@ -186,20 +194,35 @@ export const ImageAnalysisScreen: React.FC = () => {
             </button>
           </div>
         ) : (
-          <div
-            onClick={() => fileInputRef.current?.click()}
-            className="border-2 border-dashed border-slate-700 hover:border-rose-500 rounded-2xl p-8 text-center cursor-pointer transition-colors bg-slate-800/30 space-y-3"
-          >
+          <div className="border-2 border-dashed border-slate-700 hover:border-rose-500/50 rounded-2xl p-8 text-center transition-colors bg-slate-800/30 space-y-4">
             <div className="w-12 h-12 rounded-full bg-rose-500/10 text-rose-500 flex items-center justify-center mx-auto">
               <Camera className="w-6 h-6" />
             </div>
             <div>
               <p className="text-sm font-bold text-slate-200">
-                Tomar foto o subir imagen del puesto de trabajo
+                Tomar foto o cargar imagen de la inspección
               </p>
               <p className="text-xs text-slate-400 mt-1">
-                Haz clic aquí para seleccionar una imagen desde la galería o usar la cámara.
+                Selecciona una opción para capturar la fotografía del puesto de trabajo
               </p>
+            </div>
+            <div className="flex flex-wrap items-center justify-center gap-3 pt-2">
+              <button
+                type="button"
+                onClick={() => cameraInputRef.current?.click()}
+                className="px-5 py-2.5 rounded-xl bg-rose-500 hover:bg-rose-600 text-white font-bold text-xs flex items-center gap-2 shadow-lg shadow-rose-500/20 transition-all hover:scale-105"
+              >
+                <Camera className="w-4 h-4" />
+                <span>Tomar Foto con Cámara</span>
+              </button>
+              <button
+                type="button"
+                onClick={() => galleryInputRef.current?.click()}
+                className="px-5 py-2.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-200 font-bold text-xs flex items-center gap-2 shadow-md transition-all hover:scale-105 border border-slate-700"
+              >
+                <Upload className="w-4 h-4 text-rose-400" />
+                <span>Elegir de Galería</span>
+              </button>
             </div>
           </div>
         )}

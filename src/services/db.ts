@@ -17,6 +17,19 @@ const STORAGE_KEYS = {
   APP_THEME: 'safety_ia_theme',
 };
 
+const memStorage = new Map<string, string>();
+const getStorage = () => {
+  if (typeof window !== 'undefined' && typeof localStorage !== 'undefined') {
+    return localStorage;
+  }
+  return {
+    getItem: (key: string) => memStorage.get(key) || null,
+    setItem: (key: string, value: string) => memStorage.set(key, value),
+    removeItem: (key: string) => memStorage.delete(key),
+    clear: () => memStorage.clear(),
+  };
+};
+
 // Seed initial legal norms for Argentina and International Safety Standards
 const INITIAL_SAFETY_NORMS: Omit<DocumentItem, 'id'>[] = [];
 
@@ -149,15 +162,15 @@ export class LocalSafetyDB {
         });
       });
 
-      localStorage.setItem(STORAGE_KEYS.DOCUMENTS, JSON.stringify(seededDocs));
-      localStorage.setItem(STORAGE_KEYS.CHUNKS, JSON.stringify(seededChunks));
+      getStorage().setItem(STORAGE_KEYS.DOCUMENTS, JSON.stringify(seededDocs));
+      getStorage().setItem(STORAGE_KEYS.CHUNKS, JSON.stringify(seededChunks));
     }
   }
 
   // Document Operations
   public getDocuments(): DocumentItem[] {
     try {
-      const data = localStorage.getItem(STORAGE_KEYS.DOCUMENTS);
+      const data = getStorage().getItem(STORAGE_KEYS.DOCUMENTS);
       if (!data) return [];
       const parsed: DocumentItem[] = JSON.parse(data);
       return parsed.map((doc) => ({
@@ -1005,7 +1018,7 @@ export class LocalSafetyDB {
     try {
       const user = await ensureAuth();
       const token = await user.getIdToken();
-      const orgId = (typeof window !== 'undefined' && localStorage.getItem('safetyia_active_org_id')) || 'org_default';
+      const orgId = getStorage().getItem('safetyia_active_org_id') || 'org_default';
       return {
         'x-user-id': user.uid,
         'x-org-id': orgId,
@@ -1013,8 +1026,8 @@ export class LocalSafetyDB {
       };
     } catch (err) {
       console.warn('getAuthHeaders fallback active:', err);
-      const storedUid = (typeof window !== 'undefined' && localStorage.getItem('safetyia_user_uid')) || 'user_member_a';
-      const orgId = (typeof window !== 'undefined' && localStorage.getItem('safetyia_active_org_id')) || 'org_default';
+      const storedUid = getStorage().getItem('safetyia_user_uid') || 'user_member_a';
+      const orgId = getStorage().getItem('safetyia_active_org_id') || 'org_default';
       return {
         'x-user-id': storedUid,
         'x-org-id': orgId,
@@ -1027,13 +1040,13 @@ export class LocalSafetyDB {
   public async getUserProfile(): Promise<UserProfile> {
     try {
       const user = await ensureAuth();
-      const local = localStorage.getItem(STORAGE_KEYS.USER_PROFILE);
+      const local = getStorage().getItem(STORAGE_KEYS.USER_PROFILE);
       if (local) {
         const parsed = JSON.parse(local);
         if (parsed.uid === user.uid) {
           return parsed;
         } else {
-          localStorage.removeItem(STORAGE_KEYS.USER_PROFILE);
+          getStorage().removeItem(STORAGE_KEYS.USER_PROFILE);
         }
       }
 
@@ -1046,7 +1059,7 @@ export class LocalSafetyDB {
       if (res.ok) {
         const data = await res.json();
         const profile: UserProfile = data.profile;
-        localStorage.setItem(STORAGE_KEYS.USER_PROFILE, JSON.stringify(profile));
+        getStorage().setItem(STORAGE_KEYS.USER_PROFILE, JSON.stringify(profile));
         return profile;
       }
 
@@ -1064,7 +1077,7 @@ export class LocalSafetyDB {
         billingPeriodEnd: new Date(now.getTime() + 30 * 24 * 60 * 60 * 1000).toISOString(),
         createdAt: now.toISOString(),
       };
-      localStorage.setItem(STORAGE_KEYS.USER_PROFILE, JSON.stringify(defaultProfile));
+      getStorage().setItem(STORAGE_KEYS.USER_PROFILE, JSON.stringify(defaultProfile));
       return defaultProfile;
     } catch (e) {
       console.warn('Error fetching user profile:', e);
@@ -1099,7 +1112,7 @@ export class LocalSafetyDB {
 
     const data = await res.json();
     const updated: UserProfile = data.profile;
-    localStorage.setItem(STORAGE_KEYS.USER_PROFILE, JSON.stringify(updated));
+    getStorage().setItem(STORAGE_KEYS.USER_PROFILE, JSON.stringify(updated));
     return updated;
   }
 
@@ -1114,53 +1127,86 @@ export class LocalSafetyDB {
       body: JSON.stringify(payload),
     });
 
-    const responseText = await response.text().catch(() => '');
+    const contentType = response.headers.get('content-type') || '';
+    const rawText = await response.text().catch(() => '');
+
+    // Log diagnostic info safely (without body secrets like base64 images or tokens)
+    const safePreview = rawText
+      .slice(0, 300)
+      .replace(/("imageBase64":\s*")[^"]+"/g, '$1[REDACTED_BASE64]"');
+
+    console.log(`[callAiApi Diagnostic]`, {
+      endpoint,
+      status: response.status,
+      contentType,
+      bodyLength: rawText.length,
+      preview: safePreview,
+    });
+
     let data: any = null;
-    let parseError = false;
+    let isJsonValid = false;
 
-    try {
-      if (responseText && responseText.trim().length > 0) {
-        data = JSON.parse(responseText);
+    if (rawText && rawText.trim().length > 0) {
+      try {
+        data = JSON.parse(rawText);
+        isJsonValid = true;
+      } catch (_e) {
+        isJsonValid = false;
       }
-    } catch (_e) {
-      parseError = true;
     }
 
-    if (parseError || !data) {
-      console.error(`[callAiApi Non-JSON Response] HTTP ${response.status}:`, responseText.slice(0, 300));
-      if (response.status === 413) {
-        throw new Error('La imagen capturada excede el tamaño máximo. Por favor intenta tomar otra fotografía o reduce la resolución.');
+    const isContentTypeJson = contentType.toLowerCase().includes('application/json');
+
+    if (response.ok) {
+      if (!rawText || rawText.trim().length === 0) {
+        throw new Error(`El servidor respondió HTTP ${response.status}, pero el cuerpo está vacío y no contiene JSON válido.`);
       }
-      if (response.status === 404) {
-        throw new Error('Servicio de IA no disponible temporalmente (Endpoint 404).');
+
+      if (isJsonValid && data !== null) {
+        if (!isContentTypeJson) {
+          console.warn(`[callAiApi Warning] Contrato incorrecto: Content-Type no es JSON (${contentType}) pero el cuerpo contiene JSON válido para ${endpoint}.`);
+        }
+        return data as T;
       }
-      if (response.status === 403) {
-        throw new Error('Acceso denegado a la organización o servicio de IA (HTTP 403).');
-      }
-      if (response.status === 401) {
-        throw new Error('Sesión no autenticada. Por favor recarga la página para iniciar sesión.');
-      }
-      throw new Error(`Error en el servicio de IA (HTTP ${response.status}). No se recibió una respuesta en formato JSON.`);
+
+      // HTTP 200 / ok but invalid JSON
+      const safeBodyPreview = safePreview;
+      throw new Error(`El servidor respondió HTTP ${response.status}, pero el cuerpo no contiene JSON válido. [ContentType: ${contentType}] [Preview: ${safeBodyPreview}]`);
     }
 
-    if (response.status === 402) {
-      const error: any = new Error(data.message || 'Has alcanzado el límite mensual de créditos para tu plan.');
-      error.code = 'AI_CREDITS_EXHAUSTED';
-      error.details = data;
-      throw error;
-    }
+    // response.ok === false
+    if (isJsonValid && data) {
+      if (response.status === 402) {
+        const error: any = new Error(data.message || 'Has alcanzado el límite mensual de créditos para tu plan.');
+        error.code = 'AI_CREDITS_EXHAUSTED';
+        error.details = data;
+        throw error;
+      }
 
-    if (response.status === 429) {
-      const error: any = new Error(data.message || 'Demasiadas operaciones simultáneas. Espera un momento.');
-      error.code = 'RATE_LIMIT_EXCEEDED';
-      throw error;
-    }
+      if (response.status === 429) {
+        const error: any = new Error(data.message || 'Demasiadas operaciones simultáneas. Espera un momento.');
+        error.code = 'RATE_LIMIT_EXCEEDED';
+        throw error;
+      }
 
-    if (!response.ok) {
       throw new Error(data.message || data.error || `Error en el servidor de IA (HTTP ${response.status}).`);
     }
 
-    return data;
+    // response.ok === false and NOT valid JSON
+    if (response.status === 413) {
+      throw new Error('La imagen capturada excede el tamaño máximo. Por favor intenta tomar otra fotografía o reduce la resolución.');
+    }
+    if (response.status === 404) {
+      throw new Error('Servicio de IA no disponible temporalmente (Endpoint 404).');
+    }
+    if (response.status === 403) {
+      throw new Error('Acceso denegado a la organización o servicio de IA (HTTP 403).');
+    }
+    if (response.status === 401) {
+      throw new Error('Sesión no autenticada. Por favor recarga la página para iniciar sesión.');
+    }
+
+    throw new Error(`El servidor respondió HTTP ${response.status}, pero el cuerpo no contiene JSON válido. [ContentType: ${contentType}] [Preview: ${safePreview}]`);
   }
 }
 

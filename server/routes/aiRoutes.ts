@@ -651,7 +651,26 @@ Realiza un informe técnico riguroso de inspección visual en formato JSON estru
         },
       });
 
-      const parsedReport = JSON.parse(response.text || "{}");
+      const rawResponseText = response?.text;
+
+      if (!rawResponseText || typeof rawResponseText !== "string" || rawResponseText.trim().length === 0) {
+        throw new GeminiPublicError(500, "INVALID_AI_RESPONSE", "La IA no devolvió una respuesta de texto válida.");
+      }
+
+      let parsedReport: any;
+      try {
+        parsedReport = JSON.parse(rawResponseText.trim());
+      } catch (parseError) {
+        console.error("[InspectorIA Gemini JSON Parse Error] Failed to parse model response text:", {
+          textLength: rawResponseText.length,
+          preview: rawResponseText.slice(0, 150),
+        });
+        throw new GeminiPublicError(
+          500,
+          "INVALID_AI_RESPONSE",
+          "La IA devolvió una respuesta que no pudo ser procesada en formato JSON."
+        );
+      }
 
       // Post-validation against authorized topChunks
       const verifiedFindings = (parsedReport.findings || []).map((f: any) => {
@@ -703,7 +722,8 @@ Realiza un informe técnico riguroso de inspección visual en formato JSON estru
 
       const creditResult = req.creditContext?.commit(`Informe Inspector IA: ${companyName || "Obra"}`);
 
-      return res.json({
+      res.setHeader("Content-Type", "application/json; charset=utf-8");
+      return res.status(200).json({
         ...parsedReport,
         findings: verifiedFindings,
         appliedNorms: verifiedNorms,
@@ -715,6 +735,7 @@ Realiza un informe técnico riguroso de inspección visual en formato JSON estru
         code: publicError.code,
         status: publicError.status,
       });
+      res.setHeader("Content-Type", "application/json; charset=utf-8");
       return res.status(publicError.status).json({
         error: publicError.code,
         message: publicError.message,

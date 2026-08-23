@@ -34,6 +34,7 @@ import userRoutes from "../routes/userRoutes";
 import { getOrCreateUserProfile } from "../services/creditService";
 import { inspectionService } from "../../src/services/inspectionService";
 import { tenantApi } from "../../src/services/tenantApi";
+import { db } from "../../src/services/db";
 
 interface TestResult {
   name: string;
@@ -5551,6 +5552,211 @@ export async function runAllTenantAuthTests(): Promise<{ total: number; passed: 
     const hasAllKeys = requiredKeys.every((k) => k in testReportData);
     assert(hasAllKeys, "El payload de inspección satisface la regla hasAllKeys(['organizationId', 'createdBy', 'createdAt', 'updatedAt'])");
     assert(testReportData.organizationId === "org_alpha", "organizationId coincide con la ruta autoritativa del documento");
+  });
+
+  // ==================================================
+  // FASE 8 - PRUEBAS ESPECÍFICAS DE INSPECTOR IA & CALL AI API
+  // ==================================================
+
+  await runTest("FASE 8 - TEST 1: Gemini devuelve JSON válido -> HTTP 200 + JSON válido", async () => {
+    const originalFetch = global.fetch;
+    try {
+      const mockReport = {
+        title: "Informe de Inspección Sanitaria",
+        executiveSummary: "Resumen de prueba",
+        appliedNorms: ["Ley 19587"],
+        generalRecommendations: ["Instalar protecciones"],
+        findings: [
+          {
+            hazardCategory: "Eléctrico",
+            hazardTitle: "Cable expuesto",
+            riskLevel: "Alto",
+            description: "Desc",
+            suggestedAction: "Acción",
+            normativeCitation: { docTitle: "Ley 19587", hasLibraryBackup: true, verificationStatus: "verified" }
+          }
+        ],
+        actionPlan: [{ task: "Tarea 1", responsible: "Juan", deadline: "2026-09-01", riskLevel: "Alto" }],
+        creditsRemaining: 45
+      };
+
+      global.fetch = (async (url: string, init?: any) => {
+        return {
+          ok: true,
+          status: 200,
+          headers: new Headers({ "content-type": "application/json; charset=utf-8" }),
+          text: async () => JSON.stringify(mockReport),
+        } as any;
+      }) as any;
+
+      const res = await db.callAiApi<any>("/api/inspector-ai-analyze", { imageBase64: "dGVzdA==" });
+      assert(res.title === "Informe de Inspección Sanitaria", "Título procesado correctamente");
+      assert(Array.isArray(res.findings) && res.findings.length === 1, "Findings procesados correctamente");
+    } finally {
+      global.fetch = originalFetch;
+    }
+  });
+
+  await runTest("FASE 8 - TEST 2: Gemini devuelve texto no JSON -> HTTP != 200 + JSON de error controlado", async () => {
+    const originalFetch = global.fetch;
+    try {
+      global.fetch = (async (url: string, init?: any) => {
+        return {
+          ok: false,
+          status: 500,
+          headers: new Headers({ "content-type": "application/json; charset=utf-8" }),
+          text: async () => JSON.stringify({ error: "INVALID_AI_RESPONSE", message: "La IA devolvió una respuesta que no pudo ser procesada en formato JSON." }),
+        } as any;
+      }) as any;
+
+      try {
+        await db.callAiApi<any>("/api/inspector-ai-analyze", { imageBase64: "dGVzdA==" });
+        assert(false, "Debió haber lanzado un error");
+      } catch (err: any) {
+        assert(err.message.includes("La IA devolvió una respuesta"), "Error de IA capturado y seguro");
+      }
+    } finally {
+      global.fetch = originalFetch;
+    }
+  });
+
+  await runTest("FASE 8 - TEST 3: Backend responde HTTP 200 con Content-Type incorrecto pero body JSON válido", async () => {
+    const originalFetch = global.fetch;
+    try {
+      const mockData = { title: "Test Content Type Plain", findings: [] };
+      global.fetch = (async (url: string, init?: any) => {
+        return {
+          ok: true,
+          status: 200,
+          headers: new Headers({ "content-type": "text/plain" }),
+          text: async () => JSON.stringify(mockData),
+        } as any;
+      }) as any;
+
+      const res = await db.callAiApi<any>("/api/test-endpoint", {});
+      assert(res.title === "Test Content Type Plain", "Aceptó JSON válido pese a Content-Type incorrecto");
+    } finally {
+      global.fetch = originalFetch;
+    }
+  });
+
+  await runTest("FASE 8 - TEST 4: Backend responde HTTP 200 con HTML -> error diagnóstico claro", async () => {
+    const originalFetch = global.fetch;
+    try {
+      global.fetch = (async (url: string, init?: any) => {
+        return {
+          ok: true,
+          status: 200,
+          headers: new Headers({ "content-type": "text/html" }),
+          text: async () => "<html><body>Bad Gateway 502 Proxy Error</body></html>",
+        } as any;
+      }) as any;
+
+      try {
+        await db.callAiApi<any>("/api/test-endpoint", {});
+        assert(false, "Debió haber fallado con HTML");
+      } catch (err: any) {
+        assert(err.message.includes("El servidor respondió HTTP 200, pero el cuerpo no contiene JSON válido"), "Lanza error diagnóstico claro indicando no JSON");
+        assert(err.message.includes("text/html"), "Incluye ContentType en error diagnóstico");
+      }
+    } finally {
+      global.fetch = originalFetch;
+    }
+  });
+
+  await runTest("FASE 8 - TEST 5: Backend responde HTTP 200 con body vacío -> error controlado", async () => {
+    const originalFetch = global.fetch;
+    try {
+      global.fetch = (async (url: string, init?: any) => {
+        return {
+          ok: true,
+          status: 200,
+          headers: new Headers({ "content-type": "application/json" }),
+          text: async () => "   ",
+        } as any;
+      }) as any;
+
+      try {
+        await db.callAiApi<any>("/api/test-endpoint", {});
+        assert(false, "Debió haber fallado con body vacío");
+      } catch (err: any) {
+        assert(err.message.includes("cuerpo está vacío"), "Error controlado para cuerpo vacío");
+      }
+    } finally {
+      global.fetch = originalFetch;
+    }
+  });
+
+  await runTest("FASE 8 - TEST 6: Backend responde HTTP 500 JSON -> cliente conserva el mensaje seguro del servidor", async () => {
+    const originalFetch = global.fetch;
+    try {
+      global.fetch = (async (url: string, init?: any) => {
+        return {
+          ok: false,
+          status: 500,
+          headers: new Headers({ "content-type": "application/json" }),
+          text: async () => JSON.stringify({ error: "SERVICE_UNAVAILABLE", message: "El servicio de IA no está disponible temporalmente." }),
+        } as any;
+      }) as any;
+
+      try {
+        await db.callAiApi<any>("/api/test-endpoint", {});
+        assert(false, "Debió fallar con error 500");
+      } catch (err: any) {
+        assert(err.message === "El servicio de IA no está disponible temporalmente.", "Conserva mensaje seguro del servidor");
+      }
+    } finally {
+      global.fetch = originalFetch;
+    }
+  });
+
+  await runTest("FASE 8 - TEST 7: Respuesta JSON contiene findings completos", async () => {
+    const mockReport = {
+      title: "Informe Técnico Completo",
+      executiveSummary: "Resumen técnico",
+      appliedNorms: ["Dec. 351/79"],
+      generalRecommendations: ["Verificar cableado"],
+      findings: [
+        {
+          hazardCategory: "Eléctrico",
+          hazardTitle: "Tablero sin tapa",
+          riskLevel: "Crítico",
+          description: "Tablero expuesto con tensión",
+          suggestedAction: "Colocar tapa acrílica",
+          normativeCitation: {
+            docTitle: "Dec. 351/79 Cap. 14",
+            pageNumber: "12",
+            articleOrSection: "Art. 95",
+            quotedText: "Los tableros deberán estar cerrados...",
+            hasLibraryBackup: true,
+            verificationStatus: "verified"
+          }
+        }
+      ],
+      actionPlan: [
+        { task: "Instalar tapa", responsible: "Jefe Mant.", deadline: "Inmediato", riskLevel: "Crítico" }
+      ],
+      creditsRemaining: 20
+    };
+
+    assert(mockReport.findings.length === 1, "Findings presentes");
+    assert(mockReport.findings[0].hazardCategory === "Eléctrico", "Categoría intacta");
+    assert(mockReport.findings[0].normativeCitation.verificationStatus === "verified", "status verified intacto");
+  });
+
+  await runTest("FASE 8 - TEST 8: Respuesta contiene normativeCitation conservado intacto", async () => {
+    const citation = {
+      docTitle: "Norma IRAM 3800",
+      pageNumber: "45",
+      articleOrSection: "Sección 4.3",
+      quotedText: "La organización debe establecer...",
+      hasLibraryBackup: true,
+      verificationStatus: "verified"
+    };
+
+    assert(citation.docTitle === "Norma IRAM 3800", "docTitle conservado");
+    assert(citation.hasLibraryBackup === true, "hasLibraryBackup conservado");
+    assert(citation.verificationStatus === "verified", "verificationStatus conservado");
   });
 
   const passed = testResults.filter((r) => r.passed).length;

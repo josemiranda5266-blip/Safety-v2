@@ -105,18 +105,7 @@ export class LocalSafetyDB {
         (error) => handleFirestoreError(error, OperationType.LIST, 'checklists')
       );
 
-      // Realtime listener for Inspector Reports
-      onSnapshot(
-        query(collection(dbFirestore, 'inspectionReports'), where('userId', '==', user.uid)),
-        (snapshot) => {
-          if (!snapshot.empty) {
-            const cloudReports: InspectionReport[] = [];
-            snapshot.forEach((d) => cloudReports.push(d.data() as InspectionReport));
-            localStorage.setItem(STORAGE_KEYS.INSPECTOR_REPORTS, JSON.stringify(cloudReports));
-          }
-        },
-        (error) => handleFirestoreError(error, OperationType.LIST, 'inspectionReports')
-      );
+      // Legacy Realtime listener for Inspector Reports disabled - multi-tenant inspections are handled via inspectionService
     } catch (e) {
       console.warn('[CloudSync] Firestore initialization note:', e);
     }

@@ -489,16 +489,17 @@ export const InspectorIAScreen: React.FC = () => {
   };
 
   // Handle Finding Resolution Status Update
-  const handleUpdateFinding = () => {
+  const handleUpdateFinding = async () => {
     if (!modalFinding) return;
-    db.updateFindingStatus(
+    await inspectionService.updateFindingStatus(
       modalFinding.reportId,
       modalFinding.finding.id,
       'Corregido',
+      activeOrgId || undefined,
       closingNotes,
       verificationPhoto || undefined
     );
-    loadData();
+    await loadData();
     setModalFinding(null);
     setClosingNotes('');
     setVerificationPhoto(null);

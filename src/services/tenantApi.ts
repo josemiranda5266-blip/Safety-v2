@@ -6,8 +6,10 @@ class TenantApiService {
   private activeCompanyId: string | null = null;
 
   constructor() {
-    this.activeOrgId = localStorage.getItem('safetyia_active_org_id');
-    this.activeCompanyId = localStorage.getItem('safetyia_active_company_id');
+    if (typeof localStorage !== 'undefined') {
+      this.activeOrgId = localStorage.getItem('safetyia_active_org_id');
+      this.activeCompanyId = localStorage.getItem('safetyia_active_company_id');
+    }
   }
 
   public getActiveOrgId(): string | null {
@@ -16,10 +18,12 @@ class TenantApiService {
 
   public setActiveOrgId(orgId: string | null): void {
     this.activeOrgId = orgId;
-    if (orgId) {
-      localStorage.setItem('safetyia_active_org_id', orgId);
-    } else {
-      localStorage.removeItem('safetyia_active_org_id');
+    if (typeof localStorage !== 'undefined') {
+      if (orgId) {
+        localStorage.setItem('safetyia_active_org_id', orgId);
+      } else {
+        localStorage.removeItem('safetyia_active_org_id');
+      }
     }
   }
 
@@ -29,10 +33,12 @@ class TenantApiService {
 
   public setActiveCompanyId(companyId: string | null): void {
     this.activeCompanyId = companyId;
-    if (companyId) {
-      localStorage.setItem('safetyia_active_company_id', companyId);
-    } else {
-      localStorage.removeItem('safetyia_active_company_id');
+    if (typeof localStorage !== 'undefined') {
+      if (companyId) {
+        localStorage.setItem('safetyia_active_company_id', companyId);
+      } else {
+        localStorage.removeItem('safetyia_active_company_id');
+      }
     }
   }
 

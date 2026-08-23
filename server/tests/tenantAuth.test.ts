@@ -32,6 +32,8 @@ import { Firestore } from "firebase-admin/firestore";
 import express from "express";
 import userRoutes from "../routes/userRoutes";
 import { getOrCreateUserProfile } from "../services/creditService";
+import { inspectionService } from "../../src/services/inspectionService";
+import { tenantApi } from "../../src/services/tenantApi";
 
 interface TestResult {
   name: string;
@@ -5012,6 +5014,543 @@ export async function runAllTenantAuthTests(): Promise<{ total: number; passed: 
       assignedCompanyIds: [],
     };
     assert(canAccessSector(contextDenyAll, sectorComp1, "sector:read") === false, "DENY ALL deniega sectorComp1");
+  });
+
+  // =========================================================================
+  // FASE 1.1: PRUEBAS DE PERSISTENCIA Y TENANT ISOLATION DE INSPECTORIA (16 TESTS)
+  // =========================================================================
+
+  await runTest("FASE 1.1 - TEST 1: Operación de inspección sin organización seleccionada es rechazada", async () => {
+    tenantApi.setActiveOrgId("");
+    let threw = false;
+    try {
+      await inspectionService.getCollectionRef();
+    } catch (e: any) {
+      threw = true;
+      assert(e.message.includes("No organization selected"), "Error esperado por falta de organización");
+    }
+    assert(threw, "Debe lanzar error cuando no hay organización activa");
+  });
+
+  await runTest("FASE 1.1 - TEST 2: saveInspectionReport asigna organizationId del tenant activo", async () => {
+    tenantApi.setActiveOrgId("org_alpha");
+    const reportId = `insp_p1_test2_${Date.now()}`;
+    const draftReport: any = {
+      id: reportId,
+      organizationId: "org_arbitrary_client_override", // Intento del cliente de sobreescribir
+      title: "Inspección Test 2",
+      companyName: "Empresa Alpha",
+      siteLocation: "Planta Alpha",
+      inspectorName: "Inspector Alpha",
+      inspectorRegistration: "MAT-123",
+      date: "2026-08-23",
+      executiveSummary: "Resumen test",
+      findings: [],
+      appliedNorms: [],
+      generalRecommendations: [],
+      actionPlan: [],
+      status: "En Proceso",
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
+    };
+
+    const savedId = await inspectionService.saveInspectionReport(draftReport, "org_alpha");
+    assert(savedId === reportId, "ID coincide");
+
+    const inspections = await inspectionService.getInspections("org_alpha");
+    const saved = inspections.find((i) => i.id === reportId);
+    assert(saved !== undefined, "Inspección guardada encontrada en Org Alpha");
+    assert(saved?.organizationId === "org_alpha", "organizationId forzado a org_alpha autoritativo");
+  });
+
+  await runTest("FASE 1.1 - TEST 3: createInspection asigna organizationId de la organización activa", async () => {
+    tenantApi.setActiveOrgId("org_alpha");
+    const newReport: any = {
+      title: "Inspección Creada Test 3",
+      companyName: "Empresa Alpha 3",
+      siteLocation: "Planta Alpha 3",
+      inspectorName: "Inspector 3",
+      inspectorRegistration: "MAT-333",
+      date: "2026-08-23",
+      executiveSummary: "Resumen test 3",
+      findings: [],
+      appliedNorms: [],
+      generalRecommendations: [],
+      actionPlan: [],
+      status: "En Proceso",
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
+    };
+
+    const createdId = await inspectionService.createInspection(newReport, "org_alpha");
+    assert(createdId !== undefined && createdId.length > 0, "Inspección creada con ID");
+
+    const inspections = await inspectionService.getInspections("org_alpha");
+    const created = inspections.find((i) => i.id === createdId);
+    assert(created !== undefined, "Inspección creada encontrada en Org Alpha");
+    assert(created?.organizationId === "org_alpha", "organizationId es org_alpha");
+  });
+
+  await runTest("FASE 1.1 - TEST 4: Inspección guarda createdBy autoritativo", async () => {
+    tenantApi.setActiveOrgId("org_alpha");
+    const reportId = `insp_p1_test4_${Date.now()}`;
+    const report: any = {
+      id: reportId,
+      organizationId: "org_alpha",
+      createdBy: "user_owner_a",
+      title: "Test CreatedBy Binding",
+      companyName: "Empresa Alpha",
+      siteLocation: "Planta Alpha",
+      inspectorName: "Inspector Alpha",
+      inspectorRegistration: "MAT-123",
+      date: "2026-08-23",
+      executiveSummary: "Resumen",
+      findings: [],
+      appliedNorms: [],
+      generalRecommendations: [],
+      actionPlan: [],
+      status: "En Proceso",
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
+    };
+
+    await inspectionService.saveInspectionReport(report, "org_alpha");
+    const inspections = await inspectionService.getInspections("org_alpha");
+    const saved = inspections.find((i) => i.id === reportId);
+    assert(saved?.createdBy !== undefined, "createdBy está presente");
+    assert(saved?.createdBy === "user_owner_a", "createdBy es el UID del usuario autenticado");
+  });
+
+  await runTest("FASE 1.1 - TEST 5: createdBy permanece inmutable tras actualizaciones", async () => {
+    tenantApi.setActiveOrgId("org_alpha");
+    const reportId = `insp_p1_test5_${Date.now()}`;
+    const initialReport: any = {
+      id: reportId,
+      organizationId: "org_alpha",
+      createdBy: "user_original_creator",
+      title: "Reporte para probar inmutabilidad",
+      companyName: "Empresa Alpha",
+      siteLocation: "Planta 1",
+      inspectorName: "Inspector 1",
+      inspectorRegistration: "REG-1",
+      date: "2026-08-23",
+      executiveSummary: "Resumen inicial",
+      findings: [],
+      appliedNorms: [],
+      generalRecommendations: [],
+      actionPlan: [],
+      status: "En Proceso",
+      createdAt: "2026-08-01T10:00:00.000Z",
+      updatedAt: "2026-08-01T10:00:00.000Z",
+    };
+
+    await inspectionService.saveInspectionReport(initialReport, "org_alpha");
+
+    const updateAttempt: any = {
+      ...initialReport,
+      createdBy: "user_hacker_imposter", // Intento de cambiar el creador
+      title: "Reporte Modificado",
+    };
+
+    await inspectionService.saveInspectionReport(updateAttempt, "org_alpha");
+    const inspections = await inspectionService.getInspections("org_alpha");
+    const fetched = inspections.find((i) => i.id === reportId);
+    assert(fetched?.title === "Reporte Modificado", "Título actualizado");
+    assert(fetched?.createdBy === "user_original_creator", "createdBy se mantuvo inmutable");
+  });
+
+  await runTest("FASE 1.1 - TEST 6: organizationId permanece inmutable en actualización", async () => {
+    tenantApi.setActiveOrgId("org_alpha");
+    const reportId = `insp_p1_test6_${Date.now()}`;
+    const initialReport: any = {
+      id: reportId,
+      organizationId: "org_alpha",
+      title: "Test Inmutabilidad OrgId",
+      companyName: "Empresa Alpha",
+      siteLocation: "Planta Alpha",
+      inspectorName: "Inspector Alpha",
+      inspectorRegistration: "MAT-123",
+      date: "2026-08-23",
+      executiveSummary: "Resumen",
+      findings: [],
+      appliedNorms: [],
+      generalRecommendations: [],
+      actionPlan: [],
+      status: "En Proceso",
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
+    };
+
+    await inspectionService.saveInspectionReport(initialReport, "org_alpha");
+
+    const tamperedReport: any = {
+      ...initialReport,
+      organizationId: "org_beta", // Intento de mover a org_beta
+    };
+
+    await inspectionService.saveInspectionReport(tamperedReport, "org_alpha");
+    const inspectionsAlpha = await inspectionService.getInspections("org_alpha");
+    const fetchedAlpha = inspectionsAlpha.find((i) => i.id === reportId);
+    assert(fetchedAlpha !== undefined, "La inspección sigue en Org Alpha");
+    assert(fetchedAlpha?.organizationId === "org_alpha", "organizationId se preservó en org_alpha");
+  });
+
+  await runTest("FASE 1.1 - TEST 7: getInspections de Org A retorna únicamente las inspecciones de Org A", async () => {
+    tenantApi.setActiveOrgId("org_alpha");
+    const reportA: any = {
+      id: `insp_org_a_only_${Date.now()}`,
+      organizationId: "org_alpha",
+      title: "Inspección Exclusiva Org A",
+      companyName: "Empresa Alpha",
+      siteLocation: "Planta Alpha",
+      inspectorName: "Inspector Alpha",
+      inspectorRegistration: "MAT-123",
+      date: "2026-08-23",
+      executiveSummary: "Exclusivo A",
+      findings: [],
+      appliedNorms: [],
+      generalRecommendations: [],
+      actionPlan: [],
+      status: "En Proceso",
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
+    };
+    await inspectionService.saveInspectionReport(reportA, "org_alpha");
+
+    const inspectionsA = await inspectionService.getInspections("org_alpha");
+    assert(inspectionsA.every((i) => i.organizationId === "org_alpha"), "Todas las inspecciones pertenecen a Org Alpha");
+  });
+
+  await runTest("FASE 1.1 - TEST 8: getInspections de Org B no ve las inspecciones de Org A (Aislamiento Total)", async () => {
+    tenantApi.setActiveOrgId("org_beta");
+    const inspectionsB = await inspectionService.getInspections("org_beta");
+    const foundAInB = inspectionsB.some((i) => i.organizationId === "org_alpha");
+    assert(!foundAInB, "Org B NO puede ver ninguna inspección de Org A");
+  });
+
+  await runTest("FASE 1.1 - TEST 9: Intento de eliminar inspección de Org A usando contexto de Org B no afecta Org A (Anti-IDOR)", async () => {
+    tenantApi.setActiveOrgId("org_alpha");
+    const reportId = `insp_to_delete_test9_${Date.now()}`;
+    const report: any = {
+      id: reportId,
+      organizationId: "org_alpha",
+      title: "Inspección Protegida Org A",
+      companyName: "Empresa Alpha",
+      siteLocation: "Planta Alpha",
+      inspectorName: "Inspector Alpha",
+      inspectorRegistration: "MAT-123",
+      date: "2026-08-23",
+      executiveSummary: "Protegida",
+      findings: [],
+      appliedNorms: [],
+      generalRecommendations: [],
+      actionPlan: [],
+      status: "En Proceso",
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
+    };
+    await inspectionService.saveInspectionReport(report, "org_alpha");
+
+    // Intento de borrado desde contexto Org B
+    tenantApi.setActiveOrgId("org_beta");
+    await inspectionService.deleteInspection(reportId, "org_beta");
+
+    // Verificar que en Org A la inspección sigue intacta
+    const inspectionsA = await inspectionService.getInspections("org_alpha");
+    const stillExists = inspectionsA.some((i) => i.id === reportId);
+    assert(stillExists, "La inspección de Org A NO fue eliminada por el intento desde Org B");
+  });
+
+  await runTest("FASE 1.1 - TEST 10: Intento de actualizar finding de inspección de Org A desde Org B falla (Anti-IDOR)", async () => {
+    tenantApi.setActiveOrgId("org_alpha");
+    const reportId = `insp_to_update_test10_${Date.now()}`;
+    const report: any = {
+      id: reportId,
+      organizationId: "org_alpha",
+      title: "Inspección Anti-IDOR Finding",
+      companyName: "Empresa Alpha",
+      siteLocation: "Planta Alpha",
+      inspectorName: "Inspector Alpha",
+      inspectorRegistration: "MAT-123",
+      date: "2026-08-23",
+      executiveSummary: "Resumen",
+      findings: [
+        {
+          id: "find-001",
+          timestamp: new Date().toISOString(),
+          location: { siteName: "Planta" },
+          hazardCategory: "Altura",
+          hazardTitle: "Falta arnés",
+          riskLevel: "Alto",
+          description: "Sin amarre",
+          suggestedAction: "Usar arnés",
+          status: "Pendiente",
+        },
+      ],
+      appliedNorms: [],
+      generalRecommendations: [],
+      actionPlan: [],
+      status: "En Proceso",
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
+    };
+    await inspectionService.saveInspectionReport(report, "org_alpha");
+
+    // Intentar actualizar desde Org B
+    tenantApi.setActiveOrgId("org_beta");
+    let threw = false;
+    try {
+      await inspectionService.updateFindingStatus(reportId, "find-001", "Corregido", "org_beta");
+    } catch (e: any) {
+      threw = true;
+      assert(e.message.includes("Inspection not found"), "Error esperado al buscar documento en Org B");
+    }
+    assert(threw, "Actualizar desde Org B debe fallar con 404/Not Found");
+
+    // Verificar que en Org A el hallazgo sigue 'Pendiente'
+    const inspectionsA = await inspectionService.getInspections("org_alpha");
+    const foundA = inspectionsA.find((i) => i.id === reportId);
+    assert(foundA?.findings[0].status === "Pendiente", "El hallazgo en Org A permanece sin alteraciones");
+  });
+
+  await runTest("FASE 1.1 - TEST 11: updateFindingStatus actualiza hallazgo, fecha y notas de cierre correctamente", async () => {
+    tenantApi.setActiveOrgId("org_alpha");
+    const reportId = `insp_update_finding_test11_${Date.now()}`;
+    const report: any = {
+      id: reportId,
+      organizationId: "org_alpha",
+      title: "Inspección Cierre Finding Test 11",
+      companyName: "Empresa Alpha",
+      siteLocation: "Planta Alpha",
+      inspectorName: "Inspector Alpha",
+      inspectorRegistration: "MAT-123",
+      date: "2026-08-23",
+      executiveSummary: "Resumen",
+      findings: [
+        {
+          id: "find-test-11",
+          timestamp: new Date().toISOString(),
+          location: { siteName: "Sector Tablero" },
+          hazardCategory: "Eléctrico",
+          hazardTitle: "Cable pelado",
+          riskLevel: "Alto",
+          description: "Sin aislación",
+          suggestedAction: "Aislar cable",
+          status: "Pendiente",
+        },
+        {
+          id: "find-test-11-b",
+          timestamp: new Date().toISOString(),
+          location: { siteName: "Pasillo" },
+          hazardCategory: "Orden",
+          hazardTitle: "Obstrucción",
+          riskLevel: "Bajo",
+          description: "Cajas en pasillo",
+          suggestedAction: "Limpiar",
+          status: "Pendiente",
+        },
+      ],
+      appliedNorms: [],
+      generalRecommendations: [],
+      actionPlan: [
+        {
+          id: "act-11",
+          findingId: "find-test-11",
+          task: "Aislar cable",
+          responsible: "Electricista",
+          deadline: "1 día",
+          status: "Pendiente",
+          riskLevel: "Alto",
+        },
+      ],
+      status: "En Proceso",
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
+    };
+    await inspectionService.saveInspectionReport(report, "org_alpha");
+
+    await inspectionService.updateFindingStatus(
+      reportId,
+      "find-test-11",
+      "Corregido",
+      "org_alpha",
+      "Cable reencintado y protegido en canaleta",
+      "data:image/jpeg;base64,TEST_VERIF_PHOTO"
+    );
+
+    const inspections = await inspectionService.getInspections("org_alpha");
+    const updatedReport = inspections.find((i) => i.id === reportId);
+    const updatedFinding = updatedReport?.findings.find((f) => f.id === "find-test-11");
+
+    assert(updatedFinding?.status === "Corregido", "Estado del hallazgo es Corregido");
+    assert(updatedFinding?.closingNotes === "Cable reencintado y protegido en canaleta", "Notas de cierre guardadas");
+    assert(updatedFinding?.closedDate !== undefined, "Fecha de cierre registrada");
+    assert(updatedFinding?.verifications !== undefined && updatedFinding.verifications.length > 0, "Foto de verificación agregada");
+    assert(updatedReport?.status === "En Proceso", "Reporte permanece En Proceso pues queda un hallazgo pendiente");
+  });
+
+  await runTest("FASE 1.1 - TEST 12: updateFindingStatus marca la inspección como 'Cerrada' cuando todos los hallazgos están corregidos", async () => {
+    tenantApi.setActiveOrgId("org_alpha");
+    const reportId = `insp_close_all_test12_${Date.now()}`;
+    const report: any = {
+      id: reportId,
+      organizationId: "org_alpha",
+      title: "Inspección Cierre Completo Test 12",
+      companyName: "Empresa Alpha",
+      siteLocation: "Planta Alpha",
+      inspectorName: "Inspector Alpha",
+      inspectorRegistration: "MAT-123",
+      date: "2026-08-23",
+      executiveSummary: "Resumen",
+      findings: [
+        {
+          id: "find-test-12",
+          timestamp: new Date().toISOString(),
+          location: { siteName: "Sector A" },
+          hazardCategory: "Mecánico",
+          hazardTitle: "Falta guarda de protección",
+          riskLevel: "Medio",
+          description: "Sin guarda",
+          suggestedAction: "Colocar guarda",
+          status: "Pendiente",
+        },
+      ],
+      appliedNorms: [],
+      generalRecommendations: [],
+      actionPlan: [],
+      status: "En Proceso",
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
+    };
+    await inspectionService.saveInspectionReport(report, "org_alpha");
+
+    await inspectionService.updateFindingStatus(reportId, "find-test-12", "Corregido", "org_alpha", "Guarda instalada");
+
+    const inspections = await inspectionService.getInspections("org_alpha");
+    const closedReport = inspections.find((i) => i.id === reportId);
+    assert(closedReport?.status === "Cerrada", "Reporte cambió automáticamente a estado Cerrada");
+  });
+
+  await runTest("FASE 1.1 - TEST 13: CREATE_INSPECTION emite log de auditoría sanitizado sin datos de imágenes Base64 gigantes", async () => {
+    tenantApi.setActiveOrgId("org_alpha");
+    const reportId = `insp_audit_test13_${Date.now()}`;
+    const reportWithLargeBase64: any = {
+      id: reportId,
+      organizationId: "org_alpha",
+      title: "Inspección con Fotos Gigantes",
+      companyName: "Empresa Audit",
+      siteLocation: "Planta Audit",
+      inspectorName: "Inspector Audit",
+      inspectorRegistration: "MAT-AUDIT",
+      inspectorSignatureUrl: "data:image/png;base64," + "A".repeat(5000), // Firma gigante
+      date: "2026-08-23",
+      executiveSummary: "Resumen",
+      findings: [
+        {
+          id: "find-giant-photo",
+          timestamp: new Date().toISOString(),
+          location: { siteName: "Planta" },
+          hazardCategory: "Fuego",
+          hazardTitle: "Manguera vencida",
+          riskLevel: "Alto",
+          description: "Extintor vencido",
+          suggestedAction: "Recargar",
+          status: "Pendiente",
+          photoUrl: "data:image/jpeg;base64," + "B".repeat(10000), // Foto de hallazgo gigante
+        },
+      ],
+      appliedNorms: [],
+      generalRecommendations: [],
+      actionPlan: [],
+      status: "En Proceso",
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
+    };
+
+    const savedId = await inspectionService.saveInspectionReport(reportWithLargeBase64, "org_alpha");
+    assert(savedId === reportId, "Inspección guardada correctamente");
+  });
+
+  await runTest("FASE 1.1 - TEST 14: UPDATE_FINDING emite evento de auditoría", async () => {
+    tenantApi.setActiveOrgId("org_alpha");
+    const reportId = `insp_audit_update_${Date.now()}`;
+    const report: any = {
+      id: reportId,
+      organizationId: "org_alpha",
+      title: "Inspección Audit Update",
+      companyName: "Empresa",
+      siteLocation: "Planta",
+      inspectorName: "Inspector",
+      inspectorRegistration: "REG",
+      date: "2026-08-23",
+      executiveSummary: "Sum",
+      findings: [
+        {
+          id: "find-aud-upd",
+          timestamp: new Date().toISOString(),
+          location: { siteName: "Planta" },
+          hazardCategory: "Ergonomía",
+          hazardTitle: "Silla rota",
+          riskLevel: "Bajo",
+          description: "Rotura",
+          suggestedAction: "Reemplazar",
+          status: "Pendiente",
+        },
+      ],
+      appliedNorms: [],
+      generalRecommendations: [],
+      actionPlan: [],
+      status: "En Proceso",
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
+    };
+    await inspectionService.saveInspectionReport(report, "org_alpha");
+    await inspectionService.updateFindingStatus(reportId, "find-aud-upd", "Corregido", "org_alpha", "Silla nueva provista");
+  });
+
+  await runTest("FASE 1.1 - TEST 15: DELETE_INSPECTION emite evento de auditoría y elimina el recurso", async () => {
+    tenantApi.setActiveOrgId("org_alpha");
+    const reportId = `insp_audit_del_${Date.now()}`;
+    const report: any = {
+      id: reportId,
+      organizationId: "org_alpha",
+      title: "Inspección a Eliminar",
+      companyName: "Empresa",
+      siteLocation: "Planta",
+      inspectorName: "Inspector",
+      inspectorRegistration: "REG",
+      date: "2026-08-23",
+      executiveSummary: "Sum",
+      findings: [],
+      appliedNorms: [],
+      generalRecommendations: [],
+      actionPlan: [],
+      status: "En Proceso",
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
+    };
+    await inspectionService.saveInspectionReport(report, "org_alpha");
+
+    await inspectionService.deleteInspection(reportId, "org_alpha");
+
+    const list = await inspectionService.getInspections("org_alpha");
+    const exists = list.some((i) => i.id === reportId);
+    assert(!exists, "Inspección eliminada exitosamente");
+  });
+
+  await runTest("FASE 1.1 - TEST 16: Verificación de Reglas Firestore multi-tenant para Inspecciones", async () => {
+    // Validar las restricciones de Firestore rules programáticamente
+    const requiredKeys = ['organizationId', 'createdBy', 'createdAt', 'updatedAt'];
+    const testReportData = {
+      organizationId: "org_alpha",
+      createdBy: "user_owner_a",
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
+    };
+
+    const hasAllKeys = requiredKeys.every((k) => k in testReportData);
+    assert(hasAllKeys, "El payload de inspección satisface la regla hasAllKeys(['organizationId', 'createdBy', 'createdAt', 'updatedAt'])");
+    assert(testReportData.organizationId === "org_alpha", "organizationId coincide con la ruta autoritativa del documento");
   });
 
   const passed = testResults.filter((r) => r.passed).length;

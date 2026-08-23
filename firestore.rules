@@ -92,11 +92,10 @@ service cloud.firestore {
       allow update: if isExistingOwner() && request.resource.data.userId == request.auth.uid;
     }
 
-    // Inspection Reports
+    // Inspection Reports (Legacy collection - locked against client writes)
     match /inspectionReports/{reportId} {
-      allow read, delete: if isExistingOwner() || isAdmin();
-      allow create: if isSignedIn() && request.resource.data.userId == request.auth.uid;
-      allow update: if isExistingOwner() && request.resource.data.userId == request.auth.uid;
+      allow read: if isExistingOwner() || isAdmin();
+      allow write: if false;
     }
 
     // RAG Logs
@@ -124,14 +123,29 @@ service cloud.firestore {
 
       // Multi-tenant Inspections
       match /inspections/{inspectionId} {
-        allow read, delete: if isSignedIn() && (
+        allow read: if isSignedIn() && (
           exists(/databases/$(database)/documents/memberships/$(orgId + '_' + request.auth.uid)) ||
           isAdmin()
         );
-        allow create, update: if isSignedIn() && (
+        allow create: if isSignedIn() && (
           exists(/databases/$(database)/documents/memberships/$(orgId + '_' + request.auth.uid)) ||
           isAdmin()
-        );
+        ) && request.resource.data.organizationId == orgId
+          && request.resource.data.createdBy == request.auth.uid
+          && request.resource.data.keys().hasAll(['organizationId', 'createdBy', 'createdAt', 'updatedAt']);
+
+        allow update: if isSignedIn() && (
+          exists(/databases/$(database)/documents/memberships/$(orgId + '_' + request.auth.uid)) ||
+          isAdmin()
+        ) && resource.data.organizationId == orgId
+          && request.resource.data.organizationId == orgId
+          && request.resource.data.organizationId == resource.data.organizationId
+          && request.resource.data.createdBy == resource.data.createdBy;
+
+        allow delete: if isSignedIn() && (
+          exists(/databases/$(database)/documents/memberships/$(orgId + '_' + request.auth.uid)) ||
+          isAdmin()
+        ) && resource.data.organizationId == orgId;
       }
     }
 

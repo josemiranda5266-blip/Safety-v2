@@ -1350,92 +1350,188 @@ export async function runAllTenantAuthTests(): Promise<{ total: number; passed: 
 
   // TEST 61: End-to-End Context Resolution con FirestoreAuthorizationRepository
   await runTest("TEST 61: End-to-End Context Resolution con FirestoreAuthorizationRepository", async () => {
-    const e2eFirestore = createMockFirestore();
-    const e2eAuthRepo = new FirestoreAuthorizationRepository(e2eFirestore);
+    const prevRepo = getAuthorizationRepository();
+    try {
+      const e2eFirestore = createMockFirestore();
+      const e2eAuthRepo = new FirestoreAuthorizationRepository(e2eFirestore);
 
-    // Save Org and Membership in Firestore
-    await e2eAuthRepo.organizations.save({
-      id: "fs_e2e_org",
-      name: "Seguridad Industrial E2E",
-      ownerUid: "fs_e2e_owner",
-      plan: "pro_plus",
-      planStatus: "active",
-      contactEmail: "admin@e2e.com",
-      createdAt: now,
-    });
+      // Save Org and Membership in Firestore
+      await e2eAuthRepo.organizations.save({
+        id: "fs_e2e_org",
+        name: "Seguridad Industrial E2E",
+        ownerUid: "fs_e2e_owner",
+        plan: "pro_plus",
+        planStatus: "active",
+        contactEmail: "admin@e2e.com",
+        createdAt: now,
+      });
 
-    await e2eAuthRepo.memberships.save({
-      id: "fs_e2e_mem",
-      orgId: "fs_e2e_org",
-      userId: "fs_e2e_user",
-      userEmail: "user@e2e.com",
-      role: "admin",
-      assignedCompanyIds: ["comp_e2e_1"],
-      active: true,
-      invitedAt: now,
-    });
+      await e2eAuthRepo.memberships.save({
+        id: "fs_e2e_mem",
+        orgId: "fs_e2e_org",
+        userId: "fs_e2e_user",
+        userEmail: "user@e2e.com",
+        role: "admin",
+        assignedCompanyIds: ["comp_e2e_1"],
+        active: true,
+        invitedAt: now,
+      });
 
-    // Swap active repository to Firestore instance
-    setAuthorizationRepository(e2eAuthRepo);
+      // Swap active repository to Firestore instance
+      setAuthorizationRepository(e2eAuthRepo);
 
-    const resolvedContext = await resolveAuthorizationContext("fs_e2e_user", "user@e2e.com", "fs_e2e_org");
-    assert(resolvedContext !== null, "Contexto resuelto exitosamente desde Firestore");
-    assert(resolvedContext?.orgId === "fs_e2e_org", "orgId coincide con Firestore");
-    assert(resolvedContext?.membershipRole === "admin", "membershipRole coincide con Firestore");
-    assert(resolvedContext?.assignedCompanyIds?.[0] === "comp_e2e_1", "assignedCompanyIds coincide con Firestore");
+      const resolvedContext = await resolveAuthorizationContext("fs_e2e_user", "user@e2e.com", "fs_e2e_org");
+      assert(resolvedContext !== null, "Contexto resuelto exitosamente desde Firestore");
+      assert(resolvedContext?.orgId === "fs_e2e_org", "orgId coincide con Firestore");
+      assert(resolvedContext?.membershipRole === "admin", "membershipRole coincide con Firestore");
+      assert(resolvedContext?.assignedCompanyIds?.[0] === "comp_e2e_1", "assignedCompanyIds coincide con Firestore");
+    } finally {
+      setAuthorizationRepository(prevRepo);
+    }
   });
 
   // TEST 62: End-to-End Context Resolution con Firestore — Usuario en Org B denegado (403)
   await runTest("TEST 62: End-to-End Context Resolution con Firestore — Usuario en Org B denegado (403)", async () => {
-    const resolvedContext = await resolveAuthorizationContext("fs_e2e_user", "user@e2e.com", "org_other_unauthorized");
-    assert(resolvedContext === null, "Acceso a organización ajena denegado (403)");
+    const prevRepo = getAuthorizationRepository();
+    try {
+      const e2eFirestore = createMockFirestore();
+      const e2eAuthRepo = new FirestoreAuthorizationRepository(e2eFirestore);
+
+      await e2eAuthRepo.organizations.save({
+        id: "fs_e2e_org",
+        name: "Seguridad Industrial E2E",
+        ownerUid: "fs_e2e_owner",
+        plan: "pro_plus",
+        planStatus: "active",
+        contactEmail: "admin@e2e.com",
+        createdAt: now,
+      });
+
+      await e2eAuthRepo.memberships.save({
+        id: "fs_e2e_mem",
+        orgId: "fs_e2e_org",
+        userId: "fs_e2e_user",
+        userEmail: "user@e2e.com",
+        role: "admin",
+        assignedCompanyIds: ["comp_e2e_1"],
+        active: true,
+        invitedAt: now,
+      });
+
+      setAuthorizationRepository(e2eAuthRepo);
+
+      const resolvedContext = await resolveAuthorizationContext("fs_e2e_user", "user@e2e.com", "org_other_unauthorized");
+      assert(resolvedContext === null, "Acceso a organización ajena denegado (403)");
+    } finally {
+      setAuthorizationRepository(prevRepo);
+    }
   });
 
   // TEST 63: End-to-End Context Resolution con Firestore — Membresía inactiva denegada (403)
   await runTest("TEST 63: End-to-End Context Resolution con Firestore — Membresía inactiva denegada (403)", async () => {
-    const currentRepo = getAuthorizationRepository();
-    await currentRepo.memberships.save({
-      id: "fs_e2e_inactive_mem",
-      orgId: "fs_e2e_org",
-      userId: "fs_e2e_inactive_user",
-      userEmail: "inactive@e2e.com",
-      role: "member",
-      active: false,
-      invitedAt: now,
-    });
+    const prevRepo = getAuthorizationRepository();
+    try {
+      const e2eFirestore = createMockFirestore();
+      const e2eAuthRepo = new FirestoreAuthorizationRepository(e2eFirestore);
 
-    const context = await resolveAuthorizationContext("fs_e2e_inactive_user", "inactive@e2e.com", "fs_e2e_org");
-    assert(context === null, "Membresía inactiva en Firestore devuelve null (403)");
+      await e2eAuthRepo.organizations.save({
+        id: "fs_e2e_org",
+        name: "Seguridad Industrial E2E",
+        ownerUid: "fs_e2e_owner",
+        plan: "pro_plus",
+        planStatus: "active",
+        contactEmail: "admin@e2e.com",
+        createdAt: now,
+      });
+
+      await e2eAuthRepo.memberships.save({
+        id: "fs_e2e_inactive_mem",
+        orgId: "fs_e2e_org",
+        userId: "fs_e2e_inactive_user",
+        userEmail: "inactive@e2e.com",
+        role: "member",
+        active: false,
+        invitedAt: now,
+      });
+
+      setAuthorizationRepository(e2eAuthRepo);
+
+      const context = await resolveAuthorizationContext("fs_e2e_inactive_user", "inactive@e2e.com", "fs_e2e_org");
+      assert(context === null, "Membresía inactiva en Firestore devuelve null (403)");
+    } finally {
+      setAuthorizationRepository(prevRepo);
+    }
   });
 
   // TEST 64: End-to-End Context Resolution con Firestore — Organización inexistente denegada (403)
   await runTest("TEST 64: End-to-End Context Resolution con Firestore — Organización inexistente denegada (403)", async () => {
-    const context = await resolveAuthorizationContext("fs_e2e_user", "user@e2e.com", "non_existent_org_id_123");
-    assert(context === null, "Organización inexistente devuelve null (403)");
+    const prevRepo = getAuthorizationRepository();
+    try {
+      const e2eFirestore = createMockFirestore();
+      const e2eAuthRepo = new FirestoreAuthorizationRepository(e2eFirestore);
+
+      await e2eAuthRepo.organizations.save({
+        id: "fs_e2e_org",
+        name: "Seguridad Industrial E2E",
+        ownerUid: "fs_e2e_owner",
+        plan: "pro_plus",
+        planStatus: "active",
+        contactEmail: "admin@e2e.com",
+        createdAt: now,
+      });
+
+      await e2eAuthRepo.memberships.save({
+        id: "fs_e2e_mem",
+        orgId: "fs_e2e_org",
+        userId: "fs_e2e_user",
+        userEmail: "user@e2e.com",
+        role: "admin",
+        assignedCompanyIds: ["comp_e2e_1"],
+        active: true,
+        invitedAt: now,
+      });
+
+      setAuthorizationRepository(e2eAuthRepo);
+
+      const context = await resolveAuthorizationContext("fs_e2e_user", "user@e2e.com", "non_existent_org_id_123");
+      assert(context === null, "Organización inexistente devuelve null (403)");
+    } finally {
+      setAuthorizationRepository(prevRepo);
+    }
   });
 
   // TEST 65: End-to-End Context Resolution con Firestore — Falla de red Firestore → Fail-Closed (null)
   await runTest("TEST 65: End-to-End Context Resolution con Firestore — Falla de red Firestore → Fail-Closed (null)", async () => {
-    const failingFirestore = createMockFirestore({ shouldFailQuery: true });
-    const failingAuthRepo = new FirestoreAuthorizationRepository(failingFirestore);
+    const prevRepo = getAuthorizationRepository();
+    try {
+      const failingFirestore = createMockFirestore({ shouldFailQuery: true });
+      const failingAuthRepo = new FirestoreAuthorizationRepository(failingFirestore);
 
-    setAuthorizationRepository(failingAuthRepo);
+      setAuthorizationRepository(failingAuthRepo);
 
-    const context = await resolveAuthorizationContext("fs_e2e_user", "user@e2e.com", "fs_e2e_org");
-    assert(context === null, "Falla en conexión a Firestore resuelve fail-closed en null (403)");
+      const context = await resolveAuthorizationContext("fs_e2e_user", "user@e2e.com", "fs_e2e_org");
+      assert(context === null, "Falla en conexión a Firestore resuelve fail-closed en null (403)");
+    } finally {
+      setAuthorizationRepository(prevRepo);
+    }
   });
 
   // TEST 66: Restauración de In-Memory repository y validación final de aislamiento
   await runTest("TEST 66: Restauración de In-Memory repository y validación final de aislamiento", async () => {
-    const inMemoryRepo = new InMemoryAuthorizationRepository();
-    inMemoryRepo.organizations.save(orgA);
-    inMemoryRepo.memberships.save(memOwnerA);
+    const prevRepo = getAuthorizationRepository();
+    try {
+      const inMemoryRepo = new InMemoryAuthorizationRepository();
+      inMemoryRepo.organizations.save(orgA);
+      inMemoryRepo.memberships.save(memOwnerA);
 
-    setAuthorizationRepository(inMemoryRepo);
+      setAuthorizationRepository(inMemoryRepo);
 
-    const context = await resolveAuthorizationContext("user_owner_a", "owner@alpha.com", "org_alpha");
-    assert(context !== null, "In-Memory repository reestablecido correctamente");
-    assert(context?.membershipRole === "owner", "Owner resuelto correctamente");
+      const context = await resolveAuthorizationContext("user_owner_a", "owner@alpha.com", "org_alpha");
+      assert(context !== null, "In-Memory repository reestablecido correctamente");
+      assert(context?.membershipRole === "owner", "Owner resuelto correctamente");
+    } finally {
+      setAuthorizationRepository(prevRepo);
+    }
   });
 
   // =========================================================================
@@ -1548,58 +1644,112 @@ export async function runAllTenantAuthTests(): Promise<{ total: number; passed: 
 
   // TEST 73: Firestore repository sigue resolviendo Organization/Membership correctamente
   await runTest("TEST 73: Firestore repository sigue resolviendo Organization/Membership correctamente", async () => {
-    const mockDb = createMockFirestore();
-    const fsRepo = new FirestoreAuthorizationRepository(mockDb);
+    const prevRepo = getAuthorizationRepository();
+    try {
+      const mockDb = createMockFirestore();
+      const fsRepo = new FirestoreAuthorizationRepository(mockDb);
 
-    await fsRepo.organizations.save({
-      id: "org_test_73",
-      name: "Org Test 73",
-      ownerUid: "owner_73",
-      plan: "pro",
-      planStatus: "active",
-      contactEmail: "test73@org.com",
-      createdAt: now,
-    });
+      await fsRepo.organizations.save({
+        id: "org_test_73",
+        name: "Org Test 73",
+        ownerUid: "owner_73",
+        plan: "pro",
+        planStatus: "active",
+        contactEmail: "test73@org.com",
+        createdAt: now,
+      });
 
-    await fsRepo.memberships.save({
-      id: "mem_test_73",
-      orgId: "org_test_73",
-      userId: "user_73",
-      userEmail: "user73@org.com",
-      role: "owner",
-      active: true,
-      invitedAt: now,
-    });
+      await fsRepo.memberships.save({
+        id: "mem_test_73",
+        orgId: "org_test_73",
+        userId: "user_73",
+        userEmail: "user73@org.com",
+        role: "owner",
+        active: true,
+        invitedAt: now,
+      });
 
-    setAuthorizationRepository(fsRepo);
+      setAuthorizationRepository(fsRepo);
 
-    const context = await resolveAuthorizationContext("user_73", "user73@org.com", "org_test_73");
-    assert(context !== null, "Resolved context from Firestore");
-    assert(context?.orgId === "org_test_73", "orgId matches");
-    assert(context?.membershipRole === "owner", "membershipRole matches");
+      const context = await resolveAuthorizationContext("user_73", "user73@org.com", "org_test_73");
+      assert(context !== null, "Resolved context from Firestore");
+      assert(context?.orgId === "org_test_73", "orgId matches");
+      assert(context?.membershipRole === "owner", "membershipRole matches");
+    } finally {
+      setAuthorizationRepository(prevRepo);
+    }
   });
 
   // TEST 74: Cross-tenant access continúa denegado
   await runTest("TEST 74: Cross-tenant access continúa denegado", async () => {
-    const context = await resolveAuthorizationContext("user_73", "user73@org.com", "org_other_unauthorized_999");
-    assert(context === null, "Cross tenant access is denied");
+    const prevRepo = getAuthorizationRepository();
+    try {
+      const mockDb = createMockFirestore();
+      const fsRepo = new FirestoreAuthorizationRepository(mockDb);
+
+      await fsRepo.organizations.save({
+        id: "org_test_73",
+        name: "Org Test 73",
+        ownerUid: "owner_73",
+        plan: "pro",
+        planStatus: "active",
+        contactEmail: "test73@org.com",
+        createdAt: now,
+      });
+
+      await fsRepo.memberships.save({
+        id: "mem_test_73",
+        orgId: "org_test_73",
+        userId: "user_73",
+        userEmail: "user73@org.com",
+        role: "owner",
+        active: true,
+        invitedAt: now,
+      });
+
+      setAuthorizationRepository(fsRepo);
+
+      const context = await resolveAuthorizationContext("user_73", "user73@org.com", "org_other_unauthorized_999");
+      assert(context === null, "Cross tenant access is denied");
+    } finally {
+      setAuthorizationRepository(prevRepo);
+    }
   });
 
   // TEST 75: Membership inactive continúa denegada
   await runTest("TEST 75: Membership inactive continúa denegada", async () => {
-    const currentRepo = getAuthorizationRepository();
-    await currentRepo.memberships.save({
-      id: "mem_inactive_75",
-      orgId: "org_test_73",
-      userId: "user_inactive_75",
-      userEmail: "inactive75@org.com",
-      role: "member",
-      active: false,
-      invitedAt: now,
-    });
+    const prevRepo = getAuthorizationRepository();
+    try {
+      const mockDb = createMockFirestore();
+      const fsRepo = new FirestoreAuthorizationRepository(mockDb);
 
-    const context = await resolveAuthorizationContext("user_inactive_75", "inactive75@org.com", "org_test_73");
-    assert(context === null, "Inactive membership returns null");
+      await fsRepo.organizations.save({
+        id: "org_test_73",
+        name: "Org Test 73",
+        ownerUid: "owner_73",
+        plan: "pro",
+        planStatus: "active",
+        contactEmail: "test73@org.com",
+        createdAt: now,
+      });
+
+      await fsRepo.memberships.save({
+        id: "mem_inactive_75",
+        orgId: "org_test_73",
+        userId: "user_inactive_75",
+        userEmail: "inactive75@org.com",
+        role: "member",
+        active: false,
+        invitedAt: now,
+      });
+
+      setAuthorizationRepository(fsRepo);
+
+      const context = await resolveAuthorizationContext("user_inactive_75", "inactive75@org.com", "org_test_73");
+      assert(context === null, "Inactive membership returns null");
+    } finally {
+      setAuthorizationRepository(prevRepo);
+    }
   });
 
   // TEST 76: Invalid role continúa denegado
@@ -1618,112 +1768,136 @@ export async function runAllTenantAuthTests(): Promise<{ total: number; passed: 
 
   // TEST 77: assignedCompanyIds continúa restringiendo acceso
   await runTest("TEST 77: assignedCompanyIds continúa restringiendo acceso", async () => {
-    const currentRepo = getAuthorizationRepository();
-    await currentRepo.memberships.save({
-      id: "mem_restricted_77",
-      orgId: "org_test_73",
-      userId: "user_restricted_77",
-      userEmail: "restricted77@org.com",
-      role: "member",
-      assignedCompanyIds: ["comp_allowed_1"],
-      active: true,
-      invitedAt: now,
-    });
+    const prevRepo = getAuthorizationRepository();
+    try {
+      const mockDb = createMockFirestore();
+      const fsRepo = new FirestoreAuthorizationRepository(mockDb);
 
-    const context = await resolveAuthorizationContext("user_restricted_77", "restricted77@org.com", "org_test_73");
-    assert(context !== null, "Context resolved");
-    assert(context?.assignedCompanyIds?.length === 1, "Only 1 company assigned");
-    assert(context?.assignedCompanyIds?.[0] === "comp_allowed_1", "Assigned company matches");
+      await fsRepo.organizations.save({
+        id: "org_test_73",
+        name: "Org Test 73",
+        ownerUid: "owner_73",
+        plan: "pro",
+        planStatus: "active",
+        contactEmail: "test73@org.com",
+        createdAt: now,
+      });
 
-    const compAllowed: Company = {
-      id: "comp_allowed_1",
-      orgId: "org_test_73",
-      legalName: "Allowed S.A.",
-      cuit: "30-11111111-9",
-      active: true,
-      createdAt: now,
-    };
+      await fsRepo.memberships.save({
+        id: "mem_restricted_77",
+        orgId: "org_test_73",
+        userId: "user_restricted_77",
+        userEmail: "restricted77@org.com",
+        role: "member",
+        assignedCompanyIds: ["comp_allowed_1"],
+        active: true,
+        invitedAt: now,
+      });
 
-    const compBlocked: Company = {
-      id: "comp_blocked_2",
-      orgId: "org_test_73",
-      legalName: "Blocked S.A.",
-      cuit: "30-22222222-9",
-      active: true,
-      createdAt: now,
-    };
+      setAuthorizationRepository(fsRepo);
 
-    assert(canAccessCompany(context!, compAllowed, "company:read"), "Can access allowed company");
-    assert(!canAccessCompany(context!, compBlocked, "company:read"), "Cannot access blocked company");
+      const context = await resolveAuthorizationContext("user_restricted_77", "restricted77@org.com", "org_test_73");
+      assert(context !== null, "Context resolved");
+      assert(context?.assignedCompanyIds?.length === 1, "Only 1 company assigned");
+      assert(context?.assignedCompanyIds?.[0] === "comp_allowed_1", "Assigned company matches");
+
+      const compAllowed: Company = {
+        id: "comp_allowed_1",
+        orgId: "org_test_73",
+        legalName: "Allowed S.A.",
+        cuit: "30-11111111-9",
+        active: true,
+        createdAt: now,
+      };
+
+      const compBlocked: Company = {
+        id: "comp_blocked_2",
+        orgId: "org_test_73",
+        legalName: "Blocked S.A.",
+        cuit: "30-22222222-9",
+        active: true,
+        createdAt: now,
+      };
+
+      assert(canAccessCompany(context!, compAllowed, "company:read"), "Can access allowed company");
+      assert(!canAccessCompany(context!, compBlocked, "company:read"), "Cannot access blocked company");
+    } finally {
+      setAuthorizationRepository(prevRepo);
+    }
   });
 
   // TEST 78: AuthorizationContext continúa realizando únicamente las lecturas necesarias
   await runTest("TEST 78: AuthorizationContext continúa realizando únicamente las lecturas necesarias", async () => {
-    let readCount = 0;
-    const trackingDb = {
-      collection(colName: string) {
-        return {
-          doc(docId: string) {
-            return {
-              id: docId,
-              async get() {
-                readCount++;
-                return {
-                  id: docId,
-                  exists: true,
-                  data: () => ({
+    const prevRepo = getAuthorizationRepository();
+    try {
+      let readCount = 0;
+      const trackingDb = {
+        collection(colName: string) {
+          return {
+            doc(docId: string) {
+              return {
+                id: docId,
+                async get() {
+                  readCount++;
+                  return {
                     id: docId,
-                    name: "Tracking Org",
-                    ownerUid: "owner_tr",
-                    contactEmail: "tr@org.com",
-                    plan: "pro",
-                    planStatus: "active",
-                  }),
-                };
-              },
-            };
-          },
-          where() {
-            return {
-              where() {
-                return this;
-              },
-              limit() {
-                return this;
-              },
-              async get() {
-                readCount++;
-                return {
-                  empty: false,
-                  docs: [
-                    {
-                      id: "mem_tr",
-                      ref: { id: "mem_tr" },
-                      data: () => ({
+                    exists: true,
+                    data: () => ({
+                      id: docId,
+                      name: "Tracking Org",
+                      ownerUid: "owner_tr",
+                      contactEmail: "tr@org.com",
+                      plan: "pro",
+                      planStatus: "active",
+                    }),
+                  };
+                },
+              };
+            },
+            where() {
+              return {
+                where() {
+                  return this;
+                },
+                limit() {
+                  return this;
+                },
+                async get() {
+                  readCount++;
+                  return {
+                    empty: false,
+                    docs: [
+                      {
                         id: "mem_tr",
-                        orgId: "org_tr",
-                        userId: "user_tr",
-                        userEmail: "tr@org.com",
-                        role: "member",
-                        active: true,
-                      }),
-                    },
-                  ],
-                };
-              },
-            };
-          },
-        };
-      },
-    } as unknown as Firestore;
+                        ref: { id: "mem_tr" },
+                        data: () => ({
+                          id: "mem_tr",
+                          orgId: "org_tr",
+                          userId: "user_tr",
+                          userEmail: "tr@org.com",
+                          role: "member",
+                          active: true,
+                        }),
+                      },
+                    ],
+                  };
+                },
+              };
+            },
+          };
+        },
+      } as unknown as Firestore;
 
-    const trackingRepo = new FirestoreAuthorizationRepository(trackingDb);
-    setAuthorizationRepository(trackingRepo);
+      const trackingRepo = new FirestoreAuthorizationRepository(trackingDb);
+      setAuthorizationRepository(trackingRepo);
 
-    readCount = 0;
-    const context = await resolveAuthorizationContext("user_tr", "tr@org.com", "org_tr");
-    assert(context !== null, "Context resolved");
-    assert(readCount === 2, `Exactamente 2 lecturas realizadas a Firestore (se realizaron: ${readCount})`);
+      readCount = 0;
+      const context = await resolveAuthorizationContext("user_tr", "tr@org.com", "org_tr");
+      assert(context !== null, "Context resolved");
+      assert(readCount === 2, `Exactamente 2 lecturas realizadas a Firestore (se realizaron: ${readCount})`);
+    } finally {
+      setAuthorizationRepository(prevRepo);
+    }
   });
 
   // =========================================================================
@@ -2201,58 +2375,65 @@ export async function runAllTenantAuthTests(): Promise<{ total: number; passed: 
 
   // TEST 104: FASE 5 — GET /api/health/readiness responde HTTP 200 OK cuando el repositorio es saludable
   await runTest("TEST 104: FASE 5 — GET /api/health/readiness responde 200 OK con repositorio saludable", async () => {
-    const app = express();
-    const mockRepo = {
-      healthCheck: async () => true,
-    } as any;
-    setAuthorizationRepository(mockRepo);
+    const prevRepo = getAuthorizationRepository();
+    try {
+      const app = express();
+      const mockRepo = {
+        healthCheck: async () => true,
+      } as any;
+      setAuthorizationRepository(mockRepo);
 
-    const checkReadiness = async (_req: express.Request, res: express.Response) => {
-      const repo = getAuthorizationRepository();
-      const isHealthy = repo.healthCheck ? await repo.healthCheck() : true;
-      if (!isHealthy) return res.status(503).json({ status: "error" });
-      return res.json({ status: "ok", app: "Safety IA" });
-    };
-    app.get("/api/health/readiness", checkReadiness);
+      const checkReadiness = async (_req: express.Request, res: express.Response) => {
+        const repo = getAuthorizationRepository();
+        const isHealthy = repo.healthCheck ? await repo.healthCheck() : true;
+        if (!isHealthy) return res.status(503).json({ status: "error" });
+        return res.json({ status: "ok", app: "Safety IA" });
+      };
+      app.get("/api/health/readiness", checkReadiness);
 
-    const req = { method: "GET", url: "/api/health/readiness", headers: {} };
-    const res = createMockResponse();
-    await new Promise<void>((resolve) => {
-      (app as any).handle(req as any, res as any, () => resolve());
-      setImmediate(resolve);
-    });
-    assert(res.statusCode === 200, "Readiness devuelve HTTP 200");
-    assert(res.jsonData?.status === "ok", "Readiness body indica ok");
+      const req = { method: "GET", url: "/api/health/readiness", headers: {} };
+      const res = createMockResponse();
+      await new Promise<void>((resolve) => {
+        (app as any).handle(req as any, res as any, () => resolve());
+        setImmediate(resolve);
+      });
+      assert(res.statusCode === 200, "Readiness devuelve HTTP 200");
+      assert(res.jsonData?.status === "ok", "Readiness body indica ok");
+    } finally {
+      setAuthorizationRepository(prevRepo);
+    }
   });
 
   // TEST 105: FASE 5 — GET /api/health/readiness responde HTTP 503 Service Unavailable cuando healthCheck falla
   await runTest("TEST 105: FASE 5 — GET /api/health/readiness responde 503 cuando healthCheck de Firestore falla", async () => {
-    const app = express();
-    const mockFailingRepo = {
-      healthCheck: async () => false,
-    } as any;
-    setAuthorizationRepository(mockFailingRepo);
+    const prevRepo = getAuthorizationRepository();
+    try {
+      const app = express();
+      const mockFailingRepo = {
+        healthCheck: async () => false,
+      } as any;
+      setAuthorizationRepository(mockFailingRepo);
 
-    const checkReadiness = async (_req: express.Request, res: express.Response) => {
-      const repo = getAuthorizationRepository();
-      const isHealthy = repo.healthCheck ? await repo.healthCheck() : true;
-      if (!isHealthy) return res.status(503).json({ status: "error", error: "Authorization repository unavailable" });
-      return res.json({ status: "ok" });
-    };
-    app.get("/api/health/readiness", checkReadiness);
+      const checkReadiness = async (_req: express.Request, res: express.Response) => {
+        const repo = getAuthorizationRepository();
+        const isHealthy = repo.healthCheck ? await repo.healthCheck() : true;
+        if (!isHealthy) return res.status(503).json({ status: "error", error: "Authorization repository unavailable" });
+        return res.json({ status: "ok" });
+      };
+      app.get("/api/health/readiness", checkReadiness);
 
-    const req = { method: "GET", url: "/api/health/readiness", headers: {} };
-    const res = createMockResponse();
-    await new Promise<void>((resolve) => {
-      (app as any).handle(req as any, res as any, () => resolve());
-      setImmediate(resolve);
-    });
-    assert(res.statusCode === 503, "Readiness devuelve HTTP 503 ante fallos de Firestore");
-    assert(res.jsonData?.status === "error", "Status es error");
-    assert(res.jsonData?.error === "Authorization repository unavailable", "Mensaje de error correcto");
-
-    // Restablecer in-memory repo
-    setAuthorizationRepository(new InMemoryAuthorizationRepository());
+      const req = { method: "GET", url: "/api/health/readiness", headers: {} };
+      const res = createMockResponse();
+      await new Promise<void>((resolve) => {
+        (app as any).handle(req as any, res as any, () => resolve());
+        setImmediate(resolve);
+      });
+      assert(res.statusCode === 503, "Readiness devuelve HTTP 503 ante fallos de Firestore");
+      assert(res.jsonData?.status === "error", "Status es error");
+      assert(res.jsonData?.error === "Authorization repository unavailable", "Mensaje de error correcto");
+    } finally {
+      setAuthorizationRepository(prevRepo);
+    }
   });
 
   // TEST 106: FASE 5 — Producción rechaza MockAuthVerifier
@@ -2277,6 +2458,7 @@ export async function runAllTenantAuthTests(): Promise<{ total: number; passed: 
     const origEnv = process.env.NODE_ENV;
     process.env.NODE_ENV = "production";
     let threw = false;
+    const prevRepo = getAuthorizationRepository();
     try {
       setAuthorizationRepository(new InMemoryAuthorizationRepository());
       if (process.env.NODE_ENV === "production" && getAuthorizationRepository() instanceof InMemoryAuthorizationRepository) {
@@ -2287,6 +2469,7 @@ export async function runAllTenantAuthTests(): Promise<{ total: number; passed: 
       assert(e.message.includes("cannot be InMemory"), "Lanza error explícito de producción");
     } finally {
       process.env.NODE_ENV = origEnv;
+      setAuthorizationRepository(prevRepo);
     }
     assert(threw, "Rechazó InMemoryAuthorizationRepository en producción");
   });
@@ -3862,7 +4045,7 @@ export async function runAllTenantAuthTests(): Promise<{ total: number; passed: 
     let foundInFile = "";
     
     for (const file of files) {
-      if (file.includes("tenantAuth.test.ts")) {
+      if (file.includes("tenantAuth.test.ts") || file.endsWith(".log") || file.endsWith("_output.txt")) {
         continue;
       }
       const content = fs.readFileSync(file, "utf8");
@@ -5803,50 +5986,51 @@ export async function runAllTenantAuthTests(): Promise<{ total: number; passed: 
 
   await runTest("PARCHE 3 - TEST 4: Readiness devuelve 503 si el repository no está disponible", async () => {
     const prevRepo = getAuthorizationRepository();
-    setAuthorizationRepository(null as any);
+    try {
+      setAuthorizationRepository(null as any);
 
-    let statusCode = 200;
-    let jsonResponse: any = null;
-    const mockReq = {} as any;
-    const mockRes = {
-      status: (code: number) => { statusCode = code; return mockRes; },
-      json: (data: any) => { jsonResponse = data; return mockRes; }
-    } as any;
+      let statusCode = 200;
+      let jsonResponse: any = null;
+      const mockReq = {} as any;
+      const mockRes = {
+        status: (code: number) => { statusCode = code; return mockRes; },
+        json: (data: any) => { jsonResponse = data; return mockRes; }
+      } as any;
 
-    const repo = getAuthorizationRepository();
-    if (!repo) {
-      mockRes.status(503).json({
-        status: "error",
-        error: "Authorization repository unavailable",
-      });
+      const repo = getAuthorizationRepository();
+      if (!repo) {
+        mockRes.status(503).json({
+          status: "error",
+          error: "Authorization repository unavailable",
+        });
+      }
+
+      assert(statusCode === 503, "Readiness devuelve HTTP 503 cuando el repositorio es nulo");
+      assert(jsonResponse?.error === "Authorization repository unavailable", "Mensaje de error correcto");
+    } finally {
+      setAuthorizationRepository(prevRepo);
     }
-
-    assert(statusCode === 503, "Readiness devuelve HTTP 503 cuando el repositorio es nulo");
-    assert(jsonResponse?.error === "Authorization repository unavailable", "Mensaje de error correcto");
-
-    setAuthorizationRepository(prevRepo);
   });
 
   await runTest("PARCHE 3 - TEST 5: Producción nunca utiliza InMemoryAuthorizationRepository", async () => {
     const originalEnv = process.env.NODE_ENV;
-    process.env.NODE_ENV = "production";
-    
-    setAuthorizationRepository(new InMemoryAuthorizationRepository());
-    
-    let productionSecurityViolated = false;
+    const prevRepo = getAuthorizationRepository();
     try {
+      process.env.NODE_ENV = "production";
+      setAuthorizationRepository(new InMemoryAuthorizationRepository());
+      
+      let productionSecurityViolated = false;
       if (
         process.env.NODE_ENV === "production" &&
         getAuthorizationRepository() instanceof InMemoryAuthorizationRepository
       ) {
         productionSecurityViolated = true;
       }
+      assert(productionSecurityViolated, "Se detecta InMemoryAuthorizationRepository en producción");
     } finally {
       process.env.NODE_ENV = originalEnv;
-      await initializeAuthorizationRepository();
+      setAuthorizationRepository(prevRepo);
     }
-
-    assert(productionSecurityViolated, "Se detecta y bloquea InMemoryAuthorizationRepository en producción");
   });
 
   await runTest("PARCHE 3 - TEST 6: Servidor configurado para escuchar en 0.0.0.0", async () => {
@@ -5903,23 +6087,23 @@ export async function runAllTenantAuthTests(): Promise<{ total: number; passed: 
 
   await runTest("PARCHE 4 - TEST 4: No utilización de InMemoryAuthorizationRepository en producción", async () => {
     const originalEnv = process.env.NODE_ENV;
-    process.env.NODE_ENV = "production";
-    setAuthorizationRepository(new InMemoryAuthorizationRepository());
-
-    let inMemoryBlocked = false;
+    const prevRepo = getAuthorizationRepository();
     try {
+      process.env.NODE_ENV = "production";
+      setAuthorizationRepository(new InMemoryAuthorizationRepository());
+
+      let inMemoryBlocked = false;
       if (
         process.env.NODE_ENV === "production" &&
         getAuthorizationRepository() instanceof InMemoryAuthorizationRepository
       ) {
         inMemoryBlocked = true;
       }
+      assert(inMemoryBlocked, "InMemoryAuthorizationRepository bloqueado en producción");
     } finally {
       process.env.NODE_ENV = originalEnv;
-      await initializeAuthorizationRepository();
+      setAuthorizationRepository(prevRepo);
     }
-
-    assert(inMemoryBlocked, "InMemoryAuthorizationRepository bloqueado en producción");
   });
 
   await runTest("PARCHE 4 - TEST 5: PORT dinámico y fallback a 3000", async () => {
@@ -5956,24 +6140,26 @@ export async function runAllTenantAuthTests(): Promise<{ total: number; passed: 
 
   await runTest("PARCHE 4 - TEST 7: Readiness dependiente de Firestore (Authorization Repository)", async () => {
     const prevRepo = getAuthorizationRepository();
-    setAuthorizationRepository(null as any);
+    try {
+      setAuthorizationRepository(null as any);
 
-    let statusCode = 200;
-    let jsonResp: any = null;
-    const mockRes = {
-      status: (code: number) => { statusCode = code; return mockRes; },
-      json: (data: any) => { jsonResp = data; return mockRes; }
-    };
+      let statusCode = 200;
+      let jsonResp: any = null;
+      const mockRes = {
+        status: (code: number) => { statusCode = code; return mockRes; },
+        json: (data: any) => { jsonResp = data; return mockRes; }
+      };
 
-    const repo = getAuthorizationRepository();
-    if (!repo) {
-      mockRes.status(503).json({ status: "error", error: "Authorization repository unavailable" });
+      const repo = getAuthorizationRepository();
+      if (!repo) {
+        mockRes.status(503).json({ status: "error", error: "Authorization repository unavailable" });
+      }
+
+      assert(statusCode === 503, "Readiness devuelve 503 si el repositorio no está disponible");
+      assert(jsonResp?.error === "Authorization repository unavailable", "Mensaje de error de readiness correcto");
+    } finally {
+      setAuthorizationRepository(prevRepo);
     }
-
-    assert(statusCode === 503, "Readiness devuelve 503 si el repositorio no está disponible");
-    assert(jsonResp?.error === "Authorization repository unavailable", "Mensaje de error de readiness correcto");
-
-    setAuthorizationRepository(prevRepo);
   });
 
   // ==================================================

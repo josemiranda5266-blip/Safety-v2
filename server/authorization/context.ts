@@ -38,6 +38,7 @@ export async function resolveAuthorizationContext(
         };
       }
     }
+    return null;
   }
 
   // 2. Fallback: Query user's active memberships across all organizations
@@ -59,48 +60,6 @@ export async function resolveAuthorizationContext(
     }
   }
 
-  // 3. Auto-provision default organization & owner membership if user has no active membership
-  const now = new Date().toISOString();
-  const defaultOrgId = cleanRequestedOrgId && cleanRequestedOrgId !== "org_default" ? cleanRequestedOrgId : `org_${cleanUserId.slice(0, 8)}`;
-
-  let org = await getOrganization(defaultOrgId);
-  if (!org) {
-    org = {
-      id: defaultOrgId,
-      name: "Mi Consultora H&S",
-      ownerUid: cleanUserId,
-      plan: "pro",
-      planStatus: "active",
-      contactEmail: userEmail,
-      createdAt: now,
-      updatedAt: now,
-    };
-    await saveOrganization(org);
-  }
-
-  let membership = await getMembership(defaultOrgId, cleanUserId);
-  if (!membership) {
-    membership = {
-      id: `mem_${cleanUserId.slice(0, 8)}_${Math.random().toString(36).slice(2, 6)}`,
-      orgId: defaultOrgId,
-      userId: cleanUserId,
-      userEmail: userEmail,
-      userName: "Profesional H&S",
-      role: "owner",
-      active: true,
-      invitedAt: now,
-      joinedAt: now,
-    };
-    await saveMembership(membership);
-  }
-
-  return {
-    userId: cleanUserId,
-    userEmail: membership.userEmail || userEmail,
-    orgId: org.id,
-    membershipId: membership.id,
-    membershipRole: membership.role,
-    platformRole: explicitPlatformRole,
-    assignedCompanyIds: membership.assignedCompanyIds,
-  };
+  // 3. Pure resolution: If user has no active membership in any organization, return null
+  return null;
 }

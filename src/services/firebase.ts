@@ -14,14 +14,19 @@ export const dbFirestore = firebaseConfig.firestoreDatabaseId
 
 // Helper to ensure user is authenticated anonymously or signed in
 export function ensureAuth(): Promise<User> {
-  return new Promise((resolve) => {
+  return new Promise((resolve, reject) => {
+    if (auth.currentUser) {
+      resolve(auth.currentUser);
+      return;
+    }
+
     const unsubscribe = onAuthStateChanged(auth, async (user) => {
       if (user) {
         unsubscribe();
         resolve(user);
       } else {
         try {
-          if (process.env.IS_RUNNING_TESTS === "true") {
+          if (process.env.IS_RUNNING_TESTS === "true" && process.env.NODE_ENV !== "production") {
             throw new Error("Skipping real auth in test");
           }
           const userCred = await signInAnonymously(auth);
@@ -29,7 +34,7 @@ export function ensureAuth(): Promise<User> {
           resolve(userCred.user);
         } catch (err) {
           unsubscribe();
-          if (process.env.IS_RUNNING_TESTS === "true") {
+          if (process.env.IS_RUNNING_TESTS === "true" && process.env.NODE_ENV !== "production") {
              console.warn('Firebase signInAnonymously call fallback active (test environment):', err);
              const storedUid = (typeof window !== 'undefined' && localStorage.getItem('safetyia_user_uid')) || 'user_member_a';
              const fallbackUser: any = {
@@ -47,7 +52,7 @@ export function ensureAuth(): Promise<User> {
              return;
           }
           console.error('Error de autenticación Firebase:', err);
-          throw new Error("AUTHENTICATION_REQUIRED");
+          reject(new Error("AUTHENTICATION_REQUIRED"));
         }
       }
     });

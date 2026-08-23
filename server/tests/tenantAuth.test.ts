@@ -4060,6 +4060,152 @@ export async function runAllTenantAuthTests(): Promise<{ total: number; passed: 
   });
 
   // =========================================================================
+  // FASE FRONTERA SEGURIDAD: CIERRE DEFINITIVO DE FRONTERA PRODUCCIÓN/TEST
+  // =========================================================================
+
+  // Caso A: NODE_ENV=production, IS_RUNNING_TESTS=true, token=valid_token_user -> DENY
+  await runTest("FRONTERA CASO A: NODE_ENV=production + IS_RUNNING_TESTS=true + valid_token_user → DENY", async () => {
+    const originalEnv = process.env.NODE_ENV;
+    const originalIsRunningTests = process.env.IS_RUNNING_TESTS;
+    process.env.NODE_ENV = "production";
+    process.env.IS_RUNNING_TESTS = "true";
+    
+    let threw = false;
+    try {
+      const verifier = new FirebaseAdminAuthVerifier();
+      await verifier.verifyIdToken("valid_token_test_user");
+    } catch (e: any) {
+      threw = true;
+      assert(
+        e.message.includes("CRITICAL SECURITY ERROR: test authentication fallback is forbidden in production") ||
+        e.message.includes("Fallo de verificación"),
+        "Debe rechazar tokens ficticios en producción con error de seguridad explícito"
+      );
+    } finally {
+      process.env.NODE_ENV = originalEnv;
+      if (originalIsRunningTests !== undefined) process.env.IS_RUNNING_TESTS = originalIsRunningTests;
+      else delete process.env.IS_RUNNING_TESTS;
+    }
+    assert(threw, "Debe rechazar token ficticio en producción incluso con IS_RUNNING_TESTS=true");
+  });
+
+  // Caso B: NODE_ENV=production, IS_RUNNING_TESTS=false, token=valid_token_user -> DENY
+  await runTest("FRONTERA CASO B: NODE_ENV=production + IS_RUNNING_TESTS=false + valid_token_user → DENY", async () => {
+    const originalEnv = process.env.NODE_ENV;
+    const originalIsRunningTests = process.env.IS_RUNNING_TESTS;
+    process.env.NODE_ENV = "production";
+    process.env.IS_RUNNING_TESTS = "false";
+    
+    let threw = false;
+    try {
+      const verifier = new FirebaseAdminAuthVerifier();
+      await verifier.verifyIdToken("valid_token_test_user");
+    } catch (e: any) {
+      threw = true;
+      assert(
+        e.message.includes("CRITICAL SECURITY ERROR: test authentication fallback is forbidden in production") ||
+        e.message.includes("Fallo de verificación"),
+        "Debe rechazar tokens ficticios en producción"
+      );
+    } finally {
+      process.env.NODE_ENV = originalEnv;
+      if (originalIsRunningTests !== undefined) process.env.IS_RUNNING_TESTS = originalIsRunningTests;
+      else delete process.env.IS_RUNNING_TESTS;
+    }
+    assert(threw, "Debe rechazar token ficticio en producción con IS_RUNNING_TESTS=false");
+  });
+
+  // Caso C: NODE_ENV=development, IS_RUNNING_TESTS=false, token=valid_token_user -> DENY
+  await runTest("FRONTERA CASO C: NODE_ENV=development + IS_RUNNING_TESTS=false + valid_token_user → DENY", async () => {
+    const originalEnv = process.env.NODE_ENV;
+    const originalIsRunningTests = process.env.IS_RUNNING_TESTS;
+    process.env.NODE_ENV = "development";
+    process.env.IS_RUNNING_TESTS = "false";
+    
+    let threw = false;
+    try {
+      const verifier = new FirebaseAdminAuthVerifier();
+      await verifier.verifyIdToken("valid_token_test_user");
+    } catch (e: any) {
+      threw = true;
+      assert(
+        e.message.includes("Token de prueba no permitido fuera del entorno de tests") ||
+        e.message.includes("Fallo de verificación"),
+        "Debe rechazar tokens ficticios en desarrollo sin IS_RUNNING_TESTS=true"
+      );
+    } finally {
+      process.env.NODE_ENV = originalEnv;
+      if (originalIsRunningTests !== undefined) process.env.IS_RUNNING_TESTS = originalIsRunningTests;
+      else delete process.env.IS_RUNNING_TESTS;
+    }
+    assert(threw, "Debe rechazar token ficticio fuera del entorno de tests");
+  });
+
+  // Caso D: NODE_ENV=test/development, IS_RUNNING_TESTS=true, token=valid_token_user -> ALLOW dentro de tests
+  await runTest("FRONTERA CASO D: NODE_ENV=test/development + IS_RUNNING_TESTS=true + valid_token_user → ALLOW dentro de tests", async () => {
+    const originalEnv = process.env.NODE_ENV;
+    const originalIsRunningTests = process.env.IS_RUNNING_TESTS;
+    process.env.NODE_ENV = "test";
+    process.env.IS_RUNNING_TESTS = "true";
+    
+    let identity: any = null;
+    try {
+      const verifier = new FirebaseAdminAuthVerifier();
+      identity = await verifier.verifyIdToken("valid_token_user_test_d");
+    } finally {
+      process.env.NODE_ENV = originalEnv;
+      if (originalIsRunningTests !== undefined) process.env.IS_RUNNING_TESTS = originalIsRunningTests;
+      else delete process.env.IS_RUNNING_TESTS;
+    }
+    assert(identity && identity.uid === "user_test_d", "Debe resolver exitosamente la identidad dentro del entorno controlado de test");
+  });
+
+  // Caso A.2: NODE_ENV=production, IS_RUNNING_TESTS=true, token=test_token_user -> DENY
+  await runTest("FRONTERA CASO A.2: NODE_ENV=production + IS_RUNNING_TESTS=true + test_token_user → DENY", async () => {
+    const originalEnv = process.env.NODE_ENV;
+    const originalIsRunningTests = process.env.IS_RUNNING_TESTS;
+    process.env.NODE_ENV = "production";
+    process.env.IS_RUNNING_TESTS = "true";
+    
+    let threw = false;
+    try {
+      const verifier = new FirebaseAdminAuthVerifier();
+      await verifier.verifyIdToken("test_token_custom_user");
+    } catch (e: any) {
+      threw = true;
+      assert(
+        e.message.includes("CRITICAL SECURITY ERROR: test authentication fallback is forbidden in production") ||
+        e.message.includes("Fallo de verificación"),
+        "Debe rechazar tokens test_token_* en producción con error de seguridad explícito"
+      );
+    } finally {
+      process.env.NODE_ENV = originalEnv;
+      if (originalIsRunningTests !== undefined) process.env.IS_RUNNING_TESTS = originalIsRunningTests;
+      else delete process.env.IS_RUNNING_TESTS;
+    }
+    assert(threw, "Debe rechazar token ficticio test_token_* en producción");
+  });
+
+  // Caso D.2: NODE_ENV=test/development, IS_RUNNING_TESTS=true, token=test_token_user -> ALLOW dentro de tests
+  await runTest("FRONTERA CASO D.2: NODE_ENV=test/development + IS_RUNNING_TESTS=true + test_token_user → ALLOW dentro de tests", async () => {
+    const originalEnv = process.env.NODE_ENV;
+    const originalIsRunningTests = process.env.IS_RUNNING_TESTS;
+    process.env.NODE_ENV = "test";
+    process.env.IS_RUNNING_TESTS = "true";
+    
+    let identity: any = null;
+    try {
+      const verifier = new FirebaseAdminAuthVerifier();
+      identity = await verifier.verifyIdToken("test_token_custom_user_d");
+    } finally {
+      process.env.NODE_ENV = originalEnv;
+      if (originalIsRunningTests !== undefined) process.env.IS_RUNNING_TESTS = originalIsRunningTests;
+      else delete process.env.IS_RUNNING_TESTS;
+    }
+    assert(identity && identity.uid === "custom_user_d", "Debe resolver exitosamente la identidad dentro del entorno controlado de test");
+  });
+
+  // =========================================================================
   // FASE 6: PRUEBAS PARA HALLAZGO 3 (SANITIZACIÓN DE ERRORES GEMINI)
   // =========================================================================
 

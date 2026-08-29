@@ -1,20 +1,11 @@
+export interface HygieneDocumentField { key: string; label: string; format?: 'text' | 'date' | 'number' | 'json'; }
+export interface HygieneDocumentSection { key: string; title: string; data: Record<string, unknown>; }
+export interface HygieneDocumentTemplate { key: string; version: string; title: string; sectionKeys: string[]; regulatoryReferenceId?: string; }
+export interface HygieneDocumentRepresentation { documentId: string; templateKey: string; templateVersion: string; generatedAt: string; sections: HygieneDocumentSection[]; disclaimer: string; regulatoryReferenceId?: string; }
+
 export type UserPlan = 'free' | 'pro' | 'pro_plus';
 export type UserRole = 'professional' | 'empresa' | 'rrhh' | 'supervisor' | 'trabajador';
-
-export interface UserProfile {
-  uid: string;
-  email?: string;
-  displayName?: string;
-  role: UserRole;
-  plan: UserPlan;
-  monthlyCredits: number;
-  creditsUsed: number;
-  billingPeriodStart: string;
-  billingPeriodEnd: string;
-  createdAt: string;
-  updatedAt?: string;
-}
-
+export interface UserProfile { uid: string; email?: string; displayName?: string; role: UserRole; plan: UserPlan; monthlyCredits: number; creditsUsed: number; billingPeriodStart: string; billingPeriodEnd: string; createdAt: string; updatedAt?: string; }
 export type OperationCostType = 'CHAT_RAG' | 'DOCUMENT_COMPARISON' | 'OCR' | 'IMAGE_ANALYSIS' | 'INSPECTOR_IA' | 'SUMMARY' | 'CHECKLIST';
 export interface CreditTransaction { id: string; userId: string; operationType: OperationCostType; creditsDeducted: number; timestamp: string; success: boolean; details?: string; }
 export type SubscriptionStatus = 'active' | 'past_due' | 'cancelled' | 'expired' | 'trial';
@@ -64,27 +55,11 @@ export interface CreateHygieneMeasurementInput { context: HygieneMeasurementCont
 export type HygieneProtocolType = 'lighting' | 'noise' | 'grounding' | 'thermal_stress' | 'vibration' | 'chemical';
 export type LightingSourceType = 'natural' | 'artificial' | 'mixed';
 export type LightingPointType = 'general' | 'work_surface' | 'task_area' | 'other';
-export interface LightingMeasurementPoint { id: string; name: string; pointType: LightingPointType; lux: number; locationDescription?: string; observations?: string; }
-export interface LightingMeasurementData {
-  sourceType: LightingSourceType;
-  lightingSystem?: string;
-  taskDescription?: string;
-  points: LightingMeasurementPoint[];
-  averageLux?: number;
-  minimumLux?: number;
-  maximumLux?: number;
-  /** Minimum illuminance used by the SRT uniformity criterion (lux), not a ratio. */
-  uniformityMinimumLux?: number;
-  /** @deprecated Kept only for backwards compatibility with previously persisted records; interpreted as minimum illuminance in lux, never as minimum/maximum. */
-  uniformityRatio?: number;
-  /** Derived informational ratio: minimum illuminance / average illuminance. */
-  uniformityMinOverAverage?: number;
-  /** Derived informational threshold: average illuminance / 2. */
-  uniformityThresholdLux?: number;
-  calculationVersion: string;
-  calculatedAt?: string;
-}
-export interface CreateLightingMeasurementData { sourceType: LightingSourceType; lightingSystem?: string; taskDescription?: string; points: Array<Omit<LightingMeasurementPoint, 'id'>>; }
+export type LightingType = LightingSourceType;
+export interface LightingCampaignData { startTime?: string; endTime?: string; methodology?: string; atmosphericConditions?: string; workplaceConditions?: string; planOrSketchUrl?: string; calibrationCertificateUrl?: string; observations?: string; }
+export interface LightingMeasurementPoint { id: string; name: string; pointType: LightingPointType; lux: number; locationDescription?: string; measuredAt?: string; sector?: string; workplace?: string; lightSourceType?: LightingType; observations?: string; }
+export interface LightingMeasurementData { sourceType: LightingSourceType; lightingSystem?: string; taskDescription?: string; campaign?: LightingCampaignData; points: LightingMeasurementPoint[]; averageLux?: number; minimumLux?: number; maximumLux?: number; uniformityMinimumLux?: number; /** @deprecated */ uniformityRatio?: number; uniformityMinOverAverage?: number; uniformityThresholdLux?: number; calculationVersion: string; calculatedAt?: string; }
+export interface CreateLightingMeasurementData { sourceType: LightingSourceType; lightingSystem?: string; taskDescription?: string; campaign?: LightingCampaignData; points: Array<Omit<LightingMeasurementPoint, 'id'>>; }
 export interface HygieneProtocolEvaluation { protocolType: HygieneProtocolType; normativeReference?: string; normativeVersion?: string; sourceDocumentId?: string; evaluatedAt?: string; result?: 'pending' | 'informative' | 'requires_professional_review'; professionalConclusion?: string; }
 export type NormativeRecordStatus = 'draft' | 'active' | 'superseded' | 'repealed' | 'archived';
 export interface NormativeSource { issuingAuthority: string; documentTitle: string; officialUrl?: string; documentId?: string; publishedAt?: string; retrievedAt?: string; }

@@ -14,7 +14,7 @@ export interface HygieneMeasurementRecord {
   id: string; orgId: string;
   context: { companyId: string; establishmentId: string; sectorId?: string; positionId?: string; employeeId?: string };
   protocolType: string; measurementDate: string; instrumentIds: string[]; notes?: string | null;
-  rawData?: Record<string, unknown>; status: HygieneMeasurementStatus; active: boolean;
+  rawData?: Record<string, unknown>; normativeEvaluationSnapshot?: { normativeProtocolVersionId: string; reference: string; version: string; evaluatedAt: string; criteriaSnapshot: Array<{ id: string; code: string; title: string; description?: string; unit?: string; parameters: Record<string, string | number | boolean>; applicability?: string }> }; status: HygieneMeasurementStatus; active: boolean;
   createdBy: string; createdAt: string; updatedBy: string; updatedAt: string;
 }
 

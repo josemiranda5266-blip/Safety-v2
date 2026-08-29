@@ -260,3 +260,99 @@ export const terminateEmployeeSchema = z
   })
   .strict();
 
+
+// --- Hygiene Validation Schemas ---
+const hygieneIdSchema = z.string().trim().min(1).max(200);
+
+export const hygieneMeasurementStatusSchema = z.enum([
+  "draft",
+  "in_progress",
+  "pending_review",
+  "validated",
+  "closed",
+  "cancelled",
+  "archived",
+]);
+
+export const hygieneInstrumentStatusSchema = z.enum([
+  "active",
+  "maintenance",
+  "calibration_due",
+  "out_of_service",
+  "retired",
+]);
+
+export const hygieneInstrumentCategorySchema = z.enum([
+  "lighting",
+  "noise",
+  "grounding",
+  "thermal_stress",
+  "vibration",
+  "chemical",
+  "gas",
+  "air_velocity",
+  "electrical",
+  "distance",
+  "other",
+]);
+
+export const hygieneMeasurementContextSchema = z
+  .object({
+    companyId: hygieneIdSchema,
+    establishmentId: hygieneIdSchema,
+    sectorId: hygieneIdSchema.optional(),
+    positionId: hygieneIdSchema.optional(),
+    employeeId: hygieneIdSchema.optional(),
+  })
+  .strict();
+
+export const createHygieneInstrumentSchema = z
+  .object({
+    category: hygieneInstrumentCategorySchema,
+    instrumentType: z.string().trim().min(2).max(120),
+    brand: z.string().trim().min(1).max(120),
+    model: z.string().trim().min(1).max(120),
+    serialNumber: z.string().trim().min(1).max(150),
+    calibrationDate: z.string().trim().max(40).optional(),
+    calibrationExpiry: z.string().trim().max(40).optional(),
+    certificateUrl: z.string().trim().max(500).optional(),
+    status: hygieneInstrumentStatusSchema.default("active"),
+    notes: z.string().trim().max(2000).optional(),
+  })
+  .strict();
+
+export const updateHygieneInstrumentSchema = z
+  .object({
+    category: hygieneInstrumentCategorySchema.optional(),
+    instrumentType: z.string().trim().min(2).max(120).optional(),
+    brand: z.string().trim().min(1).max(120).optional(),
+    model: z.string().trim().min(1).max(120).optional(),
+    serialNumber: z.string().trim().min(1).max(150).optional(),
+    calibrationDate: z.string().trim().max(40).optional().nullable(),
+    calibrationExpiry: z.string().trim().max(40).optional().nullable(),
+    certificateUrl: z.string().trim().max(500).optional().nullable(),
+    status: hygieneInstrumentStatusSchema.optional(),
+    notes: z.string().trim().max(2000).optional().nullable(),
+  })
+  .strict();
+
+export const createHygieneMeasurementSchema = z
+  .object({
+    context: hygieneMeasurementContextSchema,
+    protocolType: z.string().trim().min(2).max(120),
+    measurementDate: z.string().trim().min(4).max(40),
+    instrumentIds: z.array(hygieneIdSchema).min(1).max(20),
+    notes: z.string().trim().max(5000).optional(),
+    rawData: z.record(z.string(), z.unknown()).optional(),
+  })
+  .strict();
+
+export const updateHygieneMeasurementSchema = z
+  .object({
+    measurementDate: z.string().trim().min(4).max(40).optional(),
+    instrumentIds: z.array(hygieneIdSchema).min(1).max(20).optional(),
+    notes: z.string().trim().max(5000).optional().nullable(),
+    rawData: z.record(z.string(), z.unknown()).optional(),
+    status: hygieneMeasurementStatusSchema.optional(),
+  })
+  .strict();

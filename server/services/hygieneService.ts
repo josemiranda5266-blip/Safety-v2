@@ -10,11 +10,13 @@ export interface HygieneInstrumentRecord {
   createdBy: string; createdAt: string; updatedBy: string; updatedAt: string;
 }
 
+export interface HygieneMeasurementReview { status: "pending" | "approved" | "changes_requested"; reviewedBy?: string; reviewedAt?: string; comments?: string | null; }
+
 export interface HygieneMeasurementRecord {
   id: string; orgId: string;
   context: { companyId: string; establishmentId: string; sectorId?: string; positionId?: string; employeeId?: string };
   protocolType: string; measurementDate: string; instrumentIds: string[]; notes?: string | null;
-  rawData?: Record<string, unknown>; normativeEvaluationSnapshot?: { normativeProtocolVersionId: string; reference: string; version: string; evaluatedAt: string; criteriaSnapshot: Array<{ id: string; code: string; title: string; description?: string; unit?: string; parameters: Record<string, string | number | boolean>; applicability?: string }> }; status: HygieneMeasurementStatus; active: boolean;
+  rawData?: Record<string, unknown>; review?: HygieneMeasurementReview; normativeEvaluationSnapshot?: { normativeProtocolVersionId: string; reference: string; version: string; evaluatedAt: string; criteriaSnapshot: Array<{ id: string; code: string; title: string; description?: string; unit?: string; parameters: Record<string, string | number | boolean>; applicability?: string }> }; status: HygieneMeasurementStatus; active: boolean;
   createdBy: string; createdAt: string; updatedBy: string; updatedAt: string;
 }
 
@@ -71,6 +73,13 @@ export async function updateMeasurement(id: string, orgId: string, updatedBy: st
   return db.runTransaction(async (tx) => {
     const doc = await tx.get(ref); if (!doc.exists) return undefined;
     const existing = { id: doc.id, ...doc.data() } as HygieneMeasurementRecord; if (existing.orgId !== orgId) return undefined;
+    const immutableStatuses: HygieneMeasurementStatus[] = ["validated", "closed"];
+    if (immutableStatuses.includes(existing.status)) {
+      const attemptedKeys = Object.keys(updates).filter((key) => key !== "status");
+      if (attemptedKeys.length) throw new Error("MEASUREMENT_LOCKED");
+    }
+    const allowedTransitions: Record<HygieneMeasurementStatus, HygieneMeasurementStatus[]> = { draft: ["in_progress", "cancelled"], in_progress: ["draft", "pending_review", "cancelled"], pending_review: ["in_progress", "validated", "cancelled"], validated: ["closed"], closed: [], cancelled: ["draft", "archived"], archived: [] };
+    if (updates.status && !allowedTransitions[existing.status].includes(updates.status)) throw new Error("INVALID_MEASUREMENT_STATUS_TRANSITION");
     const item = { ...existing, ...updates, id: existing.id, orgId: existing.orgId, context: existing.context, createdBy: existing.createdBy, createdAt: existing.createdAt, active: existing.active, updatedBy, updatedAt: new Date().toISOString() };
     tx.set(ref, item, { merge: true }); return item;
   });

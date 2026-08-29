@@ -35,6 +35,7 @@ export function calculateLightingMeasurement(input: CreateLightingMeasurementDat
     sourceType: input.sourceType,
     lightingSystem: input.lightingSystem?.trim() || undefined,
     taskDescription: input.taskDescription?.trim() || undefined,
+    campaign: input.campaign,
     points,
     averageLux,
     minimumLux,

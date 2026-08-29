@@ -7,6 +7,28 @@
 
 ---
 
+## 2026-08-29 — Corrección de metodología de uniformidad de Iluminación
+
+### Objetivo
+Alinear la evaluación asistida y la representación textual de uniformidad con el protocolo oficial SRT 84/2012 y evitar describir el dato como una relación mínimo/máximo cuando el protocolo exige la condición `E mínima ≥ E media / 2`.
+
+### Hallazgo
+`src/services/lightingEvaluation.ts` describía `uniformityRatio` como “Relación mínimo/máximo calculada”. Esa descripción no representa correctamente el criterio del protocolo. El formulario oficial expresa la uniformidad como `E mínima ≥ (E media)/2`, y el Decreto 351/79 exige una relación no menor de 0,5 entre los valores mínimo y medio. Fuente oficial: Resolución SRT 84/2012 y Anexo IV del Decreto 351/79.
+
+### Corrección aplicada
+- La salida textual ahora identifica la uniformidad como `E mínima`.
+- Cuando existe `averageLux`, la evaluación muestra explícitamente el umbral de referencia `E media / 2`.
+- Se agregó una observación metodológica para impedir que la evaluación se interprete como mínimo/máximo.
+- Se mantiene la decisión final bajo revisión profesional; no se genera automáticamente una conclusión legal de cumplimiento.
+
+### Commit
+- `e451e3e59e365ae7f7a06b900f2e78ea100f9fe7` — fix(lighting): align uniformity wording with SRT 84/2012
+
+### Decisión técnica pendiente
+La estructura actual conserva `uniformityRatio` por compatibilidad, pero su semántica histórica debe revisarse antes de considerar cerrado el cálculo. El siguiente paso es localizar el punto exacto donde ese valor se calcula/persiste y, si corresponde, renombrarlo o sustituirlo por una representación explícita de `minimumLux`, `averageLux` y `uniformityThreshold = averageLux / 2`.
+
+---
+
 ## 2026-08-29 — Documento de Iluminación desacoplado del catálogo normativo vivo
 
 ### Objetivo
@@ -45,15 +67,12 @@ REPRESENTACIÓN
 
 El catálogo vivo no debe intervenir en la reconstrucción de documentos históricos.
 
-### Hallazgo posterior
-La plantilla documental aún no debe conocer identificadores regulatorios vivos. Se eliminó esa dependencia y la representación ahora toma la referencia exclusivamente del snapshot.
-
 ### Próximo bloque
 1. Auditar la representación Web y cualquier exportador XLSX real.
 2. Buscar cualquier segunda fuente de `requiredLux`, criterio, versión o clasificación.
 3. Revisar que el documento exponga el criterio seleccionado y su valor requerido desde `normativeEvaluationSnapshot`.
 4. Completar la evaluación asistida sin convertir automáticamente el resultado en conclusión legal.
-5. Revisar la fórmula/metodología de uniformidad contra el protocolo oficial.
+5. Localizar y corregir la semántica/cálculo persistido de uniformidad.
 6. Completar cobertura normativa de Iluminación.
 7. Solo después de cerrar Iluminación de extremo a extremo, avanzar a Ruido.
 

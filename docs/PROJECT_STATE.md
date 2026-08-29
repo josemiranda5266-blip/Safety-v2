@@ -7,6 +7,55 @@
 
 ---
 
+## 2026-08-29 — Corrección del consumidor UI de uniformidad de Iluminación
+
+### Hallazgo
+La auditoría de `src/components/Console/Hygiene/LightingMeasurementEditor.tsx` confirmó que la UI todavía mostraba `Relación mín/máx` y consumía `preview.uniformityRatio`, mientras que el motor ya había migrado al criterio SRT 84/2012 `E mínima ≥ E media / 2`.
+
+### Corrección aplicada
+El editor ahora muestra únicamente las métricas compatibles con el contrato actualizado:
+- Promedio (E media).
+- Mínimo (E mínima).
+- Máximo como dato informativo.
+- Umbral de uniformidad (E media / 2).
+- Relación informativa E mínima / E media.
+
+También se incorporó explícitamente en la UI la regla `E mínima ≥ E media / 2`.
+
+No se reintrodujo `uniformityRatio` en el motor.
+
+### Commit
+- `e78e61a226045630dd890dd2fd99248821f18414` — `fix(lighting): align editor with SRT uniformity calculation`
+
+### Estado
+- Motor: corregido.
+- Modelo: corregido.
+- Editor UI: corregido.
+- PDF: corregido.
+- XLSX: pendiente.
+
+---
+
+## 2026-08-29 — Auditoría de estructura documental de Iluminación
+
+### Hallazgo
+El modelo actual de `LightingMeasurementData` contiene correctamente los cálculos de iluminación y el tipo de fuente general, pero todavía no representa de forma completa todos los datos documentales requeridos por el formulario SRT 84/2012.
+
+El `HygieneMeasurement.normativeEvaluationSnapshot` congela la versión/criterios normativos, pero no constituye por sí mismo un snapshot documental completo de la campaña.
+
+El editor actual permite capturar tipo de iluminación, sistema, tarea y puntos con nombre, tipo, lux y ubicación, pero todavía deben revisarse/agregarse los campos documentales de campaña y de cada punto que correspondan al formulario oficial.
+
+### Implicación
+No implementar todavía el XLSX final. Primero debe completarse la cadena:
+
+```text
+captura → persistencia → snapshot documental → representación SRT → PDF/XLSX/Web
+```
+
+El XLSX debe ser un renderer pasivo del snapshot y no recalcular ni consultar el catálogo normativo vivo.
+
+---
+
 ## 2026-08-29 — Auditoría de salida documental y corrección de semántica en PDF
 
 ### Hallazgo
@@ -55,38 +104,6 @@ La auditoría directa de `src/services/lightingMeasurement.ts` demostró que, pe
 
 ---
 
-## 2026-08-29 — Auditoría del consumidor UI de Iluminación
-
-### Hallazgo
-La auditoría del código real encontró una inconsistencia que todavía no debe considerarse cerrada: `src/components/Console/Hygiene/LightingMeasurementEditor.tsx` continúa mostrando el indicador con la etiqueta **`Relación mín/máx`** y consume `preview.uniformityRatio`, mientras que `src/services/lightingMeasurement.ts` ya no genera ese campo en mediciones nuevas.
-
-Esto significa que el motor y el editor todavía no están semánticamente alineados.
-
-### Evidencia técnica
-- `LightingMeasurementData` define `uniformityMinimumLux`, `uniformityThresholdLux` y `uniformityMinOverAverage`, y marca `uniformityRatio` como legado. fileciteturn592file0L2-L5
-- `calculateLightingMeasurement()` calcula E mínima, E media, E media/2 y E mínima/E media, y no escribe `uniformityRatio`. fileciteturn593file0L2-L5
-- `hygieneService.saveLightingData()` persiste el objeto calculado dentro de `rawData.lighting`, por lo que el editor es un consumidor directo del contrato actualizado. fileciteturn594file0L2-L5
-- El árbol actual contiene tanto `LightingMeasurementEditor.tsx` como `lightingMeasurement.ts`, confirmando que ambos forman parte de la implementación vigente. fileciteturn591file0L2-L2
-
-### Decisión
-No se debe reintroducir `uniformityRatio` en el motor para satisfacer al editor. El editor debe adaptarse al modelo nuevo y mostrar, como mínimo:
-- Promedio (E media)
-- Mínimo (E mínima)
-- Máximo (dato descriptivo)
-- Umbral de uniformidad (E media / 2)
-- Relación E mínima / E media
-
-La etiqueta `Relación mín/máx` debe desaparecer de la UI de Iluminación.
-
-### Estado
-- Motor: corregido.
-- Modelo: corregido.
-- PDF: corregido.
-- Editor UI: **pendiente de corrección**.
-- XLSX: pendiente.
-
----
-
 ## Objetivo inmediato
 Cerrar Iluminación de extremo a extremo antes de avanzar a otro protocolo.
 
@@ -108,16 +125,17 @@ WEB / PDF / XLSX
 ```
 
 ### Próximas tareas
-1. Corregir `LightingMeasurementEditor.tsx` para consumir exclusivamente las métricas nuevas.
-2. Auditar consumidores de `LightingMeasurementData` y cualquier escritor alternativo.
-3. Revisar representación Web.
-4. Implementar/revisar exportador XLSX: actualmente no se encontró implementación.
-5. Buscar cualquier segunda fuente de `requiredLux`, criterio, versión o clasificación.
-6. Verificar que el documento exponga el criterio seleccionado exclusivamente desde el snapshot.
-7. Revisar migración/compatibilidad de registros antiguos que todavía tengan `uniformityRatio`.
-8. Completar cobertura normativa de Iluminación sin coincidencias ambiguas.
-9. Cerrar el mapeo campo-por-campo con el formulario SRT 84/2012.
-10. Solo después de cerrar Iluminación de extremo a extremo, avanzar a Ruido.
+1. Auditar consumidores restantes de `LightingMeasurementData` y cualquier escritor alternativo.
+2. Completar el modelo/captura de datos documentales de campaña y de cada punto según SRT 84/2012.
+3. Verificar persistencia y reconstrucción del snapshot documental.
+4. Revisar representación Web.
+5. Implementar/revisar exportador XLSX: actualmente no se encontró implementación.
+6. Buscar cualquier segunda fuente de `requiredLux`, criterio, versión o clasificación.
+7. Verificar que el documento exponga el criterio seleccionado exclusivamente desde el snapshot.
+8. Revisar migración/compatibilidad de registros antiguos que todavía tengan `uniformityRatio`.
+9. Completar cobertura normativa de Iluminación sin coincidencias ambiguas.
+10. Cerrar el mapeo campo-por-campo con el formulario SRT 84/2012.
+11. Solo después de cerrar Iluminación de extremo a extremo, avanzar a Ruido.
 
 ---
 
@@ -126,13 +144,13 @@ WEB / PDF / XLSX
 - Catálogo normativo estructurado: implementado.
 - Selección de versión/criterio desde backend: implementado.
 - Validación server-side y snapshot normativo: implementado.
-- Documento histórico desacoplado del catálogo vivo: implementado.
-- PDF con referencia/criterio congelado: implementado.
-- Semántica de uniformidad: corregida en modelo y escritor principal.
-- Cálculo SRT 84/2012 del escritor principal: corregido en `lightingMeasurement.ts`.
-- PDF: corregido para no etiquetar uniformidad como mínimo/máximo.
-- Editor UI: **pendiente; todavía contiene referencia legacy `Relación mín/máx`**.
+- Cálculo SRT 84/2012 del escritor principal: implementado.
+- Semántica de uniformidad: corregida en modelo, motor, editor y PDF.
+- Documento histórico desacoplado del catálogo vivo: parcialmente implementado; falta completar snapshot documental de campaña.
+- PDF: corregido.
+- Editor UI: corregido respecto de uniformidad.
 - Auditoría de todos los consumidores/escritores: pendiente.
+- Captura documental SRT completa: pendiente.
 - Web: pendiente.
 - XLSX: pendiente; no se encontró implementación actual.
 - Cobertura normativa completa: pendiente.
@@ -149,7 +167,7 @@ selección + validación
         ↓
 SNAPSHOT NORMATIVO CONGELADO
         ↓
-DOCUMENTO HISTÓRICO
+SNAPSHOT DOCUMENTAL
         ↓
 REPRESENTACIÓN
    ┌────┼────┐

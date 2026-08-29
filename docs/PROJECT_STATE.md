@@ -632,3 +632,39 @@ También se definieron enums controlados para:
 ### Próxima acción
 
 Implementar el servicio backend de Higiene con Firebase Admin, trazabilidad y aislamiento por organizationId. Luego crear hygieneRoutes reutilizando requireAuth, requireTenantContext, requirePermission y los guards jerárquicos existentes.
+
+
+## 2026-08-29 — Implementación: servicio backend multi-tenant de Higiene
+
+### Cambio realizado
+
+Se creó `server/services/hygieneService.ts`.
+
+El servicio implementa persistencia server-side para instrumentos y mediciones mediante Firebase Admin, reemplazando progresivamente el acceso directo desde el frontend.
+
+### Recursos
+
+- hygieneInstruments
+- hygieneMeasurements
+
+### Garantías implementadas
+
+- Todas las lecturas se filtran por `orgId`.
+- Las búsquedas individuales fallan cerradas cuando el documento pertenece a otro tenant.
+- Las actualizaciones se realizan dentro de transacciones.
+- `id`, `orgId`, `createdBy` y `createdAt` permanecen inmutables.
+- El servidor mantiene trazabilidad mediante `createdBy`, `updatedBy`, `createdAt` y `updatedAt`.
+- Las mediciones preservan su contexto jerárquico durante una actualización.
+- Los instrumentos y mediciones incorporan `active` para permitir ciclos de vida sin borrado físico inicial.
+
+### Colecciones
+
+Por el momento se utiliza una colección de nivel raíz con aislamiento obligatorio por `orgId`, alineada con el patrón moderno existente de companies, establishments y employees.
+
+### Commit
+
+- 0b6a067d1778176bfb90daf7cc8888c11340f06a — feat(hygiene): add tenant-isolated backend service
+
+### Próxima acción
+
+Implementar `server/routes/hygieneRoutes.ts` con autenticación, tenant context, permisos y validación jerárquica de company/establishment antes de crear o exponer mediciones.

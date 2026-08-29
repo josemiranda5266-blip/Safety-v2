@@ -418,32 +418,80 @@ export interface AuditLog {
   details: any;
 }
 
+export type HygieneInstrumentCategory =
+  | 'lighting' | 'noise' | 'grounding' | 'thermal_stress' | 'vibration'
+  | 'chemical' | 'gas' | 'air_velocity' | 'electrical' | 'distance' | 'other';
+
+export type HygieneInstrumentStatus =
+  | 'active' | 'maintenance' | 'calibration_due' | 'out_of_service' | 'retired';
+
+export type HygieneMeasurementStatus =
+  | 'draft' | 'in_progress' | 'pending_review' | 'validated'
+  | 'closed' | 'cancelled' | 'archived';
+
 export interface HygieneInstrument {
   id: string;
+  category: HygieneInstrumentCategory;
+  instrumentType: string;
   brand: string;
   model: string;
   serialNumber: string;
-  calibrationDate: string;
-  calibrationExpiry: string;
-  certificateUrl: string;
+  calibrationDate?: string;
+  calibrationExpiry?: string;
+  certificateUrl?: string;
+  status: HygieneInstrumentStatus;
+  notes?: string;
+  active: boolean;
+  createdBy?: string;
+  createdAt?: string;
+  updatedBy?: string;
+  updatedAt?: string;
+}
+
+export interface HygieneMeasurementContext {
+  companyId: string;
+  establishmentId: string;
+  sectorId?: string;
+  positionId?: string;
+  employeeId?: string;
 }
 
 export interface HygieneMeasurement {
   id: string;
-  companyId: string;
-  establishmentId: string;
-  sectorId: string;
-  jobPositionId: string;
-  agent: string;
-  instrumentId: string;
-  date: string;
-  value: number;
-  unit: string;
-  applicableLimit: number;
-  result: 'Aceptable' | 'No Aceptable';
-  professionalName: string;
-  reportUrl?: string;
+  context: HygieneMeasurementContext;
+  protocolType: string;
+  measurementDate: string;
+  instrumentIds: string[];
+  rawData?: Record<string, unknown>;
+  notes?: string;
+  status: HygieneMeasurementStatus;
+  active: boolean;
+  createdBy?: string;
+  createdAt?: string;
+  updatedBy?: string;
+  updatedAt?: string;
+}
+
+export interface CreateHygieneInstrumentInput {
+  category: HygieneInstrumentCategory;
+  instrumentType: string;
+  brand: string;
+  model: string;
+  serialNumber: string;
+  calibrationDate?: string;
+  calibrationExpiry?: string;
   certificateUrl?: string;
+  status?: HygieneInstrumentStatus;
+  notes?: string;
+}
+
+export interface CreateHygieneMeasurementInput {
+  context: HygieneMeasurementContext;
+  protocolType: string;
+  measurementDate: string;
+  instrumentIds: string[];
+  rawData?: Record<string, unknown>;
+  notes?: string;
 }
 
 export interface Investigation {

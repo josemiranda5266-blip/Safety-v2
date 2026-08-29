@@ -3,6 +3,7 @@ import * as audit from "./hygieneAuditService";
 
 function eventType(fromStatus: hygieneService.HygieneMeasurementStatus | undefined, toStatus: hygieneService.HygieneMeasurementStatus, changed: string[]): audit.HygieneMeasurementAuditEventType {
   if (!fromStatus) return "created";
+  if (changed.includes("normativeEvaluationSnapshot")) return "normative_snapshot_attached";
   if (toStatus === "pending_review") return "submitted_for_review";
   if (toStatus === "validated") return "validated";
   if (toStatus === "closed") return "closed";

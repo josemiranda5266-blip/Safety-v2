@@ -548,6 +548,55 @@ export interface HygieneProtocolEvaluation {
   professionalConclusion?: string;
 }
 
+// ----------------------------------------------------
+// CATÁLOGO NORMATIVO VERSIONADO
+// ----------------------------------------------------
+
+export type NormativeRecordStatus = 'draft' | 'active' | 'superseded' | 'repealed' | 'archived';
+
+export interface NormativeSource {
+  issuingAuthority: string;
+  documentTitle: string;
+  officialUrl?: string;
+  documentId?: string;
+  publishedAt?: string;
+  retrievedAt?: string;
+}
+
+export interface NormativeCriterion {
+  id: string;
+  code: string;
+  title: string;
+  description?: string;
+  unit?: string;
+  parameters: Record<string, string | number | boolean>;
+  applicability?: string;
+}
+
+export interface NormativeProtocolVersion {
+  id: string;
+  protocolType: HygieneProtocolType;
+  reference: string;
+  title: string;
+  version: string;
+  status: NormativeRecordStatus;
+  effectiveFrom?: string;
+  effectiveTo?: string;
+  source: NormativeSource;
+  criteria: NormativeCriterion[];
+  notes?: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface NormativeEvaluationSnapshot {
+  normativeProtocolVersionId: string;
+  reference: string;
+  version: string;
+  evaluatedAt: string;
+  criteriaSnapshot: NormativeCriterion[];
+}
+
 export interface Investigation {
   immediateCauses: string[];
   basicCauses: string[];

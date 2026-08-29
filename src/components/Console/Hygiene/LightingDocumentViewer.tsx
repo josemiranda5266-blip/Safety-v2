@@ -5,6 +5,18 @@ import { hygieneService } from '../../../services/hygieneService';
 type Section = { key: string; title: string; data: Record<string, unknown> };
 type Representation = { documentId: string; templateKey: string; templateVersion: string; generatedAt: string; sections: Section[]; disclaimer: string };
 
+const labels: Record<string, string> = {
+  measurementId: 'Identificador de medición', protocolType: 'Protocolo', measurementDate: 'Fecha de medición',
+  companyId: 'Empresa', establishmentId: 'Establecimiento', sectorId: 'Sector', positionId: 'Puesto', employeeId: 'Trabajador',
+  sourceType: 'Tipo de iluminación', lightingSystem: 'Sistema de iluminación', taskDescription: 'Descripción de tarea',
+  averageLux: 'Iluminancia promedio (lux)', minimumLux: 'Iluminancia mínima (lux)', maximumLux: 'Iluminancia máxima (lux)',
+  uniformityRatio: 'Relación mín/máx', calculationVersion: 'Versión del cálculo', calculatedAt: 'Calculado el',
+  instrumentIds: 'Instrumentos utilizados', generatedAt: 'Fecha de generación', generatedBy: 'Generado por',
+  templateKey: 'Plantilla', templateVersion: 'Versión de plantilla'
+};
+
+function labelFor(key: string) { return labels[key] || key.replace(/([A-Z])/g, ' $1').replace(/^./, (c) => c.toUpperCase()); }
+
 function formatValue(value: unknown): string {
   if (value === null || value === undefined || value === '') return '—';
   if (typeof value === 'object') return JSON.stringify(value, null, 2);
@@ -33,7 +45,12 @@ export function LightingDocumentViewer({ documentId, onClose }: { documentId: st
         {error && <div className="rounded-xl bg-red-50 text-red-700 p-4 text-sm">{error}</div>}
         {representation && <>
           <div className="rounded-xl bg-indigo-50 dark:bg-indigo-950/30 p-4 text-sm"><div className="font-bold">Documento {representation.documentId}</div><div className="text-slate-500 mt-1">Generado: {new Date(representation.generatedAt).toLocaleString()}</div></div>
-          {representation.sections.map((section) => <section key={section.key} className="border rounded-2xl p-5"><h3 className="font-extrabold mb-4">{section.title}</h3><dl className="grid gap-3">{Object.entries(section.data).map(([key, value]) => <div key={key} className="grid md:grid-cols-3 gap-2 text-sm border-b last:border-b-0 pb-3 last:pb-0"><dt className="font-semibold text-slate-600 dark:text-slate-300">{key}</dt><dd className="md:col-span-2 whitespace-pre-wrap break-words text-slate-800 dark:text-slate-100">{formatValue(value)}</dd></div>)}</dl></section>)}
+          {representation.sections.map((section) => {
+            const points = section.key === 'measurement_points' && Array.isArray(section.data.points) ? section.data.points as Array<Record<string, unknown>> : null;
+            return <section key={section.key} className="border rounded-2xl p-5"><h3 className="font-extrabold mb-4">{section.title}</h3>
+              {points ? <div className="overflow-x-auto"><table className="w-full text-sm"><thead><tr className="border-b text-left"><th className="p-2">Punto</th><th className="p-2">Tipo</th><th className="p-2">Ubicación</th><th className="p-2">Iluminancia</th><th className="p-2">Observaciones</th></tr></thead><tbody>{points.map((point, index) => <tr key={String(point.id ?? index)} className="border-b"><td className="p-2">{formatValue(point.name)}</td><td className="p-2">{formatValue(point.pointType)}</td><td className="p-2">{formatValue(point.locationDescription)}</td><td className="p-2 font-semibold">{formatValue(point.lux)} lux</td><td className="p-2">{formatValue(point.observations)}</td></tr>)}</tbody></table></div> : <dl className="grid gap-3">{Object.entries(section.data).map(([key, value]) => <div key={key} className="grid md:grid-cols-3 gap-2 text-sm border-b last:border-b-0 pb-3 last:pb-0"><dt className="font-semibold text-slate-600 dark:text-slate-300">{labelFor(key)}</dt><dd className="md:col-span-2 whitespace-pre-wrap break-words text-slate-800 dark:text-slate-100">{formatValue(value)}</dd></div>)}</dl>}
+            </section>;
+          })}
           <div className="rounded-xl bg-amber-50 dark:bg-amber-950/30 p-4 text-sm text-amber-900 dark:text-amber-100">{representation.disclaimer}</div>
         </>}
       </div>

@@ -141,13 +141,15 @@ router.post("/measurements/:id/review", requirePermission("hygiene:update"), asy
   if (measurement.status !== "pending_review") return res.status(409).json({ error: "La medición debe estar pendiente de revisión", code: "MEASUREMENT_NOT_READY_FOR_REVIEW" });
   const decision = req.body?.decision;
   if (decision !== "approved" && decision !== "changes_requested") return res.status(400).json({ error: "Decisión de revisión inválida", code: "INVALID_REVIEW_DECISION" });
+  const comments = typeof req.body?.comments === "string" ? req.body.comments.trim() : "";
+  if (decision === "changes_requested" && !comments) return res.status(400).json({ error: "Debe indicar los cambios requeridos", code: "REVIEW_COMMENTS_REQUIRED" });
   const now = new Date().toISOString();
   const updated = await hygieneWorkflowService.updateMeasurementWithAudit(req.params.id, context.orgId, context.userId, {
     status: decision === "approved" ? "validated" : "in_progress",
-    review: { status: decision, reviewedBy: context.userId, reviewedAt: now, comments: typeof req.body?.comments === "string" ? req.body.comments : null },
+    review: { status: decision, reviewedBy: context.userId, reviewedAt: now, comments: comments || null },
   }, {
     eventType: decision === "approved" ? "review_approved" : "changes_requested",
-    metadata: { comments: typeof req.body?.comments === "string" ? req.body.comments : null, decision },
+    metadata: { comments: comments || null, decision },
   });
   res.json({ measurement: updated });
 });

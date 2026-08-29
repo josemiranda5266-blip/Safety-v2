@@ -23,7 +23,7 @@ El cálculo canónico rechaza Lux negativos y valores no finitos.
 **Estado:** implementado; tests escritos; ejecución real pendiente.
 
 ### 3. Estados inmutables
-La capa de persistencia protege `validated`, `closed` y `archived` contra modificaciones.
+La capa de persistencia protege `validated`, `closed` y `archived` contra modificaciones. `archived` fue agregado explícitamente después de detectar que el servicio inferior todavía permitía modificaciones de datos en ese estado.
 
 **Estado:** implementado.
 
@@ -40,6 +40,8 @@ La generación documental exige snapshot normativo y el snapshot contiene la ref
 ### 6. Mapper y documento histórico
 `lightingDocumentMapper.ts` transforma el snapshot persistido en `HygieneDocumentRepresentation` y no vuelve a ejecutar el cálculo físico. `uniformityPasses` es una derivación documental de valores persistidos.
 
+También se verificó que la generación documental recibe una medición validada y construye una copia histórica de `rawData`, snapshots instrumentales y snapshot normativo; no depende del catálogo vivo para reconstruir el documento.
+
 **Estado:** implementado; cobertura adicional pendiente.
 
 ### 7. Evaluación normativa
@@ -54,29 +56,44 @@ La normativa establece validez de 12 meses para los valores de la medición de i
 
 **Estado:** hallazgo abierto.
 
+### 9. Catálogo de requisitos de iluminación
+El catálogo específico está diseñado como cobertura curada inicial y no como tabla exhaustiva. El sistema debe evitar inventar `requiredLux` cuando la clasificación sea ambigua o no exista correspondencia inequívoca.
+
+**Estado:** diseño seguro; cobertura completa pendiente.
+
+### 10. Fixture y regresiones
+Se corrigió el fixture de iluminación para respetar los tipos reales (`sourceType` válido y `pointType`). Se incorporó `lightingMeasurement.test.ts` a `npm test` y se agregó cobertura de manipulación de métricas en el workflow.
+
+**Estado:** tests escritos/configurados; ejecución real pendiente.
+
 ## Descubrimientos arquitectónicos abiertos
 
 - `hygieneService` es una capa de persistencia genérica que puede escribir `rawData`; la protección específica de iluminación está concentrada en el workflow. Hay que terminar de demostrar que no existe un consumidor alternativo que pueda bypassar el workflow.
 - `validateMeasurementForSubmission()` no debería duplicar el cálculo físico; debe exigir las precondiciones correctas del workflow y apoyarse en la validación/cálculo canónico.
-- El catálogo específico de iluminación es una primera cobertura curada y no debe presentarse como cobertura exhaustiva de todas las actividades/puestos.
+- La regla de vigencia de 12 meses está definida en código pero todavía debe integrarse/verificarse en el workflow correcto.
+- El catálogo específico de iluminación es una primera cobertura curada, no una cobertura exhaustiva de todas las actividades/puestos.
 - Falta cotejo campo-por-campo y valor-por-valor contra el protocolo oficial SRT 84/2012.
 - Falta revisar conclusiones/recomendaciones en todas las salidas documentales.
 - Falta revisar compatibilidad de registros antiguos con `uniformityRatio` y campos nuevos.
 - Tests, lint y build están escritos/configurados pero no deben marcarse como PASS hasta ejecución real.
 - No existe CI automático en `main`.
+- Persistencia y reconstrucción end-to-end real siguen sin ejecución.
 
-## Plan de solución
+## Plan de solución y verificación
 
-1. Completar rastreo de consumidores/escritores de mediciones.
-2. Verificar que toda transición `in_progress → pending_review → validated` pase por las validaciones correspondientes.
-3. Integrar la vigencia de 12 meses en el punto correcto del workflow, evitando duplicar la fuente de verdad.
-4. Mantener snapshots normativos e instrumentales como evidencia histórica inmutable.
-5. Completar requisitos de iluminación sólo con evidencia normativa verificable.
-6. Cotejar el modelo y documento campo-por-campo con SRT 84/2012.
-7. Añadir regresiones para vigencia, snapshots y bypasses.
-8. Ejecutar realmente `npm test`, `npm run lint` y `npm run build` y registrar resultados.
-9. Ejecutar E2E real de persistencia → validación → documento.
-10. Sólo después cerrar Iluminación y avanzar a Ruido.
+1. Completar rastreo de consumidores reales de `hygieneService`, especialmente escritores de mediciones y `rawData`, para demostrar que no existe un bypass del workflow.
+2. Auditar y, si hace falta, endurecer `validateMeasurementForSubmission()` para que ninguna iluminación pueda pasar a revisión sin datos/cálculo canónico válido, sin duplicar la lógica matemática.
+3. Integrar la vigencia de 12 meses en el punto correcto del workflow. Primero determinar si debe bloquear `validated`, generar advertencia, o ambas cosas según el modelo funcional; la fuente de verdad debe ser única.
+4. Mantener snapshots normativos e instrumentales completos como evidencia histórica inmutable.
+5. Completar el catálogo de requisitos de iluminación sólo con evidencia normativa verificable; ante ambigüedad, exigir clasificación/revisión profesional.
+6. Cotejar campo-por-campo el modelo, UI, mapper y documentos contra el protocolo oficial SRT 84/2012.
+7. Cotejar valor-por-valor los requisitos de iluminación y documentar el origen normativo de cada `requiredLux`.
+8. Revisar conclusiones y recomendaciones de PDF/Web/XLSX para asegurar que distingan resultado técnico, criterio normativo y decisión profesional.
+9. Revisar compatibilidad/migración de registros históricos que no tengan los campos nuevos.
+10. Agregar regresiones específicas para vigencia, snapshots, estados inmutables y bypasses de escritura.
+11. Ejecutar realmente `npm test`, `npm run lint` y `npm run build` en un entorno reproducible y registrar resultados, incluyendo cualquier fallo que aparezca.
+12. Ejecutar E2E real: captura → persistencia → recálculo server-side → submit → revisión → validación → snapshots → documento → reconstrucción.
+13. Sólo después de cerrar Iluminación de extremo a extremo, avanzar a Ruido.
 
 ## Estado de continuidad
 
@@ -91,7 +108,11 @@ Evaluación profesional         🟢
 Vigencia 12 meses              🟡
 Cobertura normativa            🟡
 Consumidores alternativos      🟡
+Tests escritos                 🟢
 Tests ejecutados               🔴
 Lint/build ejecutados          🔴
 E2E                            🔴
 ```
+
+## Criterio de cierre de Iluminación
+No considerar Iluminación cerrada sólo porque el código compile. El cierre requiere: integridad de escritura demostrada, cálculo canónico protegido, vigencia normativa resuelta, requisitos normativos verificables, snapshots históricos, documentos coherentes y pruebas reales de test/lint/build/E2E. Solo entonces se podrá pasar al siguiente protocolo.

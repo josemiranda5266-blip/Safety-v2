@@ -795,3 +795,52 @@ El cliente ahora consume y devuelve directamente el modelo de dominio de Higiene
 ### Próxima acción
 
 Auditar las pantallas que dependían de los campos legacy. Corregir consumidores para usar context, protocolType, measurementDate e instrumentIds. La prioridad es localizar todas las referencias reales antes de modificar componentes, para evitar introducir compatibilidad falsa.
+
+
+## 2026-08-29 — Implementación: corrección de consumidores UI del dominio de Higiene
+
+### Hallazgo
+
+Las pantallas reales del módulo están en:
+
+- src/components/Console/Hygiene/InstrumentScreen.tsx
+- src/components/Console/Hygiene/MeasurementScreen.tsx
+
+Ambas seguían consumiendo campos del modelo legacy, por lo que la migración previa de tipos habría dejado incompatibilidades de compilación y semántica.
+
+### Correcciones realizadas
+
+InstrumentScreen ahora utiliza:
+
+- category;
+- instrumentType;
+- status;
+- active;
+- calibrationDate/calibrationExpiry opcionales.
+
+Se corrigió la evaluación de disponibilidad: un instrumento no se considera disponible solamente por tener un objeto existente; también se considera su lifecycle y vencimiento.
+
+MeasurementScreen ahora utiliza:
+
+- measurementDate;
+- protocolType;
+- context.companyId;
+- context.establishmentId;
+- instrumentIds;
+- status;
+- notes.
+
+Se eliminó la presentación de campos legacy que ya no pertenecen a la entidad general, como agent, value, applicableLimit, result, professionalName y reportUrl.
+
+### Commits
+
+- 780800b07a1f8c507f8ba762b521c74b4229d890 — refactor(hygiene): align instrument screen with domain lifecycle
+- 903ba7338b1fe98d8925c8cc29a76e807d2cf8f6 — refactor(hygiene): align measurement screen with v2 domain model
+
+### Estado de la migración
+
+La lectura UI de instrumentos y mediciones ya está alineada con el dominio V2. Las acciones de alta siguen siendo el siguiente punto pendiente: los botones visuales no deben considerarse funcionalidad implementada hasta tener formularios conectados a los endpoints POST.
+
+### Próxima acción
+
+Implementar la primera capa de alta profesional: formulario de instrumento conectado al POST protegido. Después construir el flujo de creación de medición como wizard jerárquico y por protocolo.

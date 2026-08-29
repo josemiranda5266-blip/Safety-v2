@@ -21,6 +21,20 @@ export function mapLightingMeasurementToDocument(
       ? lighting.minimumLux >= lighting.uniformityThresholdLux
       : undefined;
 
+  const snapshotById = new Map((measurement.instrumentSnapshots ?? []).map((instrument) => [instrument.id, instrument]));
+  const resolvedInstruments = measurement.instrumentIds.map((id) => snapshotById.get(id)).filter(Boolean);
+  const fallbackInstruments = instruments.map((instrument) => ({
+    id: instrument.id,
+    category: instrument.category,
+    instrumentType: instrument.instrumentType,
+    brand: instrument.brand,
+    model: instrument.model,
+    serialNumber: instrument.serialNumber,
+    calibrationDate: instrument.calibrationDate,
+    calibrationExpiry: instrument.calibrationExpiry,
+    certificateUrl: instrument.certificateUrl,
+  }));
+
   const sections = [
     {
       key: 'identification',
@@ -50,18 +64,9 @@ export function mapLightingMeasurementToDocument(
       key: 'instrumentation',
       title: 'Instrumentación',
       data: {
-        instruments: instruments.map((instrument) => ({
-          id: instrument.id,
-          category: instrument.category,
-          instrumentType: instrument.instrumentType,
-          brand: instrument.brand,
-          model: instrument.model,
-          serialNumber: instrument.serialNumber,
-          calibrationDate: instrument.calibrationDate,
-          calibrationExpiry: instrument.calibrationExpiry,
-          certificateUrl: instrument.certificateUrl,
-        })),
+        instruments: resolvedInstruments.length > 0 ? resolvedInstruments : fallbackInstruments,
         instrumentIds: measurement.instrumentIds,
+        snapshotAvailable: resolvedInstruments.length === measurement.instrumentIds.length,
       },
     },
     {

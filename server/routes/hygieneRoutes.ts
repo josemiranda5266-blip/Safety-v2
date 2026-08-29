@@ -5,6 +5,8 @@ import { createHygieneInstrumentSchema, updateHygieneInstrumentSchema, createHyg
 import * as hygieneService from "../services/hygieneService";
 import { getNormativeProtocolVersion } from "../services/normativeCatalogService";
 import * as hygieneWorkflowService from "../services/hygieneMeasurementWorkflowService";
+import * as hygieneAuditService from "../services/hygieneAuditService";
+import { validateMeasurementForSubmission } from "../services/hygieneSubmissionService";
 import * as companyService from "../services/companyService";
 import * as establishmentService from "../services/establishmentService";
 import * as sectorService from "../services/sectorService";
@@ -114,6 +116,22 @@ router.get("/measurements/:id/audit-events", requirePermission("hygiene:read"), 
   if (!measurement) return res.status(404).json({ error: "Medición no encontrada", code: "MEASUREMENT_NOT_FOUND" });
   const events = await hygieneAuditService.listMeasurementAuditEvents(context.orgId, req.params.id);
   res.json({ events });
+});
+
+router.post("/measurements/:id/submit-for-review", requirePermission("hygiene:update"), async (req: TenantRequest, res: Response) => {
+  const context = req.authContext!;
+  const measurement = await hygieneService.getMeasurementById(req.params.id, context.orgId);
+  if (!measurement) return res.status(404).json({ error: "Medición no encontrada", code: "MEASUREMENT_NOT_FOUND" });
+  if (measurement.status !== "in_progress") return res.status(409).json({ error: "Solo una medición en progreso puede enviarse a revisión", code: "MEASUREMENT_NOT_READY_FOR_SUBMISSION" });
+
+  const validation = validateMeasurementForSubmission(measurement);
+  if (!validation.valid) return res.status(400).json({ error: "La medición no cumple los requisitos para revisión", code: "MEASUREMENT_SUBMISSION_VALIDATION_FAILED", validation });
+
+  const updated = await hygieneWorkflowService.updateMeasurementWithAudit(req.params.id, context.orgId, context.userId, { status: "pending_review" }, {
+    eventType: "submitted_for_review",
+    metadata: { validationPassed: true },
+  });
+  res.json({ measurement: updated });
 });
 
 router.post("/measurements/:id/review", requirePermission("hygiene:update"), async (req: TenantRequest, res: Response) => {

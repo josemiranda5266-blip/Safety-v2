@@ -927,3 +927,58 @@ Este wizard crea la entidad base de medición. Todavía no captura los datos té
 ### Próxima acción
 
 Auditar y formalizar el catálogo de protocolos. La primera implementación específica debe ser Iluminación, con un modelo tipado para puntos de medición y datos de evaluación, antes de implementar cálculos o generación documental.
+
+
+## 2026-08-29 — Implementación: dominio específico del protocolo de Iluminación
+
+### Principio aplicado
+
+Se separó explícitamente:
+
+1. entidad general de medición;
+2. datos específicos del protocolo;
+3. cálculos determinísticos;
+4. evaluación normativa/profesional.
+
+### Tipos incorporados
+
+En src/types/safety.ts se agregaron:
+
+- HygieneProtocolType;
+- LightingSourceType;
+- LightingPointType;
+- LightingMeasurementPoint;
+- LightingMeasurementData;
+- CreateLightingMeasurementData;
+- HygieneProtocolEvaluation.
+
+### Motor de cálculo
+
+Se creó src/services/lightingMeasurement.ts.
+
+El motor calcula únicamente propiedades matemáticas derivadas de los valores cargados:
+
+- promedio de lux;
+- mínimo;
+- máximo;
+- relación mínimo/máximo.
+
+No determina cumplimiento legal ni reemplaza la evaluación profesional.
+
+### Persistencia
+
+Se agregó hygieneService.saveLightingData(), que persiste los datos tipados bajo rawData.lighting mediante el PATCH existente de la medición.
+
+### Decisión normativa
+
+No se codificaron valores legales ni umbrales de cumplimiento sin una base normativa oficial versionada. Antes de automatizar la evaluación de cumplimiento se debe diseñar el catálogo normativo con referencia, versión, vigencia y fuente documental.
+
+### Commits
+
+- eb9adaa2c461e09a46c3c4f0f1a690b0bfe1e160 — feat(hygiene): add typed lighting protocol domain
+- 00dbf230e96279e64f78460dfb74ee40b77bd34f — feat(hygiene): add deterministic lighting calculations
+- 6ab8afa45d311ac1b707b28da405bbc3a3700b18 — feat(hygiene): support typed lighting data persistence
+
+### Próxima acción
+
+Construir el editor UI de Iluminación asociado a una medición existente y luego incorporar un catálogo normativo versionado antes de producir cualquier resultado de cumplimiento.

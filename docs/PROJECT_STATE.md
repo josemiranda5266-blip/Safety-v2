@@ -883,3 +883,47 @@ UI → validación cliente → CreateHygieneInstrumentInput → hygieneService.a
 ### Próxima acción
 
 Construir el flujo de alta de mediciones. Debe ser un wizard guiado y no un formulario plano. La primera etapa debe seleccionar contexto organizacional y protocolo; después instrumentos; finalmente datos específicos del protocolo.
+
+
+## 2026-08-29 — Implementación: wizard jerárquico para alta de mediciones
+
+### Cambio realizado
+
+MeasurementScreen ahora contiene un flujo de creación en cuatro etapas:
+
+1. contexto organizacional;
+2. protocolo y fecha;
+3. instrumentos;
+4. resumen y creación.
+
+### Contexto
+
+La medición utiliza el TenantContext existente para seleccionar entidades ya pertenecientes al tenant:
+
+- empresa activa;
+- establecimiento;
+- sector opcional;
+- puesto opcional;
+- trabajador opcional.
+
+No se permite crear una medición sin empresa activa ni establecimiento.
+
+### Instrumentos
+
+El wizard permite múltiples instrumentos y consume el inventario de la API. Inicialmente presenta instrumentos activos con status active. La validación definitiva de disponibilidad y calibración debe seguir perteneciendo al backend.
+
+### Resultado
+
+El submit construye CreateHygieneMeasurementInput y utiliza POST /api/v2/hygiene/measurements. Al finalizar, vuelve a consultar la fuente de verdad.
+
+### Alcance intencional
+
+Este wizard crea la entidad base de medición. Todavía no captura los datos técnicos específicos de cada protocolo. Esa separación es deliberada para evitar convertir la entidad general en un formulario de ruido/iluminación/puesta a tierra mezclado.
+
+### Commit
+
+- 3aff6a8d327818ae53027f510828017fbf07369d — feat(hygiene): add hierarchical measurement creation wizard
+
+### Próxima acción
+
+Auditar y formalizar el catálogo de protocolos. La primera implementación específica debe ser Iluminación, con un modelo tipado para puntos de medición y datos de evaluación, antes de implementar cálculos o generación documental.

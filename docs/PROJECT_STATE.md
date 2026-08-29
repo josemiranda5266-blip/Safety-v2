@@ -1346,3 +1346,35 @@ El editor informa cuando una medición está pending_review o validated, evitand
 ### Próxima acción
 
 Auditar la revisión profesional existente y convertirla en una interfaz dedicada para el revisor, con contexto de empresa, datos técnicos, normativa, evaluación asistida e historial antes de aprobar o solicitar cambios.
+
+
+## 2026-08-29 — Implementación: interfaz dedicada de revisión profesional
+
+### Auditoría de la revisión existente
+
+La API de revisión ya imponía pending_review como estado previo y registraba decisiones semánticas. Se completó la capa frontend para evitar que la decisión quede expuesta como una operación aislada.
+
+### Nueva interfaz
+
+Se creó src/components/Console/Hygiene/ProfessionalMeasurementReview.tsx. Para una medición pendiente de revisión, la pantalla presenta contexto de empresa y establecimiento, protocolo, fecha, cantidad de instrumentos, snapshot normativo, evaluación asistida cuando corresponde, comentarios e historial documental.
+
+### Decisiones
+
+- Aprobar revisión → validated y evento review_approved.
+- Solicitar cambios → in_progress y evento changes_requested.
+
+Solicitar cambios exige un comentario en frontend. El backend conserva la validación de estado como autoridad.
+
+### Integración
+
+LightingMeasurementEditor redirige visualmente una medición pending_review al componente de revisión profesional, evitando editar datos técnicos mientras se encuentra en ese estado.
+
+### Commits
+
+- dd693bfeef05ff3ec879601527d5de224b15c73e — feat(hygiene): expose professional review action to frontend
+- 82a62efec6c34a9268ee985ccfeefc0577c23d34 — feat(hygiene): add dedicated professional measurement review component
+- 9cdaaa3939d13a8480e7160b267b26e4a992f0ac — feat(hygiene): route pending lighting measurements to professional review view
+
+### Próxima acción
+
+Fortalecer el backend de revisión: exigir comentarios para changes_requested y evaluar permisos/roles específicos de revisor en lugar de reutilizar únicamente hygiene:update. Luego comenzar la capa de documento/protocolo final a partir de mediciones validadas.

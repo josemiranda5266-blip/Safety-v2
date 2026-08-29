@@ -1289,3 +1289,37 @@ El editor de Iluminación ahora contiene una sección desplegable Historial docu
 ### Próxima acción
 
 Extender la misma infraestructura de historial a la pantalla general de mediciones y separar la acción de enviar a revisión de la edición ordinaria, de forma que el paso hacia pending_review tenga una interfaz y validaciones explícitas.
+
+
+## 2026-08-29 — Implementación: envío formal a revisión y validaciones previas
+
+### Acción explícita
+
+Se agregó POST /api/v2/hygiene/measurements/:id/submit-for-review. La transición hacia pending_review dejó de ser un cambio de estado ordinario y ahora representa una operación profesional explícita.
+
+### Validaciones de envío
+
+La nueva capa server/services/hygieneSubmissionService.ts verifica empresa, establecimiento, instrumento asociado, snapshot normativo y datos técnicos. Para Iluminación verifica además la existencia de puntos de medición, respetando la estructura real rawData.lighting.points y la forma plana como compatibilidad.
+
+### Restricción de estado
+
+Solo una medición en in_progress puede enviarse a revisión. Los errores devuelven códigos específicos y la lista de requisitos pendientes.
+
+### Auditoría
+
+Un envío exitoso genera submitted_for_review mediante el workflow centralizado y registra que las validaciones fueron superadas.
+
+### Frontend
+
+hygieneService incorpora submitForReview(id), preparado para que el editor muestre una acción separada de la edición ordinaria.
+
+### Commits
+
+- 21fe796d8e73bd56bf75a53098436133f0c1eb39 — feat(hygiene): add explicit measurement submission validation
+- 03cb2e8f7072511a6d950e3905f9e27742f9c7f2 — feat(hygiene): add explicit validated submission to professional review
+- 507cac9835cc97b8af5dc285523c7581bc79df62 — fix(hygiene): validate nested lighting measurement points on submission
+- 9ffafac12a97ded4b8385647cc3533248347b8d5 — feat(hygiene): add frontend submit for review action
+
+### Próxima acción
+
+Integrar el botón y estado de envío formal en el editor de Iluminación, mostrando requisitos pendientes de manera visible. Después avanzar hacia la revisión visual profesional y la generación documental, sin declarar aún cumplimiento legal automático.

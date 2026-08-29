@@ -4,6 +4,7 @@ import {
   CreateHygieneMeasurementInput,
   CreateHygieneInstrumentInput,
   LightingMeasurementData,
+  NormativeEvaluationSnapshot,
 } from '../types/safety';
 import { HygieneDocumentRepresentation } from '../types/hygieneDocument';
 import { auth } from './firebase';
@@ -28,7 +29,8 @@ export const hygieneService = {
   async getMeasurement(id: string): Promise<HygieneMeasurement> { const { measurement } = await request<{ measurement: HygieneMeasurement }>(`/measurements/${encodeURIComponent(id)}`); return measurement; },
   async addMeasurement(input: CreateHygieneMeasurementInput): Promise<HygieneMeasurement> { const { measurement } = await request<{ measurement: HygieneMeasurement }>('/measurements', { method: 'POST', body: JSON.stringify(input) }); return measurement; },
   async saveLightingData(id: string, lighting: LightingMeasurementData): Promise<HygieneMeasurement> { return this.updateMeasurement(id, { rawData: { lighting } }); },
-  async updateMeasurement(id: string, updates: Partial<Pick<HygieneMeasurement, 'protocolType' | 'measurementDate' | 'instrumentIds' | 'rawData' | 'notes' | 'status'>>): Promise<HygieneMeasurement> { const { measurement } = await request<{ measurement: HygieneMeasurement }>(`/measurements/${encodeURIComponent(id)}`, { method: 'PATCH', body: JSON.stringify(updates) }); return measurement; },
+  async saveNormativeSnapshot(id: string, normativeProtocolVersionId = 'srt-84-2012'): Promise<HygieneMeasurement> { const { measurement } = await request<{ measurement: HygieneMeasurement }>(`/measurements/${encodeURIComponent(id)}/normative-snapshot`, { method: 'POST', body: JSON.stringify({ normativeProtocolVersionId }) }); return measurement; },
+  async updateMeasurement(id: string, updates: Partial<Pick<HygieneMeasurement, 'protocolType' | 'measurementDate' | 'instrumentIds' | 'rawData' | 'normativeEvaluationSnapshot' | 'notes' | 'status'>>): Promise<HygieneMeasurement> { const { measurement } = await request<{ measurement: HygieneMeasurement }>(`/measurements/${encodeURIComponent(id)}`, { method: 'PATCH', body: JSON.stringify(updates) }); return measurement; },
   async getDocumentRepresentation(documentId: string): Promise<HygieneDocumentRepresentation> { const { representation } = await request<{ representation: HygieneDocumentRepresentation }>(`/generated-documents/${encodeURIComponent(documentId)}/representation`); return representation; },
   async getGeneratedDocuments(id: string): Promise<any[]> { const { documents } = await request<{ documents: any[] }>(`/measurements/${encodeURIComponent(id)}/generated-documents`); return documents; },
   async generateDocument(id: string, templateKey?: string, templateVersion?: string): Promise<any> { const { document } = await request<{ document: any }>(`/measurements/${encodeURIComponent(id)}/generated-documents`, { method: 'POST', body: JSON.stringify({ templateKey, templateVersion }) }); return document; },

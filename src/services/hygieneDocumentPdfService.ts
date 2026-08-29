@@ -14,7 +14,9 @@ function label(key: string): string {
   const labels: Record<string, string> = {
     measurementId: 'Identificador de medición', protocolType: 'Protocolo', measurementDate: 'Fecha de medición',
     averageLux: 'Iluminancia promedio (lux)', minimumLux: 'Iluminancia mínima (lux)', maximumLux: 'Iluminancia máxima (lux)',
-    uniformityRatio: 'Relación mín/máx', calculationVersion: 'Versión del cálculo', calculatedAt: 'Calculado el',
+    uniformityMinimumLux: 'E mínima (lux)', uniformityThresholdLux: 'Umbral de uniformidad E media/2 (lux)',
+    uniformityMinOverAverage: 'Relación E mínima / E media', uniformityPasses: 'Uniformidad E mínima ≥ E media/2',
+    uniformityRatio: 'Uniformidad histórica (campo legado)', calculationVersion: 'Versión del cálculo', calculatedAt: 'Calculado el',
     sourceType: 'Tipo de iluminación', lightingSystem: 'Sistema de iluminación', taskDescription: 'Descripción de tarea',
     documentId: 'Documento', generatedAt: 'Fecha de generación', generatedBy: 'Generado por', templateKey: 'Plantilla', templateVersion: 'Versión de plantilla',
     id: 'Identificador', authority: 'Autoridad', resolution: 'Resolución', year: 'Año', title: 'Título', sourceUrl: 'Fuente oficial',
@@ -72,7 +74,7 @@ export function exportLightingDocumentPdf(representation: HygieneDocumentReprese
         }
       } else if (key !== 'instrumentIds') rows.push([label(key), scalar(value)]);
     }
-    if (rows.length) { autoTable(doc, { startY: y, body: rows, margin: { left: PAGE_MARGIN, right: PAGE_MARGIN }, styles: { fontSize: 8, cellPadding: 2 }, columnStyles: { 0: { fontStyle: 'bold', cellWidth: 52 } } }); y = (doc as any).lastAutoTable.finalY + 8; }
+    if (rows.length) { autoTable(doc, { startY: y, body: rows, margin: { left: PAGE_MARGIN, right: PAGE_MARGIN }, styles: { fontSize: 8, cellPadding: 2 }, columnStyles: { 0: { fontStyle: 'bold', cellWidth: 58 } } }); y = (doc as any).lastAutoTable.finalY + 8; }
   }
   if (y > 265) { doc.addPage(); y = PAGE_MARGIN; }
   doc.setFontSize(8); doc.setFont('helvetica', 'italic'); doc.text(doc.splitTextToSize(representation.disclaimer, 174), PAGE_MARGIN, y);

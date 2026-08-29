@@ -6,19 +6,23 @@ function round(value: number): number {
 
 /**
  * Calculates the SRT 84/2012 lighting metrics from the complete set of
- * valid lux readings in the campaign.
+ * lux readings in the campaign.
  *
  * Uniformity is NOT minimum/maximum. The regulatory relationship is:
  * E mínima >= E media / 2.
  */
 export function calculateLightingMeasurement(input: CreateLightingMeasurementData): LightingMeasurementData {
-  const points: LightingMeasurementPoint[] = input.points
-    .map((point, index) => ({
+  const points: LightingMeasurementPoint[] = input.points.map((point, index) => {
+    const lux = Number(point.lux);
+    if (!Number.isFinite(lux) || lux < 0) {
+      throw new Error(`Lectura Lux inválida en el punto ${index + 1}.`);
+    }
+    return {
       ...point,
       id: `lighting-point-${index + 1}`,
-      lux: Number(point.lux),
-    }))
-    .filter((point) => Number.isFinite(point.lux));
+      lux,
+    };
+  });
 
   if (points.length === 0) {
     throw new Error('Se requiere al menos un punto de medición válido.');

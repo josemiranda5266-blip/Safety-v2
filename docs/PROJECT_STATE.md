@@ -755,3 +755,43 @@ Los tipos de frontend son más pobres que el modelo backend. La siguiente evoluc
 ### Próxima acción
 
 Auditar todas las pantallas y componentes que consumen hygieneService. Identificar dependencias del modelo legacy y evolucionar primero los tipos del frontend, evitando que category, instrumentType, status, lifecycle y trazabilidad permanezcan ocultos detrás de adaptadores temporales.
+
+
+## 2026-08-29 — Implementación: eliminación del modelo legacy de Higiene en frontend
+
+### Cambio realizado
+
+Se evolucionó `src/types/safety.ts` para reemplazar los tipos legacy de instrumentos y mediciones por el modelo de dominio alineado con la API V2.
+
+Se agregaron:
+
+- HygieneInstrumentCategory
+- HygieneInstrumentStatus
+- HygieneMeasurementStatus
+- HygieneMeasurementContext
+- CreateHygieneInstrumentInput
+- CreateHygieneMeasurementInput
+
+El modelo actual conserva explícitamente:
+
+- contexto jerárquico;
+- múltiples instrumentos;
+- estado de ciclo de vida;
+- active;
+- notas y datos crudos por protocolo;
+- trazabilidad de creación y actualización.
+
+### Servicio cliente
+
+Se eliminaron los adaptadores `toLegacyInstrument` y `toLegacyMeasurement` de `src/services/hygieneService.ts`.
+
+El cliente ahora consume y devuelve directamente el modelo de dominio de Higiene y agrega operaciones GET individual y PATCH para instrumentos y mediciones.
+
+### Commits
+
+- d092b3a99be80d777d276ae4faceb68014d5a3b2 — refactor(hygiene): replace legacy frontend domain types
+- 9ca0595ac2412dd3c12302584203f08fb33b3b89 — refactor(hygiene): remove legacy API adapters and expose domain model
+
+### Próxima acción
+
+Auditar las pantallas que dependían de los campos legacy. Corregir consumidores para usar context, protocolType, measurementDate e instrumentIds. La prioridad es localizar todas las referencias reales antes de modificar componentes, para evitar introducir compatibilidad falsa.

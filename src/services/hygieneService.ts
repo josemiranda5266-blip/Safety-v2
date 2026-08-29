@@ -3,6 +3,7 @@ import {
   HygieneInstrument,
   CreateHygieneMeasurementInput,
   CreateHygieneInstrumentInput,
+  LightingMeasurementData,
 } from '../types/safety';
 import { auth } from './firebase';
 
@@ -43,6 +44,10 @@ export const hygieneService = {
       body: JSON.stringify(input),
     });
     return measurement;
+  },
+
+  async saveLightingData(id: string, lighting: LightingMeasurementData): Promise<HygieneMeasurement> {
+    return this.updateMeasurement(id, { rawData: { lighting } });
   },
 
   async updateMeasurement(id: string, updates: Partial<Pick<HygieneMeasurement, 'protocolType' | 'measurementDate' | 'instrumentIds' | 'rawData' | 'notes' | 'status'>>): Promise<HygieneMeasurement> {

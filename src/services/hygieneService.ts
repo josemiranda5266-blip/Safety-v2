@@ -58,6 +58,11 @@ export const hygieneService = {
     return measurement;
   },
 
+  async submitForReview(id: string): Promise<HygieneMeasurement> {
+    const { measurement } = await request<{ measurement: HygieneMeasurement }>(`/measurements/${encodeURIComponent(id)}/submit-for-review`, { method: 'POST' });
+    return measurement;
+  },
+
   async getInstruments(): Promise<HygieneInstrument[]> {
     const { instruments } = await request<{ instruments: HygieneInstrument[] }>('/instruments');
     return instruments;

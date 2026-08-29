@@ -2,6 +2,7 @@ import React, { useEffect, useMemo, useState } from 'react';
 import { hygieneService } from '../../../services/hygieneService';
 import { CreateHygieneMeasurementInput, HygieneInstrument, HygieneMeasurement, HygieneMeasurementContext } from '../../../types/safety';
 import { useTenant } from '../../../context/TenantContext';
+import { LightingMeasurementEditor } from './LightingMeasurementEditor';
 import { Microscope, Activity, Calendar, CheckCircle, Clock, CircleX, Plus, ChevronLeft, ChevronRight, X } from 'lucide-react';
 
 const protocols = [
@@ -24,6 +25,7 @@ export const MeasurementScreen: React.FC = () => {
   const [instruments, setInstruments] = useState<HygieneInstrument[]>([]);
   const [loading, setLoading] = useState(true);
   const [showWizard, setShowWizard] = useState(false);
+  const [selectedMeasurementId, setSelectedMeasurementId] = useState<string | null>(null);
   const [step, setStep] = useState(1);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -47,6 +49,8 @@ export const MeasurementScreen: React.FC = () => {
     } catch (err) { console.error(err); }
     finally { setLoading(false); }
   };
+
+  const selectedMeasurement = measurements.find((item) => item.id === selectedMeasurementId) || null;
 
   const resetWizard = () => {
     setStep(1); setError(null); setProtocolType(''); setMeasurementDate(today()); setInstrumentIds([]); setNotes('');
@@ -121,6 +125,8 @@ export const MeasurementScreen: React.FC = () => {
       <div className="mt-6 flex justify-between"><button type="button" onClick={previous} disabled={step === 1 || saving} className="flex items-center gap-1 px-4 py-2 rounded-xl border font-bold disabled:opacity-40"><ChevronLeft className="w-4 h-4"/> Atrás</button>{step < 4 ? <button type="button" onClick={next} className="flex items-center gap-1 px-4 py-2 rounded-xl bg-indigo-600 text-white font-bold">Continuar <ChevronRight className="w-4 h-4"/></button> : <button type="button" disabled={saving} onClick={submit} className="px-4 py-2 rounded-xl bg-indigo-600 text-white font-bold disabled:opacity-60">{saving ? 'Creando...' : 'Crear medición'}</button>}</div>
     </div>}
 
-    {loading ? <div className="text-center p-8 text-slate-500">Cargando mediciones...</div> : measurements.length === 0 ? <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl p-12 text-center shadow-sm"><Microscope className="w-12 h-12 text-slate-300 mx-auto mb-4"/><h3 className="font-bold text-lg mb-2">Sin Mediciones Registradas</h3><p className="text-slate-500 text-sm">{activeCompany ? 'Crea la primera medición para esta empresa.' : 'Selecciona una empresa.'}</p></div> : <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl overflow-hidden shadow-sm"><table className="w-full text-left text-sm"><thead><tr className="bg-slate-50 dark:bg-slate-800/80 text-slate-500 font-bold uppercase text-[10px]"><th className="px-4 py-3">Fecha</th><th className="px-4 py-3">Protocolo</th><th className="px-4 py-3">Contexto</th><th className="px-4 py-3">Instrumentos</th><th className="px-4 py-3">Estado</th></tr></thead><tbody className="divide-y divide-slate-100 dark:divide-slate-800">{measurements.map((m) => <tr key={m.id}><td className="px-4 py-3 text-xs"><div className="flex items-center gap-1.5"><Calendar className="w-4 h-4 text-slate-400"/>{new Date(m.measurementDate).toLocaleDateString()}</div></td><td className="px-4 py-3"><div className="font-bold flex items-center gap-1.5"><Activity className="w-4 h-4 text-indigo-500"/>{m.protocolType}</div></td><td className="px-4 py-3 text-xs text-slate-500"><div>Empresa: {m.context.companyId}</div><div>Establecimiento: {m.context.establishmentId}</div></td><td className="px-4 py-3 text-xs">{m.instrumentIds.length} asociado(s)</td><td className="px-4 py-3"><span className="inline-flex items-center gap-1 text-indigo-700 bg-indigo-50 px-2 py-0.5 rounded text-xs font-bold">{statusIcon(m.status)} {statusLabel[m.status] || m.status}</span></td></tr>)}</tbody></table></div>}
+{selectedMeasurement && selectedMeasurement.protocolType === 'lighting' && <LightingMeasurementEditor measurement={selectedMeasurement} onSaved={async () => { await loadData(); setSelectedMeasurementId(null); }} />}
+
+    {loading ? <div className="text-center p-8 text-slate-500">Cargando mediciones...</div> : measurements.length === 0 ? <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl p-12 text-center shadow-sm"><Microscope className="w-12 h-12 text-slate-300 mx-auto mb-4"/><h3 className="font-bold text-lg mb-2">Sin Mediciones Registradas</h3><p className="text-slate-500 text-sm">{activeCompany ? 'Crea la primera medición para esta empresa.' : 'Selecciona una empresa.'}</p></div> : <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl overflow-hidden shadow-sm"><table className="w-full text-left text-sm"><thead><tr className="bg-slate-50 dark:bg-slate-800/80 text-slate-500 font-bold uppercase text-[10px]"><th className="px-4 py-3">Fecha</th><th className="px-4 py-3">Protocolo</th><th className="px-4 py-3">Contexto</th><th className="px-4 py-3">Instrumentos</th><th className="px-4 py-3">Estado</th><th className="px-4 py-3"></th></tr></thead><tbody className="divide-y divide-slate-100 dark:divide-slate-800">{measurements.map((m) => <tr key={m.id}><td className="px-4 py-3 text-xs"><div className="flex items-center gap-1.5"><Calendar className="w-4 h-4 text-slate-400"/>{new Date(m.measurementDate).toLocaleDateString()}</div></td><td className="px-4 py-3"><div className="font-bold flex items-center gap-1.5"><Activity className="w-4 h-4 text-indigo-500"/>{m.protocolType}</div></td><td className="px-4 py-3 text-xs text-slate-500"><div>Empresa: {m.context.companyId}</div><div>Establecimiento: {m.context.establishmentId}</div></td><td className="px-4 py-3 text-xs">{m.instrumentIds.length} asociado(s)</td><td className="px-4 py-3"><span className="inline-flex items-center gap-1 text-indigo-700 bg-indigo-50 px-2 py-0.5 rounded text-xs font-bold">{statusIcon(m.status)} {statusLabel[m.status] || m.status}</span></td><td className="px-4 py-3 text-right">{m.protocolType === 'lighting' && <button type="button" onClick={() => setSelectedMeasurementId(m.id)} className="text-xs font-bold text-indigo-600">Editar</button>}</td></tr>)}</tbody></table></div>}
   </div>;
 };

@@ -1,11 +1,18 @@
 import { useEffect, useState } from 'react';
 import { FileText, X } from 'lucide-react';
 import { hygieneService } from '../../../services/hygieneService';
+import type { HygieneDocumentRepresentation } from '../../../types/hygieneDocument';
 
-type Section = { key: string; title: string; data: Record<string, unknown> };
-type Representation = { documentId: string; templateKey: string; templateVersion: string; generatedAt: string; sections: Section[]; disclaimer: string };
-
-type Instrument = { id?: string; category?: string; instrumentType?: string; brand?: string; model?: string; serialNumber?: string; calibrationDate?: string | null; calibrationExpiry?: string | null; certificateUrl?: string | null; status?: string };
+type Instrument = {
+  id?: string;
+  instrumentType?: string;
+  brand?: string;
+  model?: string;
+  serialNumber?: string;
+  calibrationDate?: string | null;
+  calibrationExpiry?: string | null;
+  status?: string;
+};
 
 const labels: Record<string, string> = {
   measurementId: 'Identificador de medición', protocolType: 'Protocolo', measurementDate: 'Fecha de medición', companyId: 'Empresa', establishmentId: 'Establecimiento', sectorId: 'Sector', positionId: 'Puesto', employeeId: 'Trabajador',
@@ -15,7 +22,7 @@ function labelFor(key: string) { return labels[key] || key.replace(/([A-Z])/g, '
 function formatValue(value: unknown): string { if (value === null || value === undefined || value === '') return '—'; if (typeof value === 'object') return JSON.stringify(value, null, 2); return String(value); }
 
 export function LightingDocumentViewer({ documentId, onClose }: { documentId: string; onClose: () => void }) {
-  const [representation, setRepresentation] = useState<Representation | null>(null); const [error, setError] = useState<string | null>(null);
+  const [representation, setRepresentation] = useState<HygieneDocumentRepresentation | null>(null); const [error, setError] = useState<string | null>(null);
   useEffect(() => { void (async () => { try { setRepresentation(await hygieneService.getDocumentRepresentation(documentId)); } catch (err) { setError(err instanceof Error ? err.message : 'No se pudo cargar el documento.'); } })(); }, [documentId]);
   return <div className="fixed inset-0 z-50 bg-slate-950/60 p-4 overflow-y-auto"><div className="max-w-4xl mx-auto bg-white dark:bg-slate-900 rounded-2xl shadow-2xl min-h-full">
     <div className="sticky top-0 flex items-center justify-between border-b p-4 bg-white dark:bg-slate-900 z-10"><div className="flex items-center gap-2"><FileText className="w-5 h-5"/><div><h2 className="font-extrabold">Protocolo de Iluminación</h2><p className="text-xs text-slate-500">Plantilla v{representation?.templateVersion ?? '…'}</p></div></div><button type="button" onClick={onClose} className="p-2 rounded-lg border" aria-label="Cerrar documento"><X className="w-4 h-4"/></button></div>

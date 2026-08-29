@@ -11,18 +11,12 @@ const newId = () => `hgd_${Date.now()}_${Math.random().toString(36).slice(2, 10)
 export async function createGeneratedDocument(input: { measurement: hygieneService.HygieneMeasurementRecord; generatedBy: string; templateKey: string; templateVersion: string; }): Promise<HygieneGeneratedDocument> {
   if (input.measurement.status !== "validated") throw new Error("MEASUREMENT_NOT_VALIDATED");
   if (!input.measurement.normativeEvaluationSnapshot) throw new Error("NORMATIVE_SNAPSHOT_REQUIRED");
-  const now = new Date().toISOString();
-  let instrumentSnapshots = input.measurement.instrumentSnapshots;
-  if (!instrumentSnapshots?.length) {
-    const capturedAt = now;
-    instrumentSnapshots = [];
-    for (const instrumentId of input.measurement.instrumentIds) {
-      const instrument = await hygieneService.getInstrumentById(instrumentId, input.measurement.orgId);
-      if (!instrument) throw new Error(`INSTRUMENT_NOT_FOUND:${instrumentId}`);
-      instrumentSnapshots.push({ id: instrument.id, category: instrument.category, instrumentType: instrument.instrumentType, brand: instrument.brand, model: instrument.model, serialNumber: instrument.serialNumber, calibrationDate: instrument.calibrationDate ?? null, calibrationExpiry: instrument.calibrationExpiry ?? null, certificateUrl: instrument.certificateUrl ?? null, capturedAt });
-    }
+  if (input.measurement.instrumentIds.length !== (input.measurement.instrumentSnapshots ?? []).length) {
+    throw new Error("INSTRUMENT_SNAPSHOT_REQUIRED");
   }
-  const document: HygieneGeneratedDocument = { id: newId(), orgId: input.measurement.orgId, measurementId: input.measurement.id, protocolType: input.measurement.protocolType, templateKey: input.templateKey, templateVersion: input.templateVersion, status: "generated", generatedBy: input.generatedBy, generatedAt: now, measurementSnapshot: { id: input.measurement.id, context: { ...input.measurement.context }, protocolType: input.measurement.protocolType, measurementDate: input.measurement.measurementDate, instrumentIds: [...input.measurement.instrumentIds], instrumentSnapshots: JSON.parse(JSON.stringify(instrumentSnapshots)), rawData: input.measurement.rawData ? JSON.parse(JSON.stringify(input.measurement.rawData)) : undefined, notes: input.measurement.notes ?? null, normativeEvaluationSnapshot: JSON.parse(JSON.stringify(input.measurement.normativeEvaluationSnapshot)), review: input.measurement.review ? { ...input.measurement.review } : undefined, status: input.measurement.status, validatedAt: input.measurement.review?.reviewedAt } };
+  const now = new Date().toISOString();
+  const instrumentSnapshots = input.measurement.instrumentSnapshots ?? [];
+  const document: HygieneGeneratedDocument = { id: newId(), orgId: input.measurement.orgId, measurementId: input.measurement.id, protocolType: input.measurement.protocolType, templateKey: input.templateKey, templateVersion: input.templateVersion, status: "generated", generatedBy: input.generatedBy, generatedAt: now, measurementSnapshot: { id: input.measurement.id, context: { ...input.measurement.context }, protocolType: input.measurement.protocolType, measurementDate: input.measurement.measurementDate, instrumentIds: [...input.measurement.instrumentIds], instrumentSnapshots: JSON.parse(JSON.stringify(instrumentSnapshots)), rawData: input.measurement.rawData ? JSON.parse(JSON.stringify(input.measurement.rawData)) : undefined, notes: input.measurement.notes ?? null, normativeEvaluationSnapshot: JSON.parse(JSON.stringify(input.measurement.normativeEvaluationSnapshot)), review: input.measurement.review ? { ...input.measurement.review } : undefined, status: input.measurement.status, validatedAt: input.measurement.validatedAt } };
   await getAdminFirestore().collection(collection).doc(document.id).set(document); return document;
 }
 export async function getGeneratedDocumentById(id: string, orgId: string): Promise<HygieneGeneratedDocument | null> { const snapshot = await getAdminFirestore().collection(collection).doc(id).get(); if (!snapshot.exists) return null; const document = { id: snapshot.id, ...snapshot.data() } as HygieneGeneratedDocument; return document.orgId === orgId ? document : null; }

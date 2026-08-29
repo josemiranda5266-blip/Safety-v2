@@ -982,3 +982,41 @@ No se codificaron valores legales ni umbrales de cumplimiento sin una base norma
 ### Próxima acción
 
 Construir el editor UI de Iluminación asociado a una medición existente y luego incorporar un catálogo normativo versionado antes de producir cualquier resultado de cumplimiento.
+
+
+## 2026-08-29 — Implementación: editor visual de Iluminación
+
+### Cambio realizado
+
+Se agregó LightingMeasurementEditor y se conectó a las mediciones existentes cuyo protocolType es lighting.
+
+### Flujo
+
+Medición de Iluminación → Editar → carga técnica → cálculo descriptivo en pantalla → guardar → PATCH de la medición → recarga desde API.
+
+### Datos editables
+
+- tipo de iluminación;
+- sistema de iluminación;
+- descripción de tarea;
+- puntos de medición dinámicos;
+- tipo de cada punto;
+- valor en lux;
+- descripción de ubicación.
+
+### Vista previa
+
+El editor usa calculateLightingMeasurement() para mostrar promedio, mínimo, máximo y relación mínimo/máximo antes del guardado.
+
+### Principio mantenido
+
+Los indicadores son descriptivos. No se declara cumplimiento normativo automáticamente y no se reemplaza la validación profesional.
+
+### Commits
+
+- 1ad087c54896b4f85d5ff84761874505f3003d23 — feat(hygiene): add lighting measurement editor
+- e09a663362126c5b0ec9c600d65e79b9bde19319 — feat(hygiene): connect lighting editor to measurements
+
+### Próxima acción
+
+Diseñar el catálogo normativo versionado como fuente independiente de verdad. Debe soportar protocolo, referencia, versión, vigencia, fuente oficial, valores aplicables y trazabilidad histórica de la evaluación.

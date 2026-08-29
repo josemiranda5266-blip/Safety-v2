@@ -58,6 +58,11 @@ export const hygieneService = {
     return measurement;
   },
 
+  async getDocumentRepresentation(documentId: string): Promise<any> {
+    const { representation } = await request<{ representation: any }>(`/generated-documents/${encodeURIComponent(documentId)}/representation`);
+    return representation;
+  },
+
   async getGeneratedDocuments(id: string): Promise<any[]> {
     const { documents } = await request<{ documents: any[] }>(`/measurements/${encodeURIComponent(id)}/generated-documents`);
     return documents;

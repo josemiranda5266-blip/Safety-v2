@@ -42,7 +42,11 @@ export type Permission =
   | "document:create"
   | "document:read"
   | "document:update"
-  | "document:delete";
+  | "document:delete"
+  // Hygiene permissions
+  | "hygiene:read"
+  | "hygiene:create"
+  | "hygiene:update";
 
 export interface AuthorizationContext {
   userId: string;
@@ -91,6 +95,9 @@ export const MEMBERSHIP_ROLE_PERMISSIONS: Record<MembershipRole, Permission[]> =
     "document:create",
     "document:read",
     "document:update",
+    "hygiene:read",
+    "hygiene:create",
+    "hygiene:update",
     "document:delete",
   ],
   admin: [
@@ -126,6 +133,9 @@ export const MEMBERSHIP_ROLE_PERMISSIONS: Record<MembershipRole, Permission[]> =
     "document:create",
     "document:read",
     "document:update",
+    "hygiene:read",
+    "hygiene:create",
+    "hygiene:update",
     "document:delete",
   ],
   member: [
@@ -153,6 +163,9 @@ export const MEMBERSHIP_ROLE_PERMISSIONS: Record<MembershipRole, Permission[]> =
     "document:create",
     "document:read",
     "document:update",
+    "hygiene:read",
+    "hygiene:create",
+    "hygiene:update",
   ],
   auditor: [
     "organization:read",
@@ -165,5 +178,6 @@ export const MEMBERSHIP_ROLE_PERMISSIONS: Record<MembershipRole, Permission[]> =
     "compliance:read",
     "auditor:read",
     "document:read",
+    "hygiene:read",
   ],
 };

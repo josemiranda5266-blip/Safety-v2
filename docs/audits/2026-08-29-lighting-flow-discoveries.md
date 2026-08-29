@@ -1,44 +1,97 @@
 # Safety V2 — Registro de descubrimientos de Iluminación
 
-Fecha: 2026-08-29
-Repositorio: josemiranda5266-blip/Safety-v2
+Fecha: 2026-08-29  
+Repositorio: `josemiranda5266-blip/Safety-v2`
 
-## Hallazgo: PATCH genérico de mediciones
+## Regla de fuente de verdad
+GitHub/código es la fuente de verdad. Este archivo es memoria de trabajo y debe corregirse cuando quede desactualizado respecto de `main`.
 
-La ruta `PATCH /measurements/:id` utiliza `updateHygieneMeasurementSchema` y pasa el resultado a `hygieneMeasurementWorkflowService.updateMeasurementWithAudit`.
+## Avances y correcciones verificadas en código
 
-El esquema de actualización fue endurecido para que las transiciones de estado no se realicen mediante el PATCH genérico. Las transiciones de workflow se ejecutan mediante endpoints controlados (`submit-for-review`, `review`, etc.).
+### 1. PATCH genérico de mediciones
+La ruta `PATCH /measurements/:id` usa el esquema de actualización y pasa los datos al workflow. El esquema fue endurecido para impedir transiciones de estado mediante el PATCH genérico. Las transiciones sensibles se realizan mediante endpoints de workflow específicos.
 
-El servicio de persistencia mantiene una máquina explícita de estados y el endpoint específico `POST /measurements/:id/submit-for-review` ejecuta `validateMeasurementForSubmission()` antes de cambiar a `pending_review`.
+`POST /measurements/:id/submit-for-review` exige que la medición esté en `in_progress`, ejecuta `validateMeasurementForSubmission()` y sólo después cambia a `pending_review`.
 
-### Decisión y corrección
+**Estado:** corrección implementada en `main`; regresión automatizada pendiente de ejecución real.
 
-El PATCH genérico queda limitado a datos editables de la medición. Las transiciones de workflow no deben ser un efecto lateral de un update genérico.
+### 2. Trust boundary de Iluminación
+El cliente podía enviar métricas derivadas dentro de `rawData.lighting`. El workflow ahora, cuando una medición existente es `lighting` y el update modifica `rawData.lighting`, valida las lecturas y recalcula el resultado canónico antes de persistir.
 
-### Estado
+El cálculo canónico rechaza Lux negativos y valores no finitos.
 
-- Hallazgo original confirmado en código: **sí**.
-- Riesgo original: bypass de validación previa al envío a revisión.
-- Corrección en `main`: **aplicada**.
-- Verificación automatizada de esta regresión: **pendiente de ejecución real**.
+**Estado:** implementado; tests escritos; ejecución real pendiente.
 
-## Trust boundary de Iluminación
+### 3. Estados inmutables
+La capa de persistencia protege `validated`, `closed` y `archived` contra modificaciones.
 
-Se detectó que el cliente podía enviar métricas derivadas dentro de `rawData.lighting`. El workflow ahora, cuando la medición existente tiene `protocolType === "lighting"` y el PATCH modifica `rawData.lighting`, valida las lecturas y vuelve a ejecutar el cálculo canónico antes de persistir.
+**Estado:** implementado.
 
-El cálculo canónico rechaza lecturas Lux negativas o no finitas; ya no descarta silenciosamente una lectura inválida.
+### 4. Snapshots instrumentales
+La medición validada conserva snapshots de instrumentos. La generación documental exige snapshots completos y el documento histórico usa esos snapshots, no el catálogo vivo.
 
-Se agregó cobertura unitaria para cálculo, Lux negativo y valores no finitos, y el test fue incorporado al script `npm test`.
+**Estado:** implementado; E2E pendiente.
 
-### Estado
+### 5. Snapshot normativo
+La generación documental exige snapshot normativo y el snapshot contiene la referencia/versión/criterio/parámetros necesarios para reconstrucción histórica. El snapshot queda protegido cuando la medición ya está congelada.
 
-- Recalculo server-side: **implementado**.
-- Métricas enviadas por cliente como fuente de verdad: **eliminado para updates de iluminación**.
-- Validación física básica de Lux: **implementada**.
-- Tests escritos: **sí**.
-- Ejecución real de tests/lint/build: **pendiente**.
-- Prueba end-to-end contra persistencia real: **pendiente**.
+**Estado:** implementado; contenido y cobertura completa siguen bajo auditoría.
 
-## Regla de verificación
+### 6. Mapper y documento histórico
+`lightingDocumentMapper.ts` transforma el snapshot persistido en `HygieneDocumentRepresentation` y no vuelve a ejecutar el cálculo físico. `uniformityPasses` es una derivación documental de valores persistidos.
 
-`PROJECT_STATE.md` y este registro son memoria de trabajo. GitHub/código es la fuente de verdad. Si el registro contradice al código, prevalece el código y el registro debe actualizarse antes de continuar.
+**Estado:** implementado; cobertura adicional pendiente.
+
+### 7. Evaluación normativa
+La evaluación de iluminación utiliza el criterio congelado para obtener `requiredLux` y no emite una conclusión automática de cumplimiento; mantiene la revisión profesional como decisión final.
+
+El resolver evita adivinar ante ambigüedad o ausencia de correspondencia inequívoca.
+
+**Estado:** implementado; cobertura normativa completa pendiente.
+
+### 8. Vigencia SRT 84/2012
+La normativa establece validez de 12 meses para los valores de la medición de iluminación. El código contiene la regla de vigencia, pero todavía no está demostrado que el workflow de validación impida o marque correctamente una medición vencida.
+
+**Estado:** hallazgo abierto.
+
+## Descubrimientos arquitectónicos abiertos
+
+- `hygieneService` es una capa de persistencia genérica que puede escribir `rawData`; la protección específica de iluminación está concentrada en el workflow. Hay que terminar de demostrar que no existe un consumidor alternativo que pueda bypassar el workflow.
+- `validateMeasurementForSubmission()` no debería duplicar el cálculo físico; debe exigir las precondiciones correctas del workflow y apoyarse en la validación/cálculo canónico.
+- El catálogo específico de iluminación es una primera cobertura curada y no debe presentarse como cobertura exhaustiva de todas las actividades/puestos.
+- Falta cotejo campo-por-campo y valor-por-valor contra el protocolo oficial SRT 84/2012.
+- Falta revisar conclusiones/recomendaciones en todas las salidas documentales.
+- Falta revisar compatibilidad de registros antiguos con `uniformityRatio` y campos nuevos.
+- Tests, lint y build están escritos/configurados pero no deben marcarse como PASS hasta ejecución real.
+- No existe CI automático en `main`.
+
+## Plan de solución
+
+1. Completar rastreo de consumidores/escritores de mediciones.
+2. Verificar que toda transición `in_progress → pending_review → validated` pase por las validaciones correspondientes.
+3. Integrar la vigencia de 12 meses en el punto correcto del workflow, evitando duplicar la fuente de verdad.
+4. Mantener snapshots normativos e instrumentales como evidencia histórica inmutable.
+5. Completar requisitos de iluminación sólo con evidencia normativa verificable.
+6. Cotejar el modelo y documento campo-por-campo con SRT 84/2012.
+7. Añadir regresiones para vigencia, snapshots y bypasses.
+8. Ejecutar realmente `npm test`, `npm run lint` y `npm run build` y registrar resultados.
+9. Ejecutar E2E real de persistencia → validación → documento.
+10. Sólo después cerrar Iluminación y avanzar a Ruido.
+
+## Estado de continuidad
+
+```text
+Cálculo físico                  🟢
+Validación Lux                 🟢
+Recalculo server-side           🟢
+Protección de estados          🟢
+Snapshots                      🟢
+Documento histórico            🟢
+Evaluación profesional         🟢
+Vigencia 12 meses              🟡
+Cobertura normativa            🟡
+Consumidores alternativos      🟡
+Tests ejecutados               🔴
+Lint/build ejecutados          🔴
+E2E                            🔴
+```

@@ -5,6 +5,7 @@ import { calculateLightingMeasurement } from '../../../services/lightingMeasurem
 import { hygieneService } from '../../../services/hygieneService';
 import { evaluateLightingMeasurement } from '../../../services/lightingEvaluation';
 import { MeasurementAuditTimeline } from './MeasurementAuditTimeline';
+import { ProfessionalMeasurementReview } from './ProfessionalMeasurementReview';
 
 type Props = { measurement: HygieneMeasurement; onSaved: () => Promise<void> | void };
 
@@ -64,6 +65,8 @@ export const LightingMeasurementEditor: React.FC<Props> = ({ measurement, onSave
     } catch (err) { setError(err instanceof Error ? err.message : 'No se pudo guardar la medición.'); }
     finally { setSaving(false); }
   };
+
+  if (measurement.status === 'pending_review') return <ProfessionalMeasurementReview measurement={measurement} onReviewed={onSaved} />;
 
   return <div className="mt-4 rounded-2xl border border-amber-200 dark:border-amber-900 bg-white dark:bg-slate-900 p-5 space-y-5">
     <div><h3 className="font-extrabold text-slate-900 dark:text-white">Editor de Iluminación</h3><p className="text-sm text-slate-500 mt-1">Carga de datos técnicos y cálculo de indicadores descriptivos.</p></div>

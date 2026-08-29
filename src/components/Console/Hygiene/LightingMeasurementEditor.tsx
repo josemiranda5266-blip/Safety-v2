@@ -6,6 +6,7 @@ import { hygieneService } from '../../../services/hygieneService';
 import { evaluateLightingMeasurement } from '../../../services/lightingEvaluation';
 import { MeasurementAuditTimeline } from './MeasurementAuditTimeline';
 import { ProfessionalMeasurementReview } from './ProfessionalMeasurementReview';
+import { GeneratedDocumentsPanel } from './GeneratedDocumentsPanel';
 
 type Props = { measurement: HygieneMeasurement; onSaved: () => Promise<void> | void };
 
@@ -68,7 +69,7 @@ export const LightingMeasurementEditor: React.FC<Props> = ({ measurement, onSave
 
   if (measurement.status === 'pending_review') return <ProfessionalMeasurementReview measurement={measurement} onReviewed={onSaved} />;
 
-  return <div className="mt-4 rounded-2xl border border-amber-200 dark:border-amber-900 bg-white dark:bg-slate-900 p-5 space-y-5">
+  return <><div className="mt-4 rounded-2xl border border-amber-200 dark:border-amber-900 bg-white dark:bg-slate-900 p-5 space-y-5">
     <div><h3 className="font-extrabold text-slate-900 dark:text-white">Editor de Iluminación</h3><p className="text-sm text-slate-500 mt-1">Carga de datos técnicos y cálculo de indicadores descriptivos.</p></div>
     <div className="grid md:grid-cols-2 gap-4">
       <label className="text-sm font-medium">Tipo de iluminación<select value={sourceType} onChange={(e) => setSourceType(e.target.value as 'natural'|'artificial'|'mixed')} className="mt-1 w-full rounded-xl border p-2.5 bg-transparent"><option value="natural">Natural</option><option value="artificial">Artificial</option><option value="mixed">Mixta</option></select></label>
@@ -106,5 +107,5 @@ export const LightingMeasurementEditor: React.FC<Props> = ({ measurement, onSave
     {showEvaluation && !measurement.normativeEvaluationSnapshot && <div className="rounded-lg bg-amber-50 p-3 text-sm text-amber-800">Para realizar la evaluación asistida primero debe asociarse una versión normativa a esta medición.</div>}
     {error && <div className="p-3 rounded-xl bg-red-50 text-red-700 text-sm">{error}</div>}
     <div className="flex flex-wrap gap-2"><button type="button" onClick={() => setShowEvaluation((current) => !current)} className="border border-indigo-200 text-indigo-700 font-bold px-4 py-2 rounded-xl">Evaluación asistida</button><button type="button" disabled={saving} onClick={save} className="flex items-center gap-2 bg-indigo-600 text-white font-bold px-4 py-2 rounded-xl disabled:opacity-60"><Save className="w-4 h-4"/>{saving ? 'Guardando...' : 'Guardar datos de iluminación'}</button></div>
-  </div>;
+  </div>{measurement.status === 'validated' && <GeneratedDocumentsPanel measurement={measurement} onGenerated={onSaved}/>}</>;
 };

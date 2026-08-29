@@ -7,6 +7,38 @@
 
 ---
 
+## 2026-08-29 — Tabla normativa estructurada de Iluminación
+
+### Objetivo
+
+Eliminar la dependencia de un `requiredLux` introducido manualmente y comenzar a resolver el valor requerido desde una tabla normativa versionada. El sistema debe mantener una diferencia estricta entre referencia legal, clasificación normativa y resultado de medición.
+
+### Fuente auditada
+
+El Anexo IV del Decreto 351/79 establece que la intensidad mínima depende de la dificultad de la tarea visual (Tabla 1) o del destino del local (Tabla 2), y que la Tabla 1 se utiliza para tareas no incluidas en Tabla 2. La guía oficial de SRT 84/2012 describe el mismo procedimiento. citeturn0search0turn0search13
+
+El formulario oficial de SRT 84/2012 requiere punto de muestreo, hora, sector, sección/puesto, tipo de iluminación, fuente, general/localizada/mixta, uniformidad, valor medido y valor requerido legalmente según Anexo IV del Decreto 351/79. citeturn0search12
+
+### Implementación
+
+- Creado `src/config/srtLightingRequirements.ts`.
+- Se agregó un catálogo estructurado de requisitos de primera cobertura, con fuente `table_2` o `table_1_visual_task`.
+- Cada requisito conserva ID, categoría, tarea/local, lux requerido, fuente normativa, versión y URL oficial.
+- Se incorporaron rangos de Tabla 1 sin convertirlos artificialmente en una falsa precisión: el registro conserva `maximumLux` y una nota que obliga a mantener la clasificación profesional.
+- Se agregó `resolveLightingRequirement()` para resolver por ID profesional o por coincidencia controlada de categoría/tarea/local.
+- Las coincidencias ambiguas o inexistentes devuelven `undefined`; el sistema no inventa un valor.
+- La tabla se declara como primera cobertura curada, no como catálogo exhaustivo. Esto evita presentar como completa una transcripción parcial de la normativa.
+
+### Commit
+
+- `69e62e7a1e47e7c20f2b516e01d4fa74bddb012c` — feat(hygiene): add structured lighting regulatory requirements
+
+### Próxima acción
+
+Conectar `resolveLightingRequirement()` con el flujo real de creación/edición de mediciones y persistir en el snapshot: `requirementId`, categoría, tarea/local, `requiredLux`, rango cuando corresponda, fuente y versión normativa. Luego mostrar esos datos en evaluación, documento web y PDF.
+
+---
+
 ## 2026-08-29 — Endurecimiento del criterio regulatorio de Iluminación
 
 ### Hallazgo
@@ -28,15 +60,11 @@ El primer motor de criterios permitía evaluar como conforme un registro aunque 
 
 ### Fuente normativa auditada
 
-La SRT identifica la Resolución 84/2012 como protocolo obligatorio de medición de iluminación y establece una validez de doce meses para los valores consignados. El Decreto 351/79, Anexo IV, establece que la intensidad mínima depende de la dificultad de la tarea visual o del destino del local y fija una relación mínima de 0,5 entre iluminancia mínima y media. citeturn0search0turn0search6turn0search1
+La SRT identifica la Resolución 84/2012 como protocolo obligatorio de medición de iluminación y el Decreto 351/79, Anexo IV, establece que la intensidad mínima depende de la dificultad de la tarea visual o del destino del local y fija una relación mínima de 0,5 entre iluminancia mínima y media. citeturn0search0turn0search3
 
 ### Commit
 
 - `f770380198ce9ca3d406263f9da8ba0a5ba6db5f` — fix(hygiene): harden lighting regulatory evaluation and validity
-
-### Próxima acción
-
-Conectar el criterio con una tabla normativa estructurada de clasificación de tarea/local para resolver el valor requerido aplicable sin hardcodearlo en el motor. El valor y la clasificación utilizados deberán quedar congelados en el snapshot histórico de la medición.
 
 ---
 
@@ -44,36 +72,26 @@ Conectar el criterio con una tabla normativa estructurada de clasificación de t
 
 ### Objetivo
 
-Separar la referencia normativa del criterio técnico utilizado para evaluar una medición. El motor debe recibir el valor medido y el valor requerido aplicable, evaluar también la uniformidad cuando exista información suficiente, y devolver el resultado junto con la referencia y versión normativa utilizadas.
-
-### Auditoría normativa
-
-La SRT establece que el protocolo de Iluminación de la Res. 84/2012 es obligatorio y que los valores de medición consignados en el protocolo tienen una validez de 12 meses. El formulario oficial incluye, por punto de muestreo, valor medido en lux, valor requerido legalmente según Anexo IV del Decreto 351/79 y el criterio de uniformidad. El Anexo IV establece una relación no menor de 0,5 entre los valores mínimo y medio para una uniformidad razonable.
+Separar la referencia normativa del criterio técnico utilizado para evaluar una medición.
 
 ### Implementación
 
 - Creado `src/config/srtLightingCriteria.ts`.
-- El criterio tiene identificador propio `srt_84_2012_lighting` y referencia `srt-84-2012`.
-- El motor distingue `compliant`, `non_compliant` e `insufficient_data`.
-- Evalúa `measuredLux >= requiredLux`.
-- Calcula uniformidad como `minimumLux / averageLux`.
+- Criterio `srt_84_2012_lighting` y referencia `srt-84-2012`.
+- Estados `compliant`, `non_compliant` e `insufficient_data`.
+- Evaluación de iluminancia y uniformidad.
 - El valor requerido no se hardcodea en el motor.
-- Se corrigió el acceso al catálogo para utilizar `getSrtReference()`.
 
 ---
 
 ## 2026-08-29 — Catálogo normativo SRT y trazabilidad documental
-
-### Objetivo
-
-Consolidar las referencias normativas utilizadas por los protocolos en un catálogo central, identificable y versionable.
 
 ### Implementación
 
 - Creado `src/config/srtRegulatoryCatalog.ts`.
 - Referencias canónicas para Iluminación, Ruido, Contaminantes Químicos, Ergonomía, Puesta a Tierra y estrés por calor.
 - La plantilla `lighting_protocol` está vinculada a `srt-84-2012`.
-- La representación conserva identidad de la referencia normativa y evaluación congelada del snapshot.
+- La representación conserva identidad normativa y evaluación congelada del snapshot.
 
 ---
 
@@ -96,9 +114,9 @@ La representación es la fuente común; Web y PDF no poseen cálculos propios.
 
 ### Próximas fases prioritarias
 
-1. Tabla normativa aplicable para clasificar tareas/locales de Iluminación.
-2. Persistencia del criterio, clasificación y valor requerido utilizado en cada medición.
-3. Llevar evaluación y vencimiento al documento/PDF.
+1. Integrar resolución normativa con captura real y persistencia del criterio utilizado.
+2. Llevar evaluación y vencimiento al documento/PDF.
+3. Completar cobertura normativa de Iluminación sin introducir coincidencias ambiguas.
 4. Protocolo de Ruido.
 5. Protocolo de Puesta a Tierra.
 6. Integración medición → hallazgo → acción correctiva.

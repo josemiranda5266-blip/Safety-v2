@@ -58,6 +58,11 @@ export const hygieneService = {
     return measurement;
   },
 
+  async reviewMeasurement(id: string, decision: 'approved' | 'changes_requested', comments?: string): Promise<HygieneMeasurement> {
+    const { measurement } = await request<{ measurement: HygieneMeasurement }>(`/measurements/${encodeURIComponent(id)}/review`, { method: 'POST', body: JSON.stringify({ decision, comments }) });
+    return measurement;
+  },
+
   async submitForReview(id: string): Promise<HygieneMeasurement> {
     const { measurement } = await request<{ measurement: HygieneMeasurement }>(`/measurements/${encodeURIComponent(id)}/submit-for-review`, { method: 'POST' });
     return measurement;

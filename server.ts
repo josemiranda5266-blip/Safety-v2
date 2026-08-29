@@ -16,6 +16,7 @@ import capaRoutes from "./server/routes/capaRoutes";
 import documentRoutes from "./server/routes/documentRoutes";
 import tenantContextRoutes from "./server/routes/tenantContextRoutes";
 import hygieneRoutes from "./server/routes/hygieneRoutes";
+import normativeCatalogRoutes from "./server/routes/normativeCatalogRoutes";
 import {
   initializeAuthorizationRepository,
   getAuthorizationRepository,
@@ -155,6 +156,7 @@ app.use("/api/v2/capa", capaRoutes);
 app.use("/api/v2/documents", documentRoutes);
 app.use("/api/v2/tenant", tenantContextRoutes);
 app.use("/api/v2/hygiene", hygieneRoutes);
+app.use("/api/v2/normative-catalog", normativeCatalogRoutes);
 
 // Global API Error Handler (Ensures all Express /api errors return JSON, never HTML)
 app.use((err: any, _req: express.Request, res: express.Response, _next: express.NextFunction) => {

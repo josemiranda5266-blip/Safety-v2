@@ -4,6 +4,7 @@ import { canAccessCompany, canAccessEstablishment, canAccessSector, canAccessPos
 import { createHygieneInstrumentSchema, updateHygieneInstrumentSchema, createHygieneMeasurementSchema, updateHygieneMeasurementSchema } from "../authorization/validation";
 import * as hygieneService from "../services/hygieneService";
 import { getNormativeProtocolVersion } from "../services/normativeCatalogService";
+import * as hygieneAuditService from "../services/hygieneAuditService";
 import * as companyService from "../services/companyService";
 import * as establishmentService from "../services/establishmentService";
 import * as sectorService from "../services/sectorService";
@@ -107,6 +108,14 @@ router.post("/measurements", requirePermission("hygiene:create"), async (req: Te
   res.status(201).json({ measurement });
 });
 
+router.get("/measurements/:id/audit-events", requirePermission("hygiene:read"), async (req: TenantRequest, res: Response) => {
+  const context = req.authContext!;
+  const measurement = await hygieneService.getMeasurementById(req.params.id, context.orgId);
+  if (!measurement) return res.status(404).json({ error: "Medición no encontrada", code: "MEASUREMENT_NOT_FOUND" });
+  const events = await hygieneAuditService.listMeasurementAuditEvents(context.orgId, req.params.id);
+  res.json({ events });
+});
+
 router.post("/measurements/:id/review", requirePermission("hygiene:update"), async (req: TenantRequest, res: Response) => {
   const context = req.authContext!;
   const measurement = await hygieneService.getMeasurementById(req.params.id, context.orgId);
@@ -119,6 +128,7 @@ router.post("/measurements/:id/review", requirePermission("hygiene:update"), asy
     status: decision === "approved" ? "validated" : "in_progress",
     review: { status: decision, reviewedBy: context.userId, reviewedAt: now, comments: typeof req.body?.comments === "string" ? req.body.comments : null },
   });
+  if (updated) await hygieneAuditService.recordMeasurementAuditEvent({ orgId: context.orgId, measurementId: updated.id, actorId: context.userId, type: decision === "approved" ? "review_approved" : "changes_requested", fromStatus: measurement.status, toStatus: updated.status, metadata: { comments: updated.review?.comments ?? null } });
   res.json({ measurement: updated });
 });
 

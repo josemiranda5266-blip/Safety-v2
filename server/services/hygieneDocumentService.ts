@@ -74,6 +74,8 @@ export function buildLightingDocumentRepresentation(document: HygieneGeneratedDo
   const snapshot = document.measurementSnapshot;
   const context = snapshot.context as unknown as Record<string, unknown>;
   const raw = snapshot.rawData ?? {};
+  const lighting = (raw.lighting ?? raw) as Record<string, unknown>;
+  const points = Array.isArray(lighting.points) ? lighting.points : [];
   const normative = snapshot.normativeEvaluationSnapshot as unknown as Record<string, unknown> | undefined;
   const review = snapshot.review as unknown as Record<string, unknown> | undefined;
   return {
@@ -84,7 +86,9 @@ export function buildLightingDocumentRepresentation(document: HygieneGeneratedDo
     sections: [
       { key: "identification", title: "Identificación documental", data: { measurementId: snapshot.id, protocolType: snapshot.protocolType, measurementDate: snapshot.measurementDate } },
       { key: "context", title: "Empresa y contexto de la medición", data: context },
-      { key: "technical", title: "Datos técnicos y puntos de medición", data: raw },
+      { key: "technical", title: "Condiciones de la medición", data: { sourceType: lighting.sourceType, lightingSystem: lighting.lightingSystem, taskDescription: lighting.taskDescription } },
+      { key: "measurement_points", title: "Puntos de medición", data: { points } },
+      { key: "indicators", title: "Indicadores calculados", data: { averageLux: lighting.averageLux, minimumLux: lighting.minimumLux, maximumLux: lighting.maximumLux, uniformityRatio: lighting.uniformityRatio, calculationVersion: lighting.calculationVersion, calculatedAt: lighting.calculatedAt } },
       { key: "instruments", title: "Instrumentación", data: { instrumentIds: snapshot.instrumentIds } },
       { key: "normative", title: "Referencia normativa y evaluación", data: normative ?? {} },
       { key: "professional_review", title: "Revisión profesional", data: review ?? {} },

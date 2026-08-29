@@ -58,6 +58,19 @@ export const hygieneService = {
     return measurement;
   },
 
+  async getGeneratedDocuments(id: string): Promise<any[]> {
+    const { documents } = await request<{ documents: any[] }>(`/measurements/${encodeURIComponent(id)}/generated-documents`);
+    return documents;
+  },
+
+  async generateDocument(id: string, templateKey?: string, templateVersion?: string): Promise<any> {
+    const { document } = await request<{ document: any }>(`/measurements/${encodeURIComponent(id)}/generated-documents`, {
+      method: 'POST',
+      body: JSON.stringify({ templateKey, templateVersion }),
+    });
+    return document;
+  },
+
   async reviewMeasurement(id: string, decision: 'approved' | 'changes_requested', comments?: string): Promise<HygieneMeasurement> {
     const { measurement } = await request<{ measurement: HygieneMeasurement }>(`/measurements/${encodeURIComponent(id)}/review`, { method: 'POST', body: JSON.stringify({ decision, comments }) });
     return measurement;

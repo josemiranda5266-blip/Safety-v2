@@ -8,7 +8,10 @@ router.use(requireTenantContext);
 
 router.get("/protocols", requirePermission("hygiene:read"), async (req: TenantRequest, res: Response) => {
   const protocolType = typeof req.query.protocolType === "string" ? req.query.protocolType : undefined;
-  const items = await normativeCatalogService.listNormativeProtocolVersions(protocolType);
+  const rawStatus = typeof req.query.status === "string" ? req.query.status : undefined;
+  const validStatuses = ["draft", "active", "superseded", "repealed", "archived"] as const;
+  const status = rawStatus && validStatuses.includes(rawStatus as typeof validStatuses[number]) ? rawStatus as typeof validStatuses[number] : undefined;
+  const items = await normativeCatalogService.listNormativeProtocolVersions(protocolType, status);
   res.json({ normativeProtocolVersions: items });
 });
 

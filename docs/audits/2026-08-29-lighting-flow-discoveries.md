@@ -7,23 +7,38 @@ Repositorio: josemiranda5266-blip/Safety-v2
 
 La ruta `PATCH /measurements/:id` utiliza `updateHygieneMeasurementSchema` y pasa el resultado a `hygieneMeasurementWorkflowService.updateMeasurementWithAudit`.
 
-El esquema de actualización permite actualmente `status` además de `measurementDate`, `instrumentIds`, `notes` y `rawData`.
+El esquema de actualización fue endurecido para que las transiciones de estado no se realicen mediante el PATCH genérico. Las transiciones de workflow se ejecutan mediante endpoints controlados (`submit-for-review`, `review`, etc.).
 
-El servicio de persistencia sí protege las transiciones de estado mediante una máquina explícita: `draft -> in_progress/cancelled`, `in_progress -> draft/pending_review/cancelled`, `pending_review -> in_progress/validated/cancelled`, `validated -> closed`, etc.
+El servicio de persistencia mantiene una máquina explícita de estados y el endpoint específico `POST /measurements/:id/submit-for-review` ejecuta `validateMeasurementForSubmission()` antes de cambiar a `pending_review`.
 
-Sin embargo, la ruta genérica puede intentar `in_progress -> pending_review` sin ejecutar primero `validateMeasurementForSubmission()`, porque esa validación existe en el endpoint específico `POST /measurements/:id/submit-for-review`.
+### Decisión y corrección
 
-### Decisión
-
-El PATCH genérico debe quedar limitado a datos editables de la medición. Las transiciones de workflow deben ejecutarse exclusivamente mediante endpoints controlados (`submit-for-review`, `review`, etc.).
+El PATCH genérico queda limitado a datos editables de la medición. Las transiciones de workflow no deben ser un efecto lateral de un update genérico.
 
 ### Estado
 
-- Hallazgo confirmado en código: **sí**.
-- Riesgo: bypass de validación previa al envío a revisión.
-- Corrección aplicada: **no todavía**.
-- Próximo cambio: retirar `status` del schema de PATCH o, equivalentemente, impedirlo explícitamente en la ruta; después agregar prueba de regresión.
+- Hallazgo original confirmado en código: **sí**.
+- Riesgo original: bypass de validación previa al envío a revisión.
+- Corrección en `main`: **aplicada**.
+- Verificación automatizada de esta regresión: **pendiente de ejecución real**.
+
+## Trust boundary de Iluminación
+
+Se detectó que el cliente podía enviar métricas derivadas dentro de `rawData.lighting`. El workflow ahora, cuando la medición existente tiene `protocolType === "lighting"` y el PATCH modifica `rawData.lighting`, valida las lecturas y vuelve a ejecutar el cálculo canónico antes de persistir.
+
+El cálculo canónico rechaza lecturas Lux negativas o no finitas; ya no descarta silenciosamente una lectura inválida.
+
+Se agregó cobertura unitaria para cálculo, Lux negativo y valores no finitos, y el test fue incorporado al script `npm test`.
+
+### Estado
+
+- Recalculo server-side: **implementado**.
+- Métricas enviadas por cliente como fuente de verdad: **eliminado para updates de iluminación**.
+- Validación física básica de Lux: **implementada**.
+- Tests escritos: **sí**.
+- Ejecución real de tests/lint/build: **pendiente**.
+- Prueba end-to-end contra persistencia real: **pendiente**.
 
 ## Regla de verificación
 
-`PROJECT_STATE.md` continúa siendo memoria de trabajo. Este registro documenta el descubrimiento verificable en código para no perder contexto mientras se prepara la corrección.
+`PROJECT_STATE.md` y este registro son memoria de trabajo. GitHub/código es la fuente de verdad. Si el registro contradice al código, prevalece el código y el registro debe actualizarse antes de continuar.

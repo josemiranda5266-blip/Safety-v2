@@ -10,6 +10,7 @@ export interface HygieneGeneratedDocument {
   measurementSnapshot: {
     id: string; context: hygieneService.HygieneMeasurementRecord["context"];
     protocolType: string; measurementDate: string; instrumentIds: string[];
+    instrumentSnapshots?: hygieneService.HygieneInstrumentRecord[];
     rawData?: Record<string, unknown>; notes?: string | null;
     normativeEvaluationSnapshot?: hygieneService.HygieneMeasurementRecord["normativeEvaluationSnapshot"];
     review?: hygieneService.HygieneMeasurementRecord["review"];
@@ -27,6 +28,12 @@ export async function createGeneratedDocument(input: {
   if (input.measurement.status !== "validated") throw new Error("MEASUREMENT_NOT_VALIDATED");
   const now = new Date().toISOString();
   const review = input.measurement.review;
+  const instrumentSnapshots: hygieneService.HygieneInstrumentRecord[] = [];
+  for (const instrumentId of input.measurement.instrumentIds) {
+    const instrument = await hygieneService.getInstrumentById(instrumentId, input.measurement.orgId);
+    if (!instrument) throw new Error(`INSTRUMENT_NOT_FOUND:${instrumentId}`);
+    instrumentSnapshots.push(JSON.parse(JSON.stringify(instrument)));
+  }
   const document: HygieneGeneratedDocument = {
     id: newId(), orgId: input.measurement.orgId, measurementId: input.measurement.id,
     protocolType: input.measurement.protocolType, templateKey: input.templateKey,
@@ -35,7 +42,7 @@ export async function createGeneratedDocument(input: {
     measurementSnapshot: {
       id: input.measurement.id, context: { ...input.measurement.context },
       protocolType: input.measurement.protocolType, measurementDate: input.measurement.measurementDate,
-      instrumentIds: [...input.measurement.instrumentIds],
+      instrumentIds: [...input.measurement.instrumentIds], instrumentSnapshots,
       rawData: input.measurement.rawData ? JSON.parse(JSON.stringify(input.measurement.rawData)) : undefined,
       notes: input.measurement.notes ?? null,
       normativeEvaluationSnapshot: input.measurement.normativeEvaluationSnapshot ? JSON.parse(JSON.stringify(input.measurement.normativeEvaluationSnapshot)) : undefined,
@@ -79,17 +86,14 @@ export function buildLightingDocumentRepresentation(document: HygieneGeneratedDo
   const normative = snapshot.normativeEvaluationSnapshot as unknown as Record<string, unknown> | undefined;
   const review = snapshot.review as unknown as Record<string, unknown> | undefined;
   return {
-    documentId: document.id,
-    templateKey: "lighting_protocol",
-    templateVersion: document.templateVersion,
-    generatedAt: document.generatedAt,
+    documentId: document.id, templateKey: "lighting_protocol", templateVersion: document.templateVersion, generatedAt: document.generatedAt,
     sections: [
       { key: "identification", title: "Identificación documental", data: { measurementId: snapshot.id, protocolType: snapshot.protocolType, measurementDate: snapshot.measurementDate } },
       { key: "context", title: "Empresa y contexto de la medición", data: context },
       { key: "technical", title: "Condiciones de la medición", data: { sourceType: lighting.sourceType, lightingSystem: lighting.lightingSystem, taskDescription: lighting.taskDescription } },
       { key: "measurement_points", title: "Puntos de medición", data: { points } },
       { key: "indicators", title: "Indicadores calculados", data: { averageLux: lighting.averageLux, minimumLux: lighting.minimumLux, maximumLux: lighting.maximumLux, uniformityRatio: lighting.uniformityRatio, calculationVersion: lighting.calculationVersion, calculatedAt: lighting.calculatedAt } },
-      { key: "instruments", title: "Instrumentación", data: { instrumentIds: snapshot.instrumentIds } },
+      { key: "instruments", title: "Instrumentación", data: { instruments: snapshot.instrumentSnapshots ?? [], instrumentIds: snapshot.instrumentIds } },
       { key: "normative", title: "Referencia normativa y evaluación", data: normative ?? {} },
       { key: "professional_review", title: "Revisión profesional", data: review ?? {} },
       { key: "traceability", title: "Trazabilidad", data: { documentId: document.id, generatedAt: document.generatedAt, generatedBy: document.generatedBy, templateKey: document.templateKey, templateVersion: document.templateVersion } },

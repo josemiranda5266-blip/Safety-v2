@@ -3,6 +3,7 @@ import { requireAuth, requireTenantContext, requirePermission, TenantRequest } f
 import { canAccessCompany, canAccessEstablishment, canAccessSector, canAccessPosition, canAccessEmployee } from "../authorization/guards";
 import { createHygieneInstrumentSchema, updateHygieneInstrumentSchema, createHygieneMeasurementSchema, updateHygieneMeasurementSchema } from "../authorization/validation";
 import * as hygieneService from "../services/hygieneService";
+import { getNormativeProtocolVersion } from "../services/normativeCatalogService";
 import * as companyService from "../services/companyService";
 import * as establishmentService from "../services/establishmentService";
 import * as sectorService from "../services/sectorService";
@@ -104,6 +105,20 @@ router.post("/measurements", requirePermission("hygiene:create"), async (req: Te
     updatedBy: context.userId,
   });
   res.status(201).json({ measurement });
+});
+
+router.post("/measurements/:id/normative-snapshot", requirePermission("hygiene:update"), async (req: TenantRequest, res: Response) => {
+  const context = req.authContext!;
+  const measurement = await hygieneService.getMeasurementById(req.params.id, context.orgId);
+  if (!measurement) return res.status(404).json({ error: "Medición no encontrada", code: "MEASUREMENT_NOT_FOUND" });
+  const normativeProtocolVersionId = typeof req.body?.normativeProtocolVersionId === "string" ? req.body.normativeProtocolVersionId : "";
+  if (!normativeProtocolVersionId) return res.status(400).json({ error: "Se requiere normativeProtocolVersionId", code: "NORMATIVE_VERSION_REQUIRED" });
+  const version = await getNormativeProtocolVersion(normativeProtocolVersionId);
+  if (!version) return res.status(404).json({ error: "Versión normativa no encontrada", code: "NORMATIVE_VERSION_NOT_FOUND" });
+  if (version.protocolType !== measurement.protocolType) return res.status(400).json({ error: "La versión normativa no corresponde al protocolo de la medición", code: "NORMATIVE_PROTOCOL_MISMATCH" });
+  const snapshot = { normativeProtocolVersionId: version.id, reference: version.reference, version: version.version, evaluatedAt: new Date().toISOString(), criteriaSnapshot: version.criteria.map((criterion) => ({ ...criterion, parameters: { ...criterion.parameters } })) };
+  const updated = await hygieneService.updateMeasurement(req.params.id, context.orgId, context.userId, { normativeEvaluationSnapshot: snapshot });
+  res.json({ measurement: updated });
 });
 
 router.patch("/measurements/:id", requirePermission("hygiene:update"), async (req: TenantRequest, res: Response) => {

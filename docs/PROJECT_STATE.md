@@ -1378,3 +1378,22 @@ LightingMeasurementEditor redirige visualmente una medición pending_review al c
 ### Próxima acción
 
 Fortalecer el backend de revisión: exigir comentarios para changes_requested y evaluar permisos/roles específicos de revisor en lugar de reutilizar únicamente hygiene:update. Luego comenzar la capa de documento/protocolo final a partir de mediciones validadas.
+
+
+## 2026-08-29 — Endurecimiento de revisión: validación de comentarios en servidor
+
+La solicitud de cambios ya no depende de la interfaz para exigir fundamento. POST /measurements/:id/review ahora normaliza comments y rechaza changes_requested sin texto mediante REVIEW_COMMENTS_REQUIRED.
+
+Esto mantiene la regla de seguridad: las restricciones críticas deben aplicarse en el servidor aunque exista validación equivalente en el frontend.
+
+### Auditoría de permisos
+
+Se confirmó que la ruta sigue utilizando requirePermission("hygiene:update"). La separación hacia un permiso hygiene:review requiere una modificación coordinada del catálogo/servicio real de permisos y de las asignaciones de rol existentes. No se introdujo un permiso inexistente de manera aislada para evitar bloquear usuarios o crear una autorización inconsistente. Esta separación queda como próximo cambio de autorización transversal.
+
+### Commit
+
+- 36143f3e66e28fb81b45520410fcf171f5de599a — fix(hygiene): require server-side comments when requesting changes
+
+### Próxima acción
+
+Auditar y modificar el sistema central de permisos para introducir higiene:review de manera compatible. Después, comenzar la arquitectura de documentos generados a partir de una medición validada, incluyendo snapshot de datos, versión de plantilla y trazabilidad, sin implementar todavía firma legal automática.

@@ -1,9 +1,9 @@
 import type {
-  HygieneDocumentRepresentation,
   HygieneMeasurement,
   HygieneInstrument,
   LightingMeasurementData,
 } from '../types/safety';
+import type { HygieneDocumentRepresentation } from '../types/hygieneDocument';
 
 /**
  * Builds the immutable document representation for an illumination measurement.
@@ -37,7 +37,12 @@ export function mapLightingMeasurementToDocument(
     {
       key: 'campaign',
       title: 'Campaña de medición',
-      data: { ...campaign, sourceType: lighting.sourceType, lightingSystem: lighting.lightingSystem, taskDescription: lighting.taskDescription },
+      data: {
+        ...campaign,
+        sourceType: lighting.sourceType,
+        lightingSystem: lighting.lightingSystem,
+        taskDescription: lighting.taskDescription,
+      },
     },
     {
       key: 'instrumentation',

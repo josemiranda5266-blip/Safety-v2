@@ -19,6 +19,28 @@ export const LightingMeasurementEditor: React.FC<Props> = ({ measurement, onSave
   const [saving, setSaving] = useState(false);
   const [showEvaluation, setShowEvaluation] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [submitting, setSubmitting] = useState(false);
+
+  const submissionRequirements = [
+    { label: 'Empresa', complete: Boolean(measurement.context?.companyId) },
+    { label: 'Establecimiento', complete: Boolean(measurement.context?.establishmentId) },
+    { label: 'Instrumento asociado', complete: Boolean(measurement.instrumentIds?.length) },
+    { label: 'Normativa asociada', complete: Boolean(measurement.normativeEvaluationSnapshot) },
+    { label: 'Puntos de medición', complete: points.filter((point) => point.name.trim()).length > 0 },
+  ];
+  const canSubmit = measurement.status === 'in_progress' && submissionRequirements.every((item) => item.complete);
+
+  const submitForReview = async () => {
+    setSubmitting(true); setError(null);
+    try {
+      await hygieneService.submitForReview(measurement.id);
+      await onSaved();
+    } catch (err) {
+      const responseError = err as any;
+      const validationErrors = responseError?.validation?.errors;
+      setError(Array.isArray(validationErrors) ? validationErrors.map((item: any) => item.message).join(' ') : (err instanceof Error ? err.message : 'No se pudo enviar la medición a revisión.'));
+    } finally { setSubmitting(false); }
+  };
 
   const preview = useMemo(() => {
     try {
@@ -61,6 +83,12 @@ export const LightingMeasurementEditor: React.FC<Props> = ({ measurement, onSave
     </div>
     {preview && <div className="grid grid-cols-2 md:grid-cols-4 gap-3">{[['Promedio', preview.averageLux],['Mínimo', preview.minimumLux],['Máximo', preview.maximumLux],['Relación mín/máx', preview.uniformityRatio]].map(([label,value]) => <div key={String(label)} className="rounded-xl bg-indigo-50 dark:bg-indigo-950/30 p-3"><div className="text-xs text-slate-500">{label}</div><div className="font-extrabold text-lg">{value}</div></div>)}</div>}
     <div className="text-xs text-slate-500 rounded-lg bg-slate-50 dark:bg-slate-800 p-3">Los indicadores mostrados son cálculos descriptivos. Esta pantalla no emite por sí misma una declaración automática de cumplimiento normativo.</div>
+    <div className="rounded-2xl border border-indigo-200 dark:border-indigo-900 p-4 space-y-3">
+      <div className="flex flex-wrap items-center justify-between gap-3"><div><h4 className="font-extrabold">Estado documental</h4><p className="text-sm text-slate-500">Estado actual: <span className="font-bold">{measurement.status}</span></p></div></div>
+      {measurement.status === 'in_progress' && <><div className="grid sm:grid-cols-2 gap-2">{submissionRequirements.map((item) => <div key={item.label} className="text-sm rounded-lg bg-slate-50 dark:bg-slate-800 p-2">{item.complete ? '✓' : '⚠'} {item.label}</div>)}</div><button type="button" disabled={submitting || !canSubmit} onClick={submitForReview} className="bg-emerald-600 text-white font-bold px-4 py-2 rounded-xl disabled:opacity-50">{submitting ? 'Enviando...' : 'Enviar a revisión'}</button>{!canSubmit && <p className="text-xs text-amber-700">Complete los requisitos pendientes antes de enviar la medición.</p>}</>}
+      {measurement.status === 'pending_review' && <p className="text-sm text-amber-700">La medición fue enviada y está pendiente de revisión profesional.</p>}
+      {measurement.status === 'validated' && <p className="text-sm text-emerald-700">La medición fue validada. Los cambios posteriores deben seguir el flujo documental correspondiente.</p>}
+    </div>
     <details className="rounded-2xl border border-slate-200 dark:border-slate-800 p-4"><summary className="cursor-pointer font-bold">Historial documental</summary><div className="mt-4"><MeasurementAuditTimeline measurementId={measurement.id} /></div></details>
 
     {showEvaluation && preview && measurement.normativeEvaluationSnapshot && (() => {

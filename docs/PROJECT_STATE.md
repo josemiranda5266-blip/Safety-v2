@@ -844,3 +844,42 @@ La lectura UI de instrumentos y mediciones ya está alineada con el dominio V2. 
 ### Próxima acción
 
 Implementar la primera capa de alta profesional: formulario de instrumento conectado al POST protegido. Después construir el flujo de creación de medición como wizard jerárquico y por protocolo.
+
+
+## 2026-08-29 — Implementación: alta completa de instrumentos desde UI
+
+### Cambio realizado
+
+Se conectó el botón “Nuevo Equipo” de InstrumentScreen al flujo real de creación.
+
+El flujo implementado es:
+
+UI → validación cliente → CreateHygieneInstrumentInput → hygieneService.addInstrument → POST /api/v2/hygiene/instruments → backend → persistencia → recarga de listado.
+
+### Campos implementados
+
+- categoría;
+- tipo de instrumento;
+- marca;
+- modelo;
+- número de serie;
+- estado;
+- fecha de calibración;
+- vencimiento de calibración;
+- URL de certificado;
+- observaciones.
+
+### Decisiones de arquitectura
+
+- organizationId no se solicita en el formulario: el tenant debe ser resuelto por el backend;
+- las fechas vacías se envían como undefined y no como strings vacíos;
+- los errores de API se muestran al usuario;
+- luego de crear correctamente se recarga el inventario desde la fuente de verdad.
+
+### Commit
+
+- 59c4d36a431ee156d347b1319542c8bb9da4a2b1 — feat(hygiene): add instrument creation workflow
+
+### Próxima acción
+
+Construir el flujo de alta de mediciones. Debe ser un wizard guiado y no un formulario plano. La primera etapa debe seleccionar contexto organizacional y protocolo; después instrumentos; finalmente datos específicos del protocolo.

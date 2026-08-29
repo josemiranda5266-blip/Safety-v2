@@ -7,10 +7,56 @@
 
 ---
 
+## 2026-08-29 — Documento de Iluminación desacoplado del catálogo normativo vivo
+
+### Objetivo
+Garantizar que un documento histórico utilice exclusivamente la normativa congelada en `normativeEvaluationSnapshot` y nunca reconstruya referencia, criterio o valores requeridos desde el catálogo vivo.
+
+### Hallazgo
+`server/services/hygieneDocumentService.ts` utilizaba `getSrtReference()` desde `src/config/srtRegulatoryCatalog.ts` al construir la representación documental. Esto introducía una segunda fuente normativa para documentos ya congelados.
+
+### Corrección aplicada
+- Eliminada la dependencia de `getSrtReference()` en la representación de Iluminación.
+- `buildLightingDocumentRepresentation()` ahora exige `measurementSnapshot.normativeEvaluationSnapshot`.
+- La referencia normativa se obtiene de `normativeEvaluationSnapshot.reference`.
+- Se valida que exista la referencia congelada.
+- Se valida que la referencia congelada sea compatible con la plantilla documental.
+- El catálogo vivo queda reservado para selección/validación previa al snapshot.
+
+### Commit
+- `baad5e76715c5c9202b40f53960fc75e1c1e1edc` — fix(hygiene): use frozen normative snapshot in document representation
+
+### Estado
+La representación documental de Iluminación ya no necesita consultar el catálogo normativo vivo para reconstruir la referencia de un documento generado.
+
+---
+
+## 2026-08-29 — PDF expone el criterio normativo congelado
+
+### Objetivo
+Evitar que el PDF muestre solamente una referencia genérica y hacer visible el criterio seleccionado, su valor requerido y los datos de evaluación provenientes del snapshot.
+
+### Corrección aplicada
+`src/services/hygieneDocumentPdfService.ts` ahora representa explícitamente, cuando están presentes en la representación documental:
+- referencia normativa;
+- versión normativa;
+- criterio seleccionado;
+- lux requeridos;
+- estado de evaluación;
+- fecha de evaluación;
+- criterios congelados.
+
+### Commit
+- `b1f6262912fd20b8dde70149e3f4029dcda7d412` — fix(hygiene): expose frozen lighting criterion in PDF
+
+### Regla
+El PDF no calcula ni consulta normativa. Consume exclusivamente `HygieneDocumentRepresentation`.
+
+---
+
 ## 2026-08-29 — Catálogo normativo activo conectado al editor de Iluminación
 
 ### Objetivo
-
 Eliminar el último identificador normativo fijo del cliente y hacer que la selección de versión y criterio de Iluminación provenga del catálogo normativo controlado por backend.
 
 ### Correcciones aplicadas
@@ -54,15 +100,17 @@ SNAPSHOT NORMATIVO
 EVALUACIÓN ASISTIDA
           ↓
 REVISIÓN PROFESIONAL
+          ↓
+DOCUMENTO HISTÓRICO
+          ↓
+WEB / PDF / XLSX
 ```
-
-La aplicación ya no depende de un ID normativo fijo en el editor.
 
 ### Hallazgo pendiente
 
-El catálogo frontend `src/config/srtLightingRequirements.ts` sigue existiendo como cobertura normativa auxiliar y contiene una primera tanda de requisitos de Tabla 1/Tabla 2. No debe convertirse en una segunda fuente de verdad para documentos nuevos. La fuente canónica para el flujo persistido debe ser `normativeProtocolVersions` del backend.
+El catálogo frontend `src/config/srtLightingRequirements.ts` sigue existiendo como cobertura normativa auxiliar. No debe convertirse en una segunda fuente de verdad para documentos nuevos. La fuente canónica para el flujo persistido debe ser `normativeProtocolVersions` del backend.
 
-Además, el motor `lightingEvaluation.ts` ahora obtiene `requiredLux` del criterio congelado, pero todavía no transforma ese valor en un `CUMPLE/NO CUMPLE`: mantiene deliberadamente la revisión profesional como etapa final.
+Además, `lightingEvaluation.ts` obtiene `requiredLux` del criterio congelado, pero la decisión final de cumplimiento continúa siendo profesional.
 
 ---
 
@@ -72,14 +120,10 @@ Además, el motor `lightingEvaluation.ts` ahora obtiene `requiredLux` del criter
 
 Cerrar el hueco entre el helper normativo y la aplicación real: el criterio normativo no debe existir solamente en código de soporte; debe poder asociarse explícitamente a una medición y quedar persistido antes de enviarla a revisión.
 
-### Auditoría realizada
-
-El backend ya disponía de `POST /measurements/:id/normative-snapshot`. El endpoint valida que la versión normativa exista y que corresponda al tipo de protocolo antes de congelar sus criterios en `normativeEvaluationSnapshot`. Por lo tanto, no era necesario duplicar esa persistencia desde React ni escribir criterios legales directamente desde el cliente.
-
 ### Correcciones
 
 - `src/services/hygieneService.ts` incorpora `saveNormativeSnapshot()`.
-- `updateMeasurement()` ahora tipa explícitamente `normativeEvaluationSnapshot`.
+- `updateMeasurement()` tipa explícitamente `normativeEvaluationSnapshot`.
 - `LightingMeasurementEditor.tsx` incorporó originalmente una acción explícita para asociar normativa; posteriormente fue reemplazada por selección dinámica desde backend.
 - El editor muestra referencia normativa, versión, criterios congelados y fecha de evaluación.
 - El requisito de `Normativa asociada` del flujo de envío a revisión quedó conectado a persistencia real.
@@ -142,11 +186,11 @@ La representación es la fuente común; Web y PDF no poseen cálculos propios.
 
 ### Próxima fase prioritaria de Iluminación
 
-1. Hacer que la representación Web/PDF exponga `selectedCriterionId`, código/título del criterio y `requiredLux` desde el snapshot.
-2. Auditar `hygieneDocumentService.ts` y `hygieneDocumentPdfService.ts` para eliminar cualquier cálculo o `requiredLux` alternativo.
-3. Completar la evaluación asistida: comparar los valores medidos con el criterio congelado sin convertir automáticamente el resultado en una conclusión legal.
-4. Revisar la cobertura normativa del catálogo backend y migrar los requisitos auxiliares del frontend cuando corresponda.
-5. Revisar la regla de uniformidad y su correspondencia exacta con el protocolo antes de cerrar el motor de Iluminación.
+1. Auditar la representación Web y cualquier salida XLSX para confirmar que usan exclusivamente el snapshot.
+2. Completar la evaluación asistida: comparar los valores medidos con el criterio congelado sin convertir automáticamente el resultado en una conclusión legal.
+3. Revisar la cobertura normativa del catálogo backend y migrar los requisitos auxiliares del frontend cuando corresponda.
+4. Revisar la regla de uniformidad y su correspondencia exacta con el protocolo antes de cerrar el motor de Iluminación.
+5. Revisar el mapeo del documento hacia todos los campos requeridos por el formulario oficial.
 6. Recién cuando Iluminación esté cerrada de extremo a extremo, avanzar al protocolo de Ruido.
 
 ### Fases posteriores
@@ -161,3 +205,7 @@ La representación es la fuente común; Web y PDF no poseen cálculos propios.
 ### Regla de continuidad
 
 No ejecutar la batería final de tests todavía. Continuar con auditoría y correcciones funcionales/arquitectónicas. La verificación integral se realizará al finalizar este ciclo de consolidación.
+
+### Incidente de contexto
+
+No mezclar este proyecto con Conexa. Todas las próximas acciones de esta línea corresponden exclusivamente a Safety V2.

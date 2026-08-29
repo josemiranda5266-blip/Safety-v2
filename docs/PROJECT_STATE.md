@@ -1020,3 +1020,46 @@ Los indicadores son descriptivos. No se declara cumplimiento normativo automáti
 ### Próxima acción
 
 Diseñar el catálogo normativo versionado como fuente independiente de verdad. Debe soportar protocolo, referencia, versión, vigencia, fuente oficial, valores aplicables y trazabilidad histórica de la evaluación.
+
+
+## 2026-08-29 — Implementación: base del catálogo normativo versionado
+
+### Problema resuelto
+
+La evaluación de una medición no debe depender de valores normativos hardcodeados dentro del formulario ni cambiar retroactivamente cuando se actualice una norma.
+
+### Dominio incorporado
+
+Se agregaron:
+
+- NormativeRecordStatus;
+- NormativeSource;
+- NormativeCriterion;
+- NormativeProtocolVersion;
+- NormativeEvaluationSnapshot.
+
+Cada versión normativa identifica protocolo, referencia, versión, estado, vigencia, fuente oficial y criterios estructurados.
+
+### Servicios incorporados
+
+src/services/normativeCatalog.ts contiene:
+
+- resolveActiveNormativeVersion(): selecciona una versión activa aplicable a una fecha determinada;
+- createNormativeEvaluationSnapshot(): congela los criterios utilizados en una evaluación.
+
+### Decisión crítica de trazabilidad
+
+Una evaluación debe almacenar un snapshot de los criterios utilizados. Nunca debe recalcularse automáticamente una medición histórica con una norma modificada sin decisión explícita y nueva evaluación.
+
+### Estado actual
+
+El dominio y la lógica pura del catálogo están implementados en frontend. La siguiente etapa debe definir la persistencia y administración del catálogo como fuente de verdad de backend, con autorización restringida para cambios normativos.
+
+### Commits
+
+- 541801a493de8d80682b7e2f5bc0ffb5cf2c08db — feat(normative): add versioned normative catalog domain
+- 74632e8a3f3d0af5ca61e96bf18a166df9860bfa — feat(normative): add normative version resolver and snapshots
+
+### Próxima acción
+
+Auditar la ruta backend existente de higiene y agregar la persistencia del catálogo normativo sin mezclarlo con documentos personales ni permitir que usuarios comunes modifiquen referencias oficiales.

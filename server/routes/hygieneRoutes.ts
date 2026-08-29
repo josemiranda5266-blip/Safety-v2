@@ -155,6 +155,14 @@ router.post("/measurements/:id/review", requirePermission("hygiene:review"), asy
   res.json({ measurement: updated });
 });
 
+router.get("/generated-documents/:documentId/representation", requirePermission("document:read"), async (req: TenantRequest, res: Response) => {
+  const context = req.authContext!;
+  const document = await hygieneDocumentService.getGeneratedDocumentById(req.params.documentId, context.orgId);
+  if (!document) return res.status(404).json({ error: "Documento no encontrado", code: "DOCUMENT_NOT_FOUND" });
+  if (document.protocolType !== "lighting") return res.status(400).json({ error: "La representación solicitada no corresponde a Iluminación", code: "DOCUMENT_PROTOCOL_NOT_SUPPORTED" });
+  res.json({ representation: hygieneDocumentService.buildLightingDocumentRepresentation(document) });
+});
+
 router.get("/measurements/:id/generated-documents", requirePermission("document:read"), async (req: TenantRequest, res: Response) => {
   const context = req.authContext!;
   const measurement = await hygieneService.getMeasurementById(req.params.id, context.orgId);

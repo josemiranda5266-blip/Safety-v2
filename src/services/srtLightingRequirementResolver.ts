@@ -1,35 +1,30 @@
 import { LightingRequirement, resolveLightingRequirement } from '../config/srtLightingRequirements';
-import { HygieneMeasurement } from '../types/safety';
+import { HygieneMeasurement, NormativeEvaluationSnapshot } from '../types/safety';
 
 export interface LightingRequirementSelection {
   requirement: LightingRequirement;
-  selectedBy: 'catalog_match';
+  selectedBy: 'catalog_match' | 'professional_selection';
   selectedAt: string;
 }
 
 export interface LightingRequirementResolutionInput {
-  taskDescription?: string;
-  localDescription?: string;
-  establishmentType?: string;
+  category?: string;
+  task?: string;
+  location?: string;
+  professionalRequirementId?: string;
 }
 
-/**
- * Resolves a regulatory lighting requirement without guessing.
- * Ambiguous or unmatched descriptions intentionally return undefined.
- */
+/** Resolves a regulatory requirement without guessing; ambiguous/unmatched cases remain unresolved. */
 export function resolveSrtLightingRequirement(input: LightingRequirementResolutionInput): LightingRequirement | undefined {
-  return resolveLightingRequirement(input.taskDescription, input.localDescription, input.establishmentType);
+  return resolveLightingRequirement(input);
 }
 
-/**
- * Freezes the selected regulatory criterion in the measurement snapshot.
- * The current measurement object is not mutated.
- */
+/** Freezes the selected requirement in the measurement's normative snapshot. */
 export function buildLightingNormativeSnapshot(
   measurement: HygieneMeasurement,
   requirement: LightingRequirement,
   evaluatedAt = new Date().toISOString(),
-) {
+): NormativeEvaluationSnapshot {
   return {
     normativeProtocolVersionId: 'srt-84-2012',
     reference: 'Resolución SRT 84/2012 + Decreto 351/79 Anexo IV',
@@ -39,19 +34,20 @@ export function buildLightingNormativeSnapshot(
       {
         id: requirement.id,
         code: requirement.id,
-        title: requirement.label,
-        description: requirement.sourceNote,
-        unit: 'lux',
+        title: requirement.locationOrTask,
+        description: requirement.notes,
+        unit: requirement.unit,
         parameters: {
           requiredLux: requirement.requiredLux,
           maximumLux: requirement.maximumLux ?? false,
-          classification: requirement.classification,
-          sourceTable: requirement.sourceTable,
+          category: requirement.category,
+          sourceTable: requirement.source,
           measurementId: measurement.id,
           measurementDate: measurement.measurementDate,
+          legalSource: requirement.legalSource,
         },
         applicability: requirement.category,
       },
     ],
-  } as const;
+  };
 }

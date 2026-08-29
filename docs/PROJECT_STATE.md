@@ -1167,3 +1167,27 @@ El motor describe y relaciona los datos con los criterios disponibles. La conclu
 ### Próxima acción
 
 Persistir la evaluación asistida como resultado trazable separado del snapshot y definir el flujo de estados draft → in_progress → pending_review → validated/closed, incluyendo el bloqueo de información crítica después de una validación profesional.
+
+
+## 2026-08-29 — Implementación: ciclo de vida y revisión profesional de mediciones
+
+### Ciclo controlado
+
+El backend ahora valida transiciones de estado: draft → in_progress → pending_review → validated → closed, con transiciones de corrección/cancelación explícitas. Se eliminó la posibilidad de saltar arbitrariamente entre estados.
+
+### Revisión profesional
+
+Se incorporó POST /api/v2/hygiene/measurements/:id/review. Una medición solo puede ser revisada desde pending_review. La aprobación la lleva a validated; la solicitud de cambios la devuelve a in_progress y registra decisión, revisor, fecha y comentarios.
+
+### Inmutabilidad
+
+validated y closed son estados bloqueados para modificaciones ordinarias. updateMeasurement rechaza cambios distintos del cambio de estado permitido desde validated hacia closed. Esto protege rawData, instrumentos, snapshot normativo y demás información técnica contra modificaciones posteriores silenciosas.
+
+### Commits
+
+- 075072f3405ae2be0ac43e69765652498006f682 — feat(hygiene): enforce measurement lifecycle and immutable validated records
+- 7509b1303abd68905d33e04171e00c0e997f4682 — feat(hygiene): add professional measurement review workflow
+
+### Próxima acción
+
+Corregir la semántica del estado archived/cancelled y construir un registro de eventos/auditoría de cambios. El siguiente objetivo es que cada transición crítica quede registrada independientemente del estado actual de la medición.

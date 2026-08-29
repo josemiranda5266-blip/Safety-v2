@@ -23,10 +23,8 @@ async function validateMeasurementContext(context: NonNullable<TenantRequest["au
 }): Promise<string | undefined> {
   const company = await companyService.getCompanyById(value.companyId, context.orgId);
   if (!company || !canAccessCompany(context, company, "hygiene:create")) return "COMPANY_NOT_FOUND";
-
   const establishment = await establishmentService.getEstablishmentById(value.establishmentId, context.orgId);
   if (!establishment || !canAccessEstablishment(context, establishment, "establishment:read") || establishment.companyId !== value.companyId) return "ESTABLISHMENT_MISMATCH";
-
   if (value.sectorId) {
     const sector = await sectorService.getSectorById(value.sectorId, context.orgId);
     if (!sector || !canAccessSector(context, sector, "sector:read") || sector.companyId !== value.companyId || sector.establishmentId !== value.establishmentId) return "SECTOR_MISMATCH";
@@ -93,21 +91,11 @@ router.post("/measurements", requirePermission("hygiene:create"), async (req: Te
   const context = req.authContext!;
   const contextError = await validateMeasurementContext(context, parsed.data.context);
   if (contextError) return res.status(400).json({ error: "Contexto jerárquico inválido", code: contextError });
-
   for (const instrumentId of parsed.data.instrumentIds) {
     const instrument = await hygieneService.getInstrumentById(instrumentId, context.orgId);
-    if (!instrument || !instrument.active || instrument.status === "retired" || instrument.status === "out_of_service") {
-      return res.status(400).json({ error: "Instrumento no disponible para medición", code: "INSTRUMENT_NOT_AVAILABLE", instrumentId });
-    }
+    if (!instrument || !instrument.active || instrument.status === "retired" || instrument.status === "out_of_service") return res.status(400).json({ error: "Instrumento no disponible para medición", code: "INSTRUMENT_NOT_AVAILABLE", instrumentId });
   }
-
-  const measurement = await hygieneWorkflowService.createMeasurementWithAudit({
-    ...parsed.data,
-    orgId: context.orgId,
-    status: "draft",
-    createdBy: context.userId,
-    updatedBy: context.userId,
-  });
+  const measurement = await hygieneWorkflowService.createMeasurementWithAudit({ ...parsed.data, orgId: context.orgId, status: "draft", createdBy: context.userId, updatedBy: context.userId });
   res.status(201).json({ measurement });
 });
 
@@ -124,14 +112,9 @@ router.post("/measurements/:id/submit-for-review", requirePermission("hygiene:up
   const measurement = await hygieneService.getMeasurementById(req.params.id, context.orgId);
   if (!measurement) return res.status(404).json({ error: "Medición no encontrada", code: "MEASUREMENT_NOT_FOUND" });
   if (measurement.status !== "in_progress") return res.status(409).json({ error: "Solo una medición en progreso puede enviarse a revisión", code: "MEASUREMENT_NOT_READY_FOR_SUBMISSION" });
-
   const validation = validateMeasurementForSubmission(measurement);
   if (!validation.valid) return res.status(400).json({ error: "La medición no cumple los requisitos para revisión", code: "MEASUREMENT_SUBMISSION_VALIDATION_FAILED", validation });
-
-  const updated = await hygieneWorkflowService.updateMeasurementWithAudit(req.params.id, context.orgId, context.userId, { status: "pending_review" }, {
-    eventType: "submitted_for_review",
-    metadata: { validationPassed: true },
-  });
+  const updated = await hygieneWorkflowService.updateMeasurementWithAudit(req.params.id, context.orgId, context.userId, { status: "pending_review" }, { eventType: "submitted_for_review", metadata: { validationPassed: true } });
   res.json({ measurement: updated });
 });
 
@@ -145,13 +128,7 @@ router.post("/measurements/:id/review", requirePermission("hygiene:review"), asy
   const comments = typeof req.body?.comments === "string" ? req.body.comments.trim() : "";
   if (decision === "changes_requested" && !comments) return res.status(400).json({ error: "Debe indicar los cambios requeridos", code: "REVIEW_COMMENTS_REQUIRED" });
   const now = new Date().toISOString();
-  const updated = await hygieneWorkflowService.updateMeasurementWithAudit(req.params.id, context.orgId, context.userId, {
-    status: decision === "approved" ? "validated" : "in_progress",
-    review: { status: decision, reviewedBy: context.userId, reviewedAt: now, comments: comments || null },
-  }, {
-    eventType: decision === "approved" ? "review_approved" : "changes_requested",
-    metadata: { comments: comments || null, decision },
-  });
+  const updated = await hygieneWorkflowService.updateMeasurementWithAudit(req.params.id, context.orgId, context.userId, { status: decision === "approved" ? "validated" : "in_progress", review: { status: decision, reviewedBy: context.userId, reviewedAt: now, comments: comments || null } }, { eventType: decision === "approved" ? "review_approved" : "changes_requested", metadata: { comments: comments || null, decision } });
   res.json({ measurement: updated });
 });
 
@@ -188,11 +165,21 @@ router.post("/measurements/:id/normative-snapshot", requirePermission("hygiene:u
   const measurement = await hygieneService.getMeasurementById(req.params.id, context.orgId);
   if (!measurement) return res.status(404).json({ error: "Medición no encontrada", code: "MEASUREMENT_NOT_FOUND" });
   const normativeProtocolVersionId = typeof req.body?.normativeProtocolVersionId === "string" ? req.body.normativeProtocolVersionId : "";
+  const criterionId = typeof req.body?.criterionId === "string" ? req.body.criterionId : undefined;
   if (!normativeProtocolVersionId) return res.status(400).json({ error: "Se requiere normativeProtocolVersionId", code: "NORMATIVE_VERSION_REQUIRED" });
   const version = await getNormativeProtocolVersion(normativeProtocolVersionId);
   if (!version) return res.status(404).json({ error: "Versión normativa no encontrada", code: "NORMATIVE_VERSION_NOT_FOUND" });
   if (version.protocolType !== measurement.protocolType) return res.status(400).json({ error: "La versión normativa no corresponde al protocolo de la medición", code: "NORMATIVE_PROTOCOL_MISMATCH" });
-  const snapshot = { normativeProtocolVersionId: version.id, reference: version.reference, version: version.version, evaluatedAt: new Date().toISOString(), criteriaSnapshot: version.criteria.map((criterion) => ({ ...criterion, parameters: { ...criterion.parameters } })) };
+  if (version.status !== "active") return res.status(409).json({ error: "Solo una versión normativa activa puede asociarse a una medición nueva", code: "NORMATIVE_VERSION_NOT_ACTIVE" });
+  if (criterionId && !version.criteria.some((criterion) => criterion.id === criterionId)) return res.status(400).json({ error: "El criterio seleccionado no pertenece a la versión normativa", code: "NORMATIVE_CRITERION_MISMATCH" });
+  const snapshot = {
+    normativeProtocolVersionId: version.id,
+    reference: version.reference,
+    version: version.version,
+    evaluatedAt: new Date().toISOString(),
+    selectedCriterionId: criterionId,
+    criteriaSnapshot: version.criteria.map((criterion) => ({ ...criterion, parameters: { ...criterion.parameters } })),
+  };
   const updated = await hygieneWorkflowService.updateMeasurementWithAudit(req.params.id, context.orgId, context.userId, { normativeEvaluationSnapshot: snapshot });
   res.json({ measurement: updated });
 });
@@ -204,9 +191,7 @@ router.patch("/measurements/:id", requirePermission("hygiene:update"), async (re
   if (parsed.data.instrumentIds) {
     for (const instrumentId of parsed.data.instrumentIds) {
       const instrument = await hygieneService.getInstrumentById(instrumentId, context.orgId);
-      if (!instrument || !instrument.active || instrument.status === "retired" || instrument.status === "out_of_service") {
-        return res.status(400).json({ error: "Instrumento no disponible para medición", code: "INSTRUMENT_NOT_AVAILABLE", instrumentId });
-      }
+      if (!instrument || !instrument.active || instrument.status === "retired" || instrument.status === "out_of_service") return res.status(400).json({ error: "Instrumento no disponible para medición", code: "INSTRUMENT_NOT_AVAILABLE", instrumentId });
     }
   }
   const measurement = await hygieneWorkflowService.updateMeasurementWithAudit(req.params.id, context.orgId, context.userId, parsed.data);

@@ -5,11 +5,7 @@ import type {
 } from '../types/safety';
 import type { HygieneDocumentRepresentation } from '../types/hygieneDocument';
 
-/**
- * Builds the immutable document representation for an illumination measurement.
- * The mapper only transports persisted/evaluated data; it does not re-evaluate
- * normative criteria or recalculate lighting metrics.
- */
+/** Builds an immutable document representation from persisted/evaluated data. */
 export function mapLightingMeasurementToDocument(
   measurement: HygieneMeasurement,
   instruments: HygieneInstrument[] = [],
@@ -18,6 +14,12 @@ export function mapLightingMeasurementToDocument(
   const points = lighting.points ?? [];
   const campaign = lighting.campaign ?? {};
   const snapshot = measurement.normativeEvaluationSnapshot;
+
+  const uniformityPasses =
+    typeof lighting.minimumLux === 'number' &&
+    typeof lighting.uniformityThresholdLux === 'number'
+      ? lighting.minimumLux >= lighting.uniformityThresholdLux
+      : undefined;
 
   const sections = [
     {
@@ -77,6 +79,7 @@ export function mapLightingMeasurementToDocument(
         uniformityMinimumLux: lighting.uniformityMinimumLux,
         uniformityThresholdLux: lighting.uniformityThresholdLux,
         uniformityMinOverAverage: lighting.uniformityMinOverAverage,
+        uniformityPasses,
         calculationVersion: lighting.calculationVersion,
         calculatedAt: lighting.calculatedAt,
       },

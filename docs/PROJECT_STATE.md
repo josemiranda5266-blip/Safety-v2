@@ -501,3 +501,58 @@ Determinar si Safety-v2 puede evolucionar hacia una plataforma integral de Higie
 ### Próxima acción
 
 Completar la auditoría del módulo de Higiene y del flujo multi-tenant existente antes de implementar la primera modificación del dominio de mediciones.
+
+
+## 2026-08-29 — Auditoría directa del módulo de Higiene
+
+### Objetivo
+
+Inspeccionar la implementación real de Higiene antes de crear nuevos dominios o duplicar funcionalidades.
+
+### Hallazgos
+
+- HygieneScreen ya existe y centraliza dos áreas: Mediciones e Instrumentos.
+- MeasurementScreen lista mediciones por empresa activa mediante hygieneService.
+- InstrumentScreen lista instrumentos por organización y muestra vencimiento de calibración.
+- Los tipos existentes son HygieneMeasurement y HygieneInstrument.
+- HygieneMeasurement es actualmente demasiado plano para protocolos profesionales: representa un único valor, límite y resultado.
+- HygieneInstrument no tiene actualmente organización, tipo de instrumento, estado, mantenimiento ni historial de uso dentro de su modelo tipado.
+- hygieneService persiste directamente en Firestore bajo organizaciones/{orgId}/hygieneMeasurements y organizaciones/{orgId}/hygieneInstruments.
+- El servicio obtiene la organización directamente desde localStorage, en lugar de reutilizar de forma consistente tenantApi o el contexto de tenant.
+- El servicio no conserva explícitamente en el modelo de medición organizationId, creador, timestamps, estado del ciclo de vida ni versión normativa.
+- El filtrado actual de mediciones por empresa se realiza en la consulta, pero el modelo todavía no implementa la estructura completa de autorización y trazabilidad requerida para datos profesionales.
+- La interfaz de instrumentos contiene un botón de creación y acciones de certificado que actualmente son principalmente UI; la funcionalidad completa de alta y gestión todavía debe consolidarse.
+- El sistema de reportes contiene generación de documentos con datos simulados para una demostración existente. Esa estrategia no debe reutilizarse para protocolos técnicos reales.
+
+### Decisiones
+
+- No crear un segundo módulo de Higiene: se evolucionará el módulo existente.
+- No reemplazar de golpe HygieneMeasurement; se planificará una migración compatible o una nueva entidad versionada para evitar romper pantallas existentes.
+- El primer objetivo técnico será endurecer el contexto organizacional y la trazabilidad del servicio de Higiene.
+- La futura medición profesional tendrá estructura contextual, protocolo, instrumentos, datos crudos, cálculo, evaluación y revisión profesional.
+- Los cálculos y criterios normativos deberán permanecer fuera de los componentes React y fuera del renderizador PDF.
+- Los protocolos técnicos reales no utilizarán datos mock como fuente de resultados.
+
+### Archivos auditados
+
+- src/components/Console/Hygiene/HygieneScreen.tsx
+- src/components/Console/Hygiene/MeasurementScreen.tsx
+- src/components/Console/Hygiene/InstrumentScreen.tsx
+- src/services/hygieneService.ts
+- src/types/safety.ts
+- src/services/inspectionService.ts
+- src/services/tenantApi.ts
+- src/components/Console/Reports/ReportsScreen.tsx
+- src/App.tsx
+
+### Pendientes
+
+- Auditar rutas backend y reglas de Firestore específicas de Higiene.
+- Auditar el modelo exacto de autorización de membresías y asignación de empresas para reutilizarlo en Higiene.
+- Diseñar la migración desde HygieneMeasurement hacia un modelo profesional versionado.
+- Definir la primera implementación funcional: Iluminación, Ruido o Puesta a Tierra.
+- Sustituir la dependencia directa de localStorage del servicio de Higiene por una fuente de contexto consistente.
+
+### Próxima acción
+
+Auditar el backend y las reglas de seguridad aplicables a Higiene y, con ese patrón confirmado, corregir primero la capa de persistencia y contexto antes de ampliar la interfaz.

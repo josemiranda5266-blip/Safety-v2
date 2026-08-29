@@ -17,6 +17,9 @@ function label(key: string): string {
     uniformityRatio: 'Relación mín/máx', calculationVersion: 'Versión del cálculo', calculatedAt: 'Calculado el',
     sourceType: 'Tipo de iluminación', lightingSystem: 'Sistema de iluminación', taskDescription: 'Descripción de tarea',
     documentId: 'Documento', generatedAt: 'Fecha de generación', generatedBy: 'Generado por', templateKey: 'Plantilla', templateVersion: 'Versión de plantilla',
+    id: 'Identificador', authority: 'Autoridad', resolution: 'Resolución', year: 'Año', title: 'Título', sourceUrl: 'Fuente oficial',
+    selectedCriterionId: 'Criterio seleccionado', requiredLux: 'Lux requeridos', reference: 'Referencia normativa', version: 'Versión normativa',
+    evaluatedAt: 'Evaluado el', status: 'Estado de evaluación',
   };
   return labels[key] ?? key.replace(/([A-Z])/g, ' $1').replace(/^./, c => c.toUpperCase());
 }
@@ -46,6 +49,27 @@ export function exportLightingDocumentPdf(representation: HygieneDocumentReprese
       if (key === 'instruments' && Array.isArray(value)) {
         const instruments = value as Array<Record<string, unknown>>;
         for (const instrument of instruments) rows.push(['Instrumento', [instrument.type, instrument.brand, instrument.model, instrument.serialNumber, instrument.calibrationDate, instrument.calibrationExpiry].filter(Boolean).map(scalar).join(' · ') || scalar(instrument.id)]);
+      } else if (key === 'reference' && value && typeof value === 'object') {
+        const reference = value as Record<string, unknown>;
+        rows.push(['Referencia normativa', scalar(reference.resolution ?? reference.id)]);
+        if (reference.version !== undefined) rows.push(['Versión normativa', scalar(reference.version)]);
+        if (reference.title !== undefined) rows.push(['Título', scalar(reference.title)]);
+        if (reference.sourceUrl !== undefined) rows.push(['Fuente oficial', scalar(reference.sourceUrl)]);
+      } else if (key === 'evaluation' && value && typeof value === 'object') {
+        const evaluation = value as Record<string, unknown>;
+        if (evaluation.selectedCriterionId !== undefined) rows.push(['Criterio seleccionado', scalar(evaluation.selectedCriterionId)]);
+        if (evaluation.requiredLux !== undefined) rows.push(['Lux requeridos', scalar(evaluation.requiredLux)]);
+        if (evaluation.status !== undefined) rows.push(['Estado de evaluación', scalar(evaluation.status)]);
+        if (evaluation.evaluatedAt !== undefined) rows.push(['Evaluado el', scalar(evaluation.evaluatedAt)]);
+        const criteria = evaluation.criteriaSnapshot;
+        if (Array.isArray(criteria)) {
+          for (const criterion of criteria as Array<Record<string, unknown>>) {
+            const id = criterion.id ?? criterion.criterionId;
+            const title = criterion.title ?? criterion.name;
+            const required = criterion.requiredLux ?? (criterion.parameters as Record<string, unknown> | undefined)?.requiredLux;
+            rows.push(['Criterio congelado', [id, title, required !== undefined ? `${scalar(required)} lux` : undefined].filter(Boolean).map(scalar).join(' · ')]);
+          }
+        }
       } else if (key !== 'instrumentIds') rows.push([label(key), scalar(value)]);
     }
     if (rows.length) { autoTable(doc, { startY: y, body: rows, margin: { left: PAGE_MARGIN, right: PAGE_MARGIN }, styles: { fontSize: 8, cellPadding: 2 }, columnStyles: { 0: { fontStyle: 'bold', cellWidth: 52 } } }); y = (doc as any).lastAutoTable.finalY + 8; }

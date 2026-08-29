@@ -14,11 +14,12 @@ export interface NormativeProtocolVersionRecord {
 
 const collection = "normativeProtocolVersions";
 
-export async function listNormativeProtocolVersions(protocolType?: string): Promise<NormativeProtocolVersionRecord[]> {
+export async function listNormativeProtocolVersions(protocolType?: string, status?: NormativeRecordStatus): Promise<NormativeProtocolVersionRecord[]> {
   let query = getAdminFirestore().collection(collection).orderBy("updatedAt", "desc");
   if (protocolType) query = query.where("protocolType", "==", protocolType);
   const snapshot = await query.get();
-  return snapshot.docs.map((doc) => ({ id: doc.id, ...doc.data() } as NormativeProtocolVersionRecord));
+  const items = snapshot.docs.map((doc) => ({ id: doc.id, ...doc.data() } as NormativeProtocolVersionRecord));
+  return status ? items.filter((item) => item.status === status) : items;
 }
 
 export async function getNormativeProtocolVersion(id: string): Promise<NormativeProtocolVersionRecord | undefined> {

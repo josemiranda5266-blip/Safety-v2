@@ -30,10 +30,21 @@
 - No se fabricó ni regeneró manualmente `package-lock.json`; la ejecución real de `npm ci` sigue pendiente de verificación.
 - No existe actualmente `.github/workflows/` en `main`; por lo tanto no hay CI automático que certifique tests/lint/build.
 
+### Hallazgos de integridad del workflow
+- El `PATCH /measurements/:id` fue restringido para no aceptar `status`, evitando saltarse `validateMeasurementForSubmission()` para entrar a `pending_review`.
+- La máquina de estados del servicio bloquea modificaciones de mediciones `validated`/`closed`.
+- Se verificó que `submit-for-review` ejecuta `validateMeasurementForSubmission()` antes de `pending_review`.
+- Se identificó que el endpoint de `normative-snapshot` podía intentar modificar el snapshot después de validar.
+- **Corrección aplicada:** `hygieneMeasurementWorkflowService.updateMeasurementWithAudit()` ahora rechaza `normativeEvaluationSnapshot` cuando la medición está `validated`, `closed` o `archived`, mediante `NORMATIVE_SNAPSHOT_LOCKED`.
+- Esta protección está en la capa de workflow, por lo que también cubre callers internos que usen el servicio y no sólo la ruta HTTP.
+- La búsqueda global de callers adicionales mediante GitHub Code Search no produjo coincidencias útiles; esto se registra como búsqueda sin coincidencias, no como prueba absoluta de ausencia.
+
 ### Commits relevantes de este ciclo
 - `d62a4a97275c98a0e02ba844780c19693a27ee87` — `fix(lighting): include uniformity result in document representation`
 - `808d2fb2e77bb5042dc7dceabcd40019b3a0ff77` — `fix(lighting): render normative snapshot section in PDF`
 - `de329e527b39b247ff8f3188ebbb0ad0776a0dd1` — `chore: align build dependencies with lockfile`
+- `b10853c36661eefad49fd198e2050ae79ecc05ed` — preservación de suite legacy + suite Vitest de Iluminación
+- `69954daa0e0dc0609161aac4753e0bbc29b53e5b` — `fix(lighting): enforce normative snapshot immutability in workflow`
 
 ### Estado actual
 - Cálculo SRT 84/2012: implementado.
@@ -41,8 +52,9 @@
 - Captura documental: implementada.
 - Mapper: implementado y alineado con template.
 - PDF: actualizado y alineado con la representación.
-- Snapshot normativo: implementado.
+- Snapshot normativo: implementado y protegido contra modificación posterior a validación.
 - Snapshot de instrumentos: implementado en validación y exigido para generación documental.
+- Integridad de workflow: protegida contra bypass de `status` por PATCH y contra mutación de snapshot normativo después de validación.
 - Tests específicos: presentes, pero ejecución real todavía no verificada.
 - Persistencia/reconstrucción end-to-end: arquitectura implementada; falta ejecución real.
 - CI: no configurado.
@@ -99,6 +111,7 @@ WEB / PDF / XLSX
 - Mapper medición → representación documental: implementado.
 - Contrato template ↔ mapper: alineado.
 - PDF renderer ↔ representación: alineado.
+- Integridad de workflow: endurecida.
 - Persistencia/reconstrucción documental end-to-end: pendiente de ejecución/verificación real.
 - Documento histórico desacoplado del catálogo vivo: implementado en la ruta de generación que exige snapshots; falta prueba real de reconstrucción.
 - Auditoría de todos los consumidores/escritores: pendiente.
@@ -130,8 +143,6 @@ REPRESENTACIÓN
 ```
 
 El catálogo vivo no debe intervenir en la reconstrucción de documentos históricos. Todos los renderers deben consumir la misma representación derivada del snapshot.
-
----
 
 ## Reproducibilidad del proyecto
 

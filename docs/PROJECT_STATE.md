@@ -1101,3 +1101,41 @@ El catálogo normativo es global como fuente de conocimiento. No se almacenó po
 ### Próxima acción
 
 Conectar la medición con una versión normativa concreta mediante un snapshot inmutable de evaluación. Antes, revisar los permisos disponibles para definir la administración del catálogo y evitar introducir una vía de modificación no autorizada.
+
+
+## 2026-08-29 — Implementación: snapshot normativo inmutable asociado a mediciones
+
+### Cambio de modelo
+
+HygieneMeasurementRecord y HygieneMeasurement ahora pueden conservar normativeEvaluationSnapshot. El snapshot guarda el identificador de la versión normativa, referencia, versión, fecha de evaluación y copia completa de los criterios utilizados.
+
+### Endpoint incorporado
+
+POST /api/v2/hygiene/measurements/:id/normative-snapshot
+
+Entrada:
+- normativeProtocolVersionId
+
+El backend verifica:
+
+1. que la medición exista dentro de la organización;
+2. que la versión normativa exista;
+3. que el protocolType de la versión coincida con el protocolType de la medición.
+
+### Inmutabilidad histórica
+
+El endpoint copia los criterios desde el catálogo hacia la medición. La medición no depende de consultar el estado actual del catálogo para reconstruir una evaluación histórica.
+
+### Estado actual
+
+Ya existe la infraestructura para asociar una versión normativa con una medición. Todavía falta definir una política explícita de bloqueo una vez validada/cerrada y construir la evaluación asistida que produzca un resultado profesionalmente revisable a partir del snapshot.
+
+### Commits
+
+- b52b019a11319bf8d24ef201c1d2c6e1e88014de — feat(normative): persist immutable evaluation snapshot on measurements
+- 2762469b5a55b489f5e17e1fcc9f03a5f137afd8 — feat(normative): attach catalog snapshot to measurement
+- 15f98485fc5b84adfb1a206e968645cfc971db3c — feat(normative): expose measurement evaluation snapshot type
+
+### Próxima acción
+
+Agregar una capa de evaluación asistida para Iluminación que utilice exclusivamente el snapshot normativo asociado a la medición y produzca un resultado técnico informativo, dejando la conclusión definitiva bajo revisión profesional.

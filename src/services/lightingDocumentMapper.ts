@@ -4,6 +4,7 @@ import type {
   LightingMeasurementData,
 } from '../types/safety';
 import type { HygieneDocumentRepresentation } from '../types/hygieneDocument';
+import { LIGHTING_DOCUMENT_TEMPLATE } from '../config/hygieneDocumentTemplates';
 
 /** Builds an immutable document representation from persisted/evaluated data. */
 export function mapLightingMeasurementToDocument(
@@ -112,8 +113,8 @@ export function mapLightingMeasurementToDocument(
 
   return {
     documentId: measurement.id,
-    templateKey: 'lighting_protocol',
-    templateVersion: '1.0',
+    templateKey: LIGHTING_DOCUMENT_TEMPLATE.key,
+    templateVersion: LIGHTING_DOCUMENT_TEMPLATE.version,
     generatedAt: new Date().toISOString(),
     sections,
     disclaimer: 'Representación documental generada a partir de los datos persistidos de la medición. No sustituye la revisión profesional cuando corresponda.',

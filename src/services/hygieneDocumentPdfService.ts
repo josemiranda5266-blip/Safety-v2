@@ -13,11 +13,15 @@ function scalar(value: unknown): string {
 function label(key: string): string {
   const labels: Record<string, string> = {
     measurementId: 'Identificador de medición', protocolType: 'Protocolo', measurementDate: 'Fecha de medición',
+    companyId: 'Empresa', establishmentId: 'Establecimiento', sectorId: 'Sector', positionId: 'Puesto', employeeId: 'Trabajador',
     averageLux: 'Iluminancia promedio (lux)', minimumLux: 'Iluminancia mínima (lux)', maximumLux: 'Iluminancia máxima (lux)',
     uniformityMinimumLux: 'E mínima (lux)', uniformityThresholdLux: 'Umbral de uniformidad E media/2 (lux)',
     uniformityMinOverAverage: 'Relación E mínima / E media', uniformityPasses: 'Uniformidad E mínima ≥ E media/2',
     uniformityRatio: 'Uniformidad histórica (campo legado)', calculationVersion: 'Versión del cálculo', calculatedAt: 'Calculado el',
     sourceType: 'Tipo de iluminación', lightingSystem: 'Sistema de iluminación', taskDescription: 'Descripción de tarea',
+    startTime: 'Hora de inicio', endTime: 'Hora de finalización', methodology: 'Metodología',
+    atmosphericConditions: 'Condiciones atmosféricas', workplaceConditions: 'Condiciones habituales del puesto',
+    planOrSketchUrl: 'Plano / croquis', calibrationCertificateUrl: 'Certificado de calibración', observations: 'Observaciones',
     documentId: 'Documento', generatedAt: 'Fecha de generación', generatedBy: 'Generado por', templateKey: 'Plantilla', templateVersion: 'Versión de plantilla',
     id: 'Identificador', authority: 'Autoridad', resolution: 'Resolución', year: 'Año', title: 'Título', sourceUrl: 'Fuente oficial',
     selectedCriterionId: 'Criterio seleccionado', requiredLux: 'Lux requeridos', reference: 'Referencia normativa', version: 'Versión normativa',
@@ -42,7 +46,23 @@ export function exportLightingDocumentPdf(representation: HygieneDocumentReprese
     y = sectionTitle(doc, section.title, y);
     if (section.key === 'measurement_points') {
       const points = Array.isArray(section.data.points) ? section.data.points as Array<Record<string, unknown>> : [];
-      autoTable(doc, { startY: y, head: [['Punto', 'Tipo', 'Ubicación', 'Iluminancia', 'Observaciones']], body: points.map((p, i) => [scalar(p.name ?? `Punto ${i + 1}`), scalar(p.pointType), scalar(p.locationDescription), `${scalar(p.lux)} lux`, scalar(p.observations)]), margin: { left: PAGE_MARGIN, right: PAGE_MARGIN }, styles: { fontSize: 8, cellPadding: 2 } });
+      autoTable(doc, {
+        startY: y,
+        head: [['Hora', 'Sector', 'Puesto', 'Fuente', 'Tipo', 'Ubicación', 'Lux', 'Observaciones']],
+        body: points.map((p, i) => [
+          scalar(p.measuredAt),
+          scalar(p.sector),
+          scalar(p.workplace),
+          scalar(p.lightSourceType),
+          scalar(p.pointType),
+          scalar(p.locationDescription ?? p.name ?? `Punto ${i + 1}`),
+          `${scalar(p.lux)} lux`,
+          scalar(p.observations),
+        ]),
+        margin: { left: PAGE_MARGIN, right: PAGE_MARGIN },
+        styles: { fontSize: 6.5, cellPadding: 1.5 },
+        headStyles: { fontSize: 6.5 },
+      });
       y = (doc as any).lastAutoTable.finalY + 8;
       continue;
     }
@@ -50,7 +70,16 @@ export function exportLightingDocumentPdf(representation: HygieneDocumentReprese
     for (const [key, value] of Object.entries(section.data)) {
       if (key === 'instruments' && Array.isArray(value)) {
         const instruments = value as Array<Record<string, unknown>>;
-        for (const instrument of instruments) rows.push(['Instrumento', [instrument.type, instrument.brand, instrument.model, instrument.serialNumber, instrument.calibrationDate, instrument.calibrationExpiry].filter(Boolean).map(scalar).join(' · ') || scalar(instrument.id)]);
+        for (const instrument of instruments) {
+          rows.push(['Instrumento', [
+            instrument.instrumentType,
+            instrument.brand,
+            instrument.model,
+            instrument.serialNumber,
+            instrument.calibrationDate,
+            instrument.calibrationExpiry,
+          ].filter(Boolean).map(scalar).join(' · ') || scalar(instrument.id)]);
+        }
       } else if (key === 'reference' && value && typeof value === 'object') {
         const reference = value as Record<string, unknown>;
         rows.push(['Referencia normativa', scalar(reference.resolution ?? reference.id)]);
@@ -71,6 +100,10 @@ export function exportLightingDocumentPdf(representation: HygieneDocumentReprese
             const required = criterion.requiredLux ?? (criterion.parameters as Record<string, unknown> | undefined)?.requiredLux;
             rows.push(['Criterio congelado', [id, title, required !== undefined ? `${scalar(required)} lux` : undefined].filter(Boolean).map(scalar).join(' · ')]);
           }
+        }
+      } else if (key === 'campaign' && value && typeof value === 'object') {
+        for (const [campaignKey, campaignValue] of Object.entries(value as Record<string, unknown>)) {
+          rows.push([label(campaignKey), scalar(campaignValue)]);
         }
       } else if (key !== 'instrumentIds') rows.push([label(key), scalar(value)]);
     }

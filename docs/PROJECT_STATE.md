@@ -1521,3 +1521,29 @@ hygieneService.getDocumentRepresentation(documentId) permite consumir la represe
 ### Próxima acción
 
 Crear el visor documental de Iluminación en frontend utilizando esta representación y separarlo del futuro exportador. Luego definir el adaptador PDF como una fase posterior sobre la misma representación.
+
+
+## 2026-08-29 — Visor web de documentos de Iluminación
+
+### Implementación
+
+Se agregó src/components/Console/Hygiene/LightingDocumentViewer.tsx. El visor consume la representación estructurada desde el backend y la presenta en secciones legibles sin volver a consultar ni recalcular la medición original.
+
+El visor incluye encabezado documental, versión de plantilla, fecha de generación, secciones de identificación/contexto/datos técnicos/instrumentación/normativa/revisión/trazabilidad y disclaimer profesional.
+
+### Integración
+
+GeneratedDocumentsPanel ahora ofrece acción Ver para documentos lighting y abre el visor como una capa modal. La selección utiliza el documentId, por lo que el contenido visual continúa derivando del snapshot almacenado.
+
+### Commits
+
+- d130b5f1fb607bfe475bc464529f22d1753d253b — feat(hygiene): add lighting document representation viewer
+- 79bd87d6bc0ec2c74a9483b99ff9a798564bd102 — feat(hygiene): open lighting document viewer from generated documents
+
+### Estado arquitectónico
+
+La cadena completa de Iluminación ya alcanza: captura -> validación -> snapshot -> documento generado -> representación versionada -> visor web.
+
+### Próxima acción
+
+Auditar la estructura de datos específica de los puntos de Iluminación para reemplazar las claves técnicas genéricas del visor por etiquetas profesionales y tablas específicas. Luego definir un modelo de plantilla compartido para renderizadores web/PDF.

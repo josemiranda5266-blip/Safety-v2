@@ -1262,3 +1262,30 @@ La revisión profesional todavía añade un evento semántico específico review
 ### Próxima acción
 
 Consolidar eventos de revisión para producir una única entrada semántica por operación y construir el modelo de historial visual en frontend.
+
+
+## 2026-08-29 — Implementación: eventos semánticos únicos e historial visual
+
+### Consolidación de auditoría
+
+updateMeasurementWithAudit ahora acepta un contexto de auditoría que permite definir el tipo semántico del evento y metadatos adicionales. La revisión profesional usa esta capacidad para producir review_approved o changes_requested como una única entrada de auditoría, evitando la duplicación del evento genérico de transición.
+
+### Frontend
+
+Se creó src/services/hygieneAuditService.ts y src/components/Console/Hygiene/MeasurementAuditTimeline.tsx. El timeline consulta el historial protegido por organización y presenta etiqueta humana, fecha, transición de estado y comentarios disponibles.
+
+### Integración
+
+El editor de Iluminación ahora contiene una sección desplegable Historial documental. Esto permite ver la secuencia de eventos sin abandonar la medición.
+
+### Commits
+
+- 9eab8b404220d45f1cac19099933748a658e6b9a — refactor(audit): support semantic events in measurement workflow
+- 7e4f20a614acb9c91a4459f406402b85ed146513 — fix(audit): emit one semantic event for professional reviews
+- d81f6559f9bc125f06aad1833ad1dd1309247599 — feat(hygiene): add frontend audit history service
+- be454b33d8e794efdf7bff8e19fca31b86ea7f2e — feat(hygiene): add measurement audit timeline component
+- 39eb3d5a4e997ec368cf418acc0bf66dac6a9074 — feat(hygiene): expose audit history in lighting editor
+
+### Próxima acción
+
+Extender la misma infraestructura de historial a la pantalla general de mediciones y separar la acción de enviar a revisión de la edición ordinaria, de forma que el paso hacia pending_review tenga una interfaz y validaciones explícitas.

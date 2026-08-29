@@ -143,6 +143,7 @@ router.post("/measurements/:id/normative-snapshot", requirePermission("hygiene:u
   if (version.protocolType !== measurement.protocolType) return res.status(400).json({ error: "La versión normativa no corresponde al protocolo de la medición", code: "NORMATIVE_PROTOCOL_MISMATCH" });
   const snapshot = { normativeProtocolVersionId: version.id, reference: version.reference, version: version.version, evaluatedAt: new Date().toISOString(), criteriaSnapshot: version.criteria.map((criterion) => ({ ...criterion, parameters: { ...criterion.parameters } })) };
   const updated = await hygieneService.updateMeasurement(req.params.id, context.orgId, context.userId, { normativeEvaluationSnapshot: snapshot });
+  if (updated) await hygieneAuditService.recordMeasurementAuditEvent({ orgId: context.orgId, measurementId: updated.id, actorId: context.userId, type: "normative_snapshot_attached", metadata: { normativeProtocolVersionId: snapshot.normativeProtocolVersionId, reference: snapshot.reference, version: snapshot.version } });
   res.json({ measurement: updated });
 });
 

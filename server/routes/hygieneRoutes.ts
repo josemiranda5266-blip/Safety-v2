@@ -4,7 +4,6 @@ import { canAccessCompany, canAccessEstablishment, canAccessSector, canAccessPos
 import { createHygieneInstrumentSchema, updateHygieneInstrumentSchema, createHygieneMeasurementSchema, updateHygieneMeasurementSchema } from "../authorization/validation";
 import * as hygieneService from "../services/hygieneService";
 import { getNormativeProtocolVersion } from "../services/normativeCatalogService";
-import * as hygieneAuditService from "../services/hygieneAuditService";
 import * as hygieneWorkflowService from "../services/hygieneMeasurementWorkflowService";
 import * as companyService from "../services/companyService";
 import * as establishmentService from "../services/establishmentService";
@@ -128,8 +127,10 @@ router.post("/measurements/:id/review", requirePermission("hygiene:update"), asy
   const updated = await hygieneWorkflowService.updateMeasurementWithAudit(req.params.id, context.orgId, context.userId, {
     status: decision === "approved" ? "validated" : "in_progress",
     review: { status: decision, reviewedBy: context.userId, reviewedAt: now, comments: typeof req.body?.comments === "string" ? req.body.comments : null },
+  }, {
+    eventType: decision === "approved" ? "review_approved" : "changes_requested",
+    metadata: { comments: typeof req.body?.comments === "string" ? req.body.comments : null, decision },
   });
-  if (updated) await hygieneAuditService.recordMeasurementAuditEvent({ orgId: context.orgId, measurementId: updated.id, actorId: context.userId, type: decision === "approved" ? "review_approved" : "changes_requested", fromStatus: measurement.status, toStatus: updated.status, metadata: { comments: updated.review?.comments ?? null } });
   res.json({ measurement: updated });
 });
 

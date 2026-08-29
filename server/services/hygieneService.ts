@@ -78,7 +78,7 @@ export async function updateMeasurement(id: string, orgId: string, updatedBy: st
   return db.runTransaction(async (tx) => {
     const doc = await tx.get(ref); if (!doc.exists) return undefined;
     const existing = { id: doc.id, ...doc.data() } as HygieneMeasurementRecord; if (existing.orgId !== orgId) return undefined;
-    const immutableStatuses: HygieneMeasurementStatus[] = ["validated", "closed"];
+    const immutableStatuses: HygieneMeasurementStatus[] = ["validated", "closed", "archived"];
     if (immutableStatuses.includes(existing.status)) {
       const attemptedKeys = Object.keys(updates).filter((key) => key !== "status");
       if (attemptedKeys.length) throw new Error("MEASUREMENT_LOCKED");

@@ -1427,3 +1427,36 @@ La granularidad de un rol profesional de Higiene específico queda como futura e
 ### Próxima acción
 
 Diseñar e implementar el modelo de documento generado para mediciones validadas: entidad documental, snapshot de datos, referencia normativa, versión de plantilla, generación reproducible y trazabilidad. La generación no implicará certificación ni firma legal automática.
+
+
+## 2026-08-29 — Arquitectura de documentos generados desde mediciones validadas
+
+### Principio implementado
+
+No se generó directamente un PDF mutable desde la medición. Se creó una entidad documental independiente que conserva una fotografía reproducible de la medición validada.
+
+### Nuevo servicio
+
+server/services/hygieneDocumentService.ts define HygieneGeneratedDocument con measurementId, protocolo, templateKey, templateVersion, generatedBy, generatedAt, estado documental y measurementSnapshot.
+
+El snapshot conserva contexto jerárquico, fecha, instrumentos, datos técnicos, notas, snapshot normativo, resultado de revisión y estado de la medición al momento de la generación. La generación solo acepta mediciones validated.
+
+### API
+
+GET /measurements/:id/generated-documents requiere document:read.
+POST /measurements/:id/generated-documents requiere document:create y rechaza mediciones que no estén validated con MEASUREMENT_NOT_VALIDATED.
+
+La creación registra un evento documental en la auditoría de la medición, incluyendo documentId y versión de plantilla.
+
+### Límites actuales
+
+Esta fase crea la entidad documental y su snapshot, pero todavía no produce un PDF ni implementa firma electrónica o certificación legal automática. Es deliberado: primero se consolidó la trazabilidad y reproducibilidad de la fuente documental.
+
+### Commits
+
+- 8a2bb2ff3376945bc33cefebc66d43b4b6c06926 — feat(hygiene): add reproducible generated document snapshot service
+- 4347ac0aaa868a0ad3004832b71a98d0b73f4b41 — feat(hygiene): add validated measurement document generation endpoints
+
+### Próxima acción
+
+Integrar la entidad generada al frontend y diseñar una representación documental específica para Iluminación. Después definir un renderizador de plantilla versionada y un formato de salida, manteniendo separados datos técnicos, contenido generado y cualquier futura firma profesional.

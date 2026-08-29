@@ -1063,3 +1063,41 @@ El dominio y la lógica pura del catálogo están implementados en frontend. La 
 ### Próxima acción
 
 Auditar la ruta backend existente de higiene y agregar la persistencia del catálogo normativo sin mezclarlo con documentos personales ni permitir que usuarios comunes modifiquen referencias oficiales.
+
+
+## 2026-08-29 — Implementación: catálogo normativo persistente en backend
+
+### Auditoría realizada
+
+Se verificó la arquitectura real de backend. El servidor Express registra hygieneRoutes bajo /api/v2/hygiene y las mediciones se persisten en Firestore mediante el servicio server/services/hygieneService.ts.
+
+### Cambio realizado
+
+Se creó server/services/normativeCatalogService.ts como servicio de persistencia independiente en la colección Firestore normativeProtocolVersions.
+
+### API incorporada
+
+Se creó server/routes/normativeCatalogRoutes.ts y se registró en server.ts bajo:
+
+- GET /api/v2/normative-catalog/protocols
+- GET /api/v2/normative-catalog/protocols/:id
+
+La lectura exige autenticación, contexto de tenant y permiso hygiene:read.
+
+### Decisión de seguridad
+
+Las rutas de escritura no se expusieron todavía. La modificación de referencias normativas oficiales requiere un modelo explícito de autorización administrativa y gobernanza documental; no se reutilizará indiscriminadamente el permiso operativo de creación de mediciones.
+
+### Observación de arquitectura
+
+El catálogo normativo es global como fuente de conocimiento. No se almacenó por orgId para evitar que cada tenant pueda crear una "norma propia". La evaluación de cada tenant debe conservar su snapshot de la versión utilizada.
+
+### Commits
+
+- 965e263d9d385bc0e1fd840332dae0829f49d18f — feat(normative): add Firestore catalog persistence service
+- dat2b7aab3b32997328684f5a5d01cf9b6 — feat(normative): add read-only normative catalog routes
+- cefa8bf46e2a9274836941edd5bb5d57a0e9bb66 — feat(normative): register normative catalog API
+
+### Próxima acción
+
+Conectar la medición con una versión normativa concreta mediante un snapshot inmutable de evaluación. Antes, revisar los permisos disponibles para definir la administración del catálogo y evitar introducir una vía de modificación no autorizada.

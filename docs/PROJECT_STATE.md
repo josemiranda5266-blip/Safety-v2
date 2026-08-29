@@ -1139,3 +1139,31 @@ Ya existe la infraestructura para asociar una versión normativa con una medici�
 ### Próxima acción
 
 Agregar una capa de evaluación asistida para Iluminación que utilice exclusivamente el snapshot normativo asociado a la medición y produzca un resultado técnico informativo, dejando la conclusión definitiva bajo revisión profesional.
+
+
+## 2026-08-29 — Implementación: motor de evaluación asistida de Iluminación
+
+### Cambio realizado
+
+Se creó src/services/lightingEvaluation.ts. El motor recibe exclusivamente LightingMeasurementData y NormativeEvaluationSnapshot, evitando consultar valores normativos directamente desde el catálogo durante la reconstrucción de una evaluación histórica.
+
+### Resultado actual
+
+La evaluación produce un resumen de indicadores calculados, observaciones por criterio estructurado y el estado requires_professional_review. No genera automáticamente CUMPLE o NO CUMPLE.
+
+### Integración visual
+
+LightingMeasurementEditor ahora puede mostrar una evaluación asistida cuando la medición posee normativeEvaluationSnapshot. Si todavía no hay snapshot, informa que primero debe asociarse una versión normativa.
+
+### Principio de seguridad profesional
+
+El motor describe y relaciona los datos con los criterios disponibles. La conclusión normativa definitiva permanece pendiente de revisión y validación profesional.
+
+### Commits
+
+- 4c13e724af5d48a19b0e01171e90d52295ef21fd — feat(hygiene): add assisted lighting evaluation engine
+- befc805acd0dbc714c8a352c9b1b89cde83b8013 — feat(hygiene): show assisted lighting evaluation from snapshot
+
+### Próxima acción
+
+Persistir la evaluación asistida como resultado trazable separado del snapshot y definir el flujo de estados draft → in_progress → pending_review → validated/closed, incluyendo el bloqueo de información crítica después de una validación profesional.

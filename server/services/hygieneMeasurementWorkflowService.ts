@@ -26,11 +26,17 @@ export async function createMeasurementWithAudit(
   return measurement;
 }
 
+export interface MeasurementAuditContext {
+  eventType?: audit.HygieneMeasurementAuditEventType;
+  metadata?: Record<string, unknown>;
+}
+
 export async function updateMeasurementWithAudit(
   id: string,
   orgId: string,
   actorId: string,
   updates: Parameters<typeof hygieneService.updateMeasurement>[3],
+  auditContext: MeasurementAuditContext = {},
 ) {
   const before = await hygieneService.getMeasurementById(id, orgId);
   if (!before) return undefined;
@@ -41,10 +47,10 @@ export async function updateMeasurementWithAudit(
     orgId,
     measurementId: id,
     actorId,
-    type: eventType(before.status, measurement.status, changed),
+    type: auditContext.eventType ?? eventType(before.status, measurement.status, changed),
     fromStatus: before.status,
     toStatus: measurement.status,
-    metadata: { changedFields: changed },
+    metadata: { changedFields: changed, ...(auditContext.metadata ?? {}) },
   });
   return measurement;
 }

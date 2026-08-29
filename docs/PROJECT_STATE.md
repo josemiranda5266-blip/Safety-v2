@@ -1191,3 +1191,36 @@ validated y closed son estados bloqueados para modificaciones ordinarias. update
 ### Próxima acción
 
 Corregir la semántica del estado archived/cancelled y construir un registro de eventos/auditoría de cambios. El siguiente objetivo es que cada transición crítica quede registrada independientemente del estado actual de la medición.
+
+
+## 2026-08-29 — Implementación: auditoría histórica de mediciones
+
+### Infraestructura
+
+Se creó server/services/hygieneAuditService.ts con persistencia independiente en hygieneMeasurementAuditEvents. Cada evento incluye organización, medición, actor, tipo, fecha, transición de estado opcional y metadatos.
+
+### API
+
+Se agregó GET /api/v2/hygiene/measurements/:id/audit-events. La consulta valida primero que la medición pertenezca a la organización del contexto autenticado.
+
+### Eventos integrados inicialmente
+
+- normative_snapshot_attached
+- review_approved
+- changes_requested
+
+Las revisiones ahora conservan su transición de estado en el historial. La asociación de una versión normativa también queda registrada con referencia y versión.
+
+### Observación pendiente
+
+La auditoría todavía no está centralizada dentro del servicio transaccional. Las rutas de creación, actualización y transición general deben migrarse a un mecanismo común para que ningún evento crítico dependa de que un controlador recuerde registrarlo manualmente.
+
+### Commits
+
+- 29bb7aed1a594a7460b6e4af73a6710a5ca5848f — feat(audit): add hygiene measurement event persistence
+- e4b39646cbd6fc32ff19d3014b7cd2e3be5f3b22 — feat(audit): expose measurement history and record reviews
+- 073a4e509cbbaf8ae52415760618edaa13f1813f — feat(audit): record normative snapshot attachment events
+
+### Próxima acción
+
+Completar la auditoría desde las operaciones centrales de medición y evitar registros duplicados. Luego implementar una vista de historial para que el profesional pueda ver la secuencia documental de una medición.

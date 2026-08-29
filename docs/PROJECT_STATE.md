@@ -1224,3 +1224,41 @@ La auditoría todavía no está centralizada dentro del servicio transaccional. 
 ### Próxima acción
 
 Completar la auditoría desde las operaciones centrales de medición y evitar registros duplicados. Luego implementar una vista de historial para que el profesional pueda ver la secuencia documental de una medición.
+
+
+## 2026-08-29 — Refactor: operaciones centrales de mediciones y auditoría
+
+### Problema corregido
+
+La creación y actualización de mediciones estaban repartidas entre rutas y servicio base. Esto permitía que una operación modificara Firestore sin registrar el evento histórico correspondiente.
+
+### Nueva capa
+
+Se creó server/services/hygieneMeasurementWorkflowService.ts.
+
+La capa centraliza createMeasurementWithAudit y updateMeasurementWithAudit. Cada operación obtiene el estado anterior, ejecuta la modificación mediante hygieneService y registra el evento de auditoría con actor, transición y campos modificados.
+
+### Rutas migradas
+
+- creación de medición
+- actualización general
+- asociación de snapshot normativo
+- revisión profesional
+
+### Clasificación automática inicial
+
+El workflow identifica created, updated, normative_snapshot_attached, submitted_for_review, validated, closed, cancelled y archived según la operación y transición.
+
+### Deuda técnica detectada
+
+La revisión profesional todavía añade un evento semántico específico review_approved o changes_requested además del evento general de transición generado por el workflow. La siguiente consolidación debe evitar duplicados innecesarios y permitir un único evento rico por operación.
+
+### Commits
+
+- 7dda53ad5a57af4927e7b020229831aed5906525 — refactor(audit): centralize measurement mutations with audit events
+- 97bbd1ee104630fce9a7d45538aa7e612b71b42a — refactor(hygiene): route measurement mutations through audited workflow
+- 944353f365e56e6b4fc8f135cd850a675ff6a438 — fix(audit): classify normative snapshot workflow events
+
+### Próxima acción
+
+Consolidar eventos de revisión para producir una única entrada semántica por operación y construir el modelo de historial visual en frontend.

@@ -127,8 +127,10 @@ export const LightingMeasurementEditor: React.FC<Props> = ({ measurement, onSave
         <button type="button" disabled={points.length === 1} onClick={() => setPoints((current) => current.filter((_, i) => i !== index))} className="flex items-center justify-center rounded-lg border text-red-600 disabled:opacity-30"><Trash2 className="w-4 h-4"/></button>
       </div>)}</div>
     </div>
-    {preview && <div className="grid grid-cols-2 md:grid-cols-4 gap-3">{[['Promedio', preview.averageLux],['Mínimo', preview.minimumLux],['Máximo', preview.maximumLux],['Relación mín/máx', preview.uniformityRatio]].map(([label,value]) => <div key={String(label)} className="rounded-xl bg-indigo-50 dark:bg-indigo-950/30 p-3"><div className="text-xs text-slate-500">{label}</div><div className="font-extrabold text-lg">{value}</div></div>)}</div>}
-    <div className="text-xs text-slate-500 rounded-lg bg-slate-50 dark:bg-slate-800 p-3">Los indicadores mostrados son cálculos descriptivos. Esta pantalla no emite por sí misma una declaración automática de cumplimiento normativo.</div>
+    {preview && <div className="grid grid-cols-2 md:grid-cols-5 gap-3">
+      {[['Promedio (E media)', preview.averageLux],['Mínimo (E mínima)', preview.minimumLux],['Máximo (informativo)', preview.maximumLux],['Umbral (E media / 2)', preview.uniformityThresholdLux],['E mínima / E media', preview.uniformityMinOverAverage]].map(([label,value]) => <div key={String(label)} className="rounded-xl bg-indigo-50 dark:bg-indigo-950/30 p-3"><div className="text-xs text-slate-500">{label}</div><div className="font-extrabold text-lg">{value ?? '—'}</div></div>)}
+    </div>}
+    <div className="text-xs text-slate-500 rounded-lg bg-slate-50 dark:bg-slate-800 p-3">Uniformidad SRT: E mínima ≥ E media / 2. Los indicadores mostrados son cálculos descriptivos; esta pantalla no emite por sí misma una declaración automática de cumplimiento normativo.</div>
     <div className="rounded-2xl border border-indigo-200 dark:border-indigo-900 p-4 space-y-3">
       <div><h4 className="font-extrabold">Criterio normativo</h4><p className="text-sm text-slate-500">La versión y el criterio se consultan desde el catálogo normativo activo del servidor y se congelan en la medición.</p></div>
       {measurement.normativeEvaluationSnapshot ? <>

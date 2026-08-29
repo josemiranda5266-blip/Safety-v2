@@ -46,6 +46,8 @@ function observeCriterion(
   if (data.maximumLux !== undefined) observations.push(`Iluminancia máxima calculada: ${data.maximumLux} lux.`);
   if (data.uniformityRatio !== undefined) observations.push(`Relación mínimo/máximo calculada: ${data.uniformityRatio}.`);
   if (criterion.applicability) observations.push(`Aplicabilidad declarada: ${criterion.applicability}.`);
+  const requiredLux = criterion.parameters.requiredLux;
+  if (typeof requiredLux === 'number') observations.push(`Valor requerido según el criterio congelado: ${requiredLux} lux.`);
   return { criterionId: criterion.id, code: criterion.code, title: criterion.title, status: 'observed', observations };
 }
 
@@ -54,7 +56,11 @@ export function evaluateLightingMeasurement(
   snapshot: NormativeEvaluationSnapshot,
 ): LightingAssistedEvaluation {
   if (!data.points.length) throw new Error('La medición de iluminación no contiene puntos para evaluar.');
-  if (!snapshot.criteriaSnapshot.length) {
+  const criteria = snapshot.selectedCriterionId
+    ? snapshot.criteriaSnapshot.filter((criterion) => criterion.id === snapshot.selectedCriterionId)
+    : snapshot.criteriaSnapshot;
+
+  if (!criteria.length) {
     return {
       protocolType: 'lighting',
       status: 'pending',
@@ -63,7 +69,7 @@ export function evaluateLightingMeasurement(
       evaluatedAt: new Date().toISOString(),
       summary: { averageLux: data.averageLux, minimumLux: data.minimumLux, maximumLux: data.maximumLux, uniformityRatio: data.uniformityRatio, pointsMeasured: data.points.length },
       criteria: [],
-      observations: ['La medición tiene un snapshot normativo, pero no contiene criterios evaluables estructurados.'],
+      observations: ['La medición tiene un snapshot normativo, pero no contiene un criterio seleccionado válido.'],
       requiresProfessionalReview: true,
     };
   }
@@ -75,9 +81,10 @@ export function evaluateLightingMeasurement(
     normativeVersion: snapshot.version,
     evaluatedAt: new Date().toISOString(),
     summary: { averageLux: data.averageLux, minimumLux: data.minimumLux, maximumLux: data.maximumLux, uniformityRatio: data.uniformityRatio, pointsMeasured: data.points.length },
-    criteria: snapshot.criteriaSnapshot.map((criterion) => observeCriterion(criterion, data)),
+    criteria: criteria.map((criterion) => observeCriterion(criterion, data)),
     observations: [
-      'La evaluación relaciona datos medidos con el snapshot normativo asociado.',
+      'La evaluación relaciona datos medidos con el criterio normativo seleccionado y congelado.',
+      'El valor requerido se obtiene del criterio del snapshot, no de un campo manual de la medición.',
       'No se emite una declaración automática de cumplimiento.',
       'La interpretación y conclusión final requieren revisión profesional.',
     ],

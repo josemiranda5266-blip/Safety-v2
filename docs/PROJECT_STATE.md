@@ -7,50 +7,91 @@
 
 ---
 
-## 2026-08-29 — Semántica explícita de uniformidad de Iluminación
+## 2026-08-29 — Corrección real del motor de cálculo de uniformidad de Iluminación
 
-### Objetivo
-Evitar que el modelo represente la uniformidad como una relación mínimo/máximo. El protocolo SRT 84/2012 utiliza la condición `E mínima ≥ E media / 2` y el Decreto 351/79 exige una relación mínima de 0,5 entre iluminancia mínima y media.
+### Hallazgo crítico
+La auditoría directa de `src/services/lightingMeasurement.ts` demostró que, pese a la refactorización previa del modelo, el escritor todavía calculaba:
 
-### Correcciones aplicadas
-- `LightingMeasurementData` incorpora `uniformityMinimumLux` como magnitud explícita en lux.
-- `uniformityThresholdLux` representa el umbral derivado `E media / 2`.
-- `uniformityMinOverAverage` representa solamente la relación derivada E mínima / E media.
-- `uniformityRatio` queda únicamente como compatibilidad con registros históricos y ya no se interpreta como mínimo/máximo.
-- `lightingEvaluation.ts` obtiene la mínima desde `minimumLux`, `uniformityMinimumLux` o, como compatibilidad histórica, `uniformityRatio`; si no existe, la deriva de los puntos.
-- Si no existe `averageLux`, lo deriva de los puntos.
-- La evaluación muestra E mínima, E media/2 y la relación informativa mínima/media por separado.
-- No se emite automáticamente una conclusión legal de cumplimiento; continúa requiriéndose revisión profesional.
+```text
+uniformityRatio = E mínima / E máxima
+```
 
-### Commits
-- `f2fd1d84a7cbf9dfa6f2e883ce69bd0176cab7ce` — fix(hygiene): model lighting uniformity as minimum illuminance
-- `cc7d0716e6bb87ca502c17b205ba34b72321904c` — fix(hygiene): make lighting uniformity calculation semantically explicit
+Eso era incompatible con la metodología del protocolo SRT 84/2012, que exige verificar `E mínima ≥ E media / 2`. La fuente oficial de la SRT y el Decreto 351/79 confirman que la iluminancia media es el promedio de las mediciones y la mínima es el menor valor; la uniformidad se verifica mediante esa relación.
+
+### Corrección aplicada
+`src/services/lightingMeasurement.ts` ahora:
+- convierte y filtra las lecturas inválidas antes de calcular métricas;
+- calcula `averageLux` como media aritmética del conjunto válido;
+- calcula `minimumLux` como el menor valor;
+- conserva `maximumLux` únicamente como dato descriptivo, no para uniformidad normativa;
+- calcula `uniformityMinimumLux = minimumLux`;
+- calcula `uniformityThresholdLux = averageLux / 2`;
+- calcula `uniformityMinOverAverage = minimumLux / averageLux` como relación informativa;
+- deja de escribir `uniformityRatio` en registros nuevos;
+- actualiza `calculationVersion` a `lighting-v2-srt84-uniformity`;
+- descarta puntos con lux no numérico para que no contaminen el cálculo ni la persistencia de la campaña.
+
+### Commit
+- `32d54b127678292181b5bdf24b25a9110a41a136` — `fix(hygiene): calculate lighting uniformity per SRT 84/2012`
 
 ### Referencia normativa verificada
-La SRT mantiene el formulario oficial y el XLSX editable del protocolo. El formulario expresa la uniformidad como `E mínima ≥ (E media)/2`; el Decreto 351/79 Anexo IV establece una relación no menor de 0,5 entre mínimo y medio. Fuentes oficiales: Resolución SRT 84/2012, formulario/Anexo y Decreto 351/79 Anexo IV.
+La Resolución SRT 84/2012 establece que el protocolo es obligatorio y que los valores de medición tienen una validez de 12 meses; el instructivo y formulario expresan la uniformidad como `E mínima ≥ (E media)/2`. El Decreto 351/79 Anexo IV exige una relación no menor de 0,5 entre iluminancia mínima y media. La SRT también mantiene el formulario PDF y el XLSX editable oficiales.
 
-### Próximo bloque
-1. Localizar todos los escritores de `LightingMeasurementData` para determinar qué datos se persisten realmente y migrar la semántica antigua si corresponde.
-2. Auditar representación Web y exportador XLSX.
-3. Buscar cualquier segunda fuente de `requiredLux`, criterio, versión o clasificación.
-4. Revisar que el documento exponga el criterio seleccionado desde el snapshot.
-5. Completar cobertura normativa de Iluminación.
-6. Solo después de cerrar Iluminación de extremo a extremo, avanzar a Ruido.
+### Consecuencia
+El hallazgo demuestra que el siguiente bloque ya no debe ser solamente revisar tipos: hay que auditar todos los consumidores de `LightingMeasurementData` para comprobar que ninguna pantalla, persistencia, documento o exportación siga interpretando `uniformityRatio` como mínimo/máximo.
 
 ---
 
-## 2026-08-29 — Corrección de metodología de uniformidad de Iluminación
+## Objetivo inmediato
+Cerrar Iluminación de extremo a extremo antes de avanzar a otro protocolo.
 
-Se corrigió la descripción de `uniformityRatio` para no presentarla como relación mínimo/máximo. La salida textual pasó a expresar E mínima y E media/2. La revisión posterior llevó a la separación explícita de magnitudes registrada arriba.
+### Cadena objetivo
+```text
+LECTURAS CRUDAS
+      ↓
+CÁLCULO FÍSICO
+      ↓
+E mínima / E media / uniformidad
+      ↓
+CRITERIO NORMATIVO CONGELADO
+      ↓
+REVISIÓN PROFESIONAL
+      ↓
+DOCUMENT SNAPSHOT
+      ↓
+WEB / PDF / XLSX
+```
 
-### Commit
-- `e451e3e59e365ae7f7a06b900f2e78ea100f9fe7`
+### Próximas tareas
+1. Auditar consumidores de `LightingMeasurementData` y cualquier escritor alternativo.
+2. Revisar representación Web y exportador XLSX.
+3. Buscar cualquier segunda fuente de `requiredLux`, criterio, versión o clasificación.
+4. Verificar que el documento exponga el criterio seleccionado exclusivamente desde el snapshot.
+5. Revisar migración/compatibilidad de registros antiguos que todavía tengan `uniformityRatio`.
+6. Completar cobertura normativa de Iluminación sin coincidencias ambiguas.
+7. Cerrar el mapeo campo-por-campo con el formulario SRT 84/2012.
+8. Solo después de cerrar Iluminación de extremo a extremo, avanzar a Ruido.
+
+---
+
+## Estado consolidado de Iluminación
+
+- Catálogo normativo estructurado: implementado.
+- Selección de versión/criterio desde backend: implementado.
+- Validación server-side y snapshot normativo: implementado.
+- Documento histórico desacoplado del catálogo vivo: implementado.
+- PDF con referencia/criterio congelado: implementado.
+- Semántica de uniformidad: corregida en modelo y escritor principal.
+- Cálculo SRT 84/2012 del escritor principal: corregido en `lightingMeasurement.ts`.
+- Auditoría de todos los consumidores/escritores: pendiente.
+- Web/XLSX: pendiente de cierre.
+- Cobertura normativa completa: pendiente.
+- Tests/verificación integral: deliberadamente pendientes hasta finalizar este ciclo.
 
 ---
 
 ## 2026-08-29 — Documento de Iluminación desacoplado del catálogo normativo vivo
 
-### Correcciones aplicadas
 - `server/services/hygieneDocumentService.ts` ya no utiliza `getSrtReference()` para reconstruir la referencia normativa de un documento de Iluminación.
 - `buildLightingDocumentRepresentation()` exige `normativeEvaluationSnapshot` y su `reference` congelada.
 - La generación del documento rechaza mediciones sin snapshot normativo.
@@ -61,11 +102,10 @@ Se corrigió la descripción de `uniformityRatio` para no presentarla como relac
 ### Commits
 - `6e7bb835dbca8716fbac1b46b8e1ebfc53a613bb` — fix(hygiene): require normative snapshot for generated documents
 - `944f370931141b9df5f20061df11c60cfd66e1d2` — refactor(hygiene): keep document template independent from live regulatory catalog
-- `b1f6262912fd20b8dde70149e3f4029dcda7d412` — ajuste previo del renderer PDF para exponer snapshot normativo
-- `baad5e76715c5c9202b40f53960fc75e1c1e1edc` — corrección previa de representación documental desde snapshot
+- `b1f6262912fd20b8dde70149e3f4029dcda7d412` — ajuste del renderer PDF para exponer snapshot normativo
+- `baad5e76715c5c9202b40f53960fc75e1c1e1edc` — corrección de representación documental desde snapshot
 
 ### Decisión arquitectónica
-
 ```text
 CATÁLOGO NORMATIVO VIVO
         ↓
@@ -80,64 +120,6 @@ REPRESENTACIÓN
    ↓    ↓    ↓
   WEB  PDF  XLSX
 ```
-
-El catálogo vivo no debe intervenir en la reconstrucción de documentos históricos.
-
----
-
-## 2026-08-29 — PDF expone el criterio normativo congelado
-
-`src/services/hygieneDocumentPdfService.ts` representa explícitamente referencia normativa, versión, criterio seleccionado, lux requeridos, estado de evaluación, fecha de evaluación y criterios congelados cuando están presentes.
-
-### Commit
-- `b1f6262912fd20b8dde70149e3f4029dcda7d412`
-
----
-
-## 2026-08-29 — Catálogo normativo activo conectado al editor de Iluminación
-
-- `src/services/hygieneService.ts` consulta `/normative/protocols?protocolType=lighting&status=active`.
-- Backend filtra versiones activas y valida pertenencia del criterio.
-- El editor elimina la asociación fija `srt-84-2012`.
-- Se seleccionan versión y criterio específico desde backend.
-- `NormativeEvaluationSnapshot` conserva `selectedCriterionId`.
-- `lightingEvaluation.ts` obtiene `requiredLux` desde el criterio congelado.
-- La decisión final de cumplimiento continúa siendo profesional.
-
----
-
-## 2026-08-29 — Integración real del snapshot normativo en el editor de Iluminación
-
-- Persistencia real de `normativeEvaluationSnapshot`.
-- Selección normativa conectada al editor.
-- Backend valida y congela la referencia.
-- Revisión profesional sigue siendo obligatoria.
-
----
-
-## 2026-08-29 — Tabla normativa estructurada de Iluminación
-
-- Creado `src/config/srtLightingRequirements.ts`.
-- Requisitos estructurados con fuente, versión y resolución controlada.
-- Coincidencias ambiguas o inexistentes no se resuelven automáticamente.
-
----
-
-## 2026-08-29 — Endurecimiento del criterio regulatorio de Iluminación
-
-`src/config/srtLightingCriteria.ts` mantiene los requisitos para iluminancia/uniformidad y validez de 12 meses.
-
----
-
-## 2026-08-29 — Catálogo normativo SRT y trazabilidad documental
-
-Creado `src/config/srtRegulatoryCatalog.ts` con referencias canónicas para los protocolos previstos.
-
----
-
-## 2026-08-29 — Exportación PDF de Iluminación
-
-La representación documental es la fuente común; el renderer PDF no realiza cálculos ni consulta normativa.
 
 ---
 

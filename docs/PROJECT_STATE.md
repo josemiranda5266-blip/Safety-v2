@@ -1323,3 +1323,26 @@ hygieneService incorpora submitForReview(id), preparado para que el editor muest
 ### Próxima acción
 
 Integrar el botón y estado de envío formal en el editor de Iluminación, mostrando requisitos pendientes de manera visible. Después avanzar hacia la revisión visual profesional y la generación documental, sin declarar aún cumplimiento legal automático.
+
+
+## 2026-08-29 — Implementación: panel visual de preparación para revisión
+
+### Editor de Iluminación
+
+Se agregó un panel Estado documental al editor. El panel muestra el estado actual y, mientras la medición está en in_progress, verifica visualmente empresa, establecimiento, instrumento, normativa y puntos de medición.
+
+### Acción explícita
+
+El botón Enviar a revisión utiliza hygieneService.submitForReview y queda deshabilitado mientras existan requisitos pendientes. El backend continúa siendo la autoridad final de validación; la lista visual es una ayuda de preparación y no sustituye la validación del servidor.
+
+### Estados posteriores
+
+El editor informa cuando una medición está pending_review o validated, evitando presentar el envío como una operación disponible en esos estados.
+
+### Commit
+
+- a775d946964f2c40feba5d5b9d2077a4d13ce75d — feat(hygiene): add explicit submission readiness panel to lighting editor
+
+### Próxima acción
+
+Auditar la revisión profesional existente y convertirla en una interfaz dedicada para el revisor, con contexto de empresa, datos técnicos, normativa, evaluación asistida e historial antes de aprobar o solicitar cambios.

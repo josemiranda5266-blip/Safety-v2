@@ -15,22 +15,38 @@
 - `calculateLightingMeasurement()` preserva `campaign`.
 - `lightingDocumentMapper.ts` transforma la medición persistida en `HygieneDocumentRepresentation` con `templateKey: lighting_protocol`.
 - El mapper incorpora `uniformityPasses` derivado exclusivamente de `minimumLux >= uniformityThresholdLux`, sin recalcular normativa.
-- El PDF representa los nuevos campos de puntos y campaña.
-- El PDF ahora reconoce explícitamente la sección `normative_evaluation` y renderiza el snapshot normativo congelado.
-- El PDF utiliza `instrument.instrumentType`, coherente con `HygieneInstrument`.
+- El mapper y el template documental fueron alineados a las mismas nueve secciones: `identification`, `context`, `technical`, `measurement_points`, `indicators`, `instruments`, `normative`, `professional_review`, `traceability`.
+- La versión de plantilla se toma de `LIGHTING_DOCUMENT_TEMPLATE`, evitando versiones hardcodeadas divergentes.
+- La generación documental exige medición `validated`, snapshot normativo y snapshots de todos los instrumentos; no debe reconstruir evidencia histórica desde el catálogo vivo.
+- `measurementSnapshot` conserva los datos persistidos necesarios para reconstrucción documental.
+- El PDF consume las claves nuevas de representación y renderiza explícitamente la evaluación normativa congelada.
+- Se creó prueba específica del mapper para contrato de template, uniformidad, normativa e instrumentación histórica.
+- El runner de tests conserva la suite histórica `server/tests/tenantAuth.test.ts` y agrega la suite Vitest de Iluminación.
 
-### Commits de este ciclo
+### Correcciones de reproducibilidad
+- `package.json` ahora declara `vite` explícitamente en `devDependencies`, coherente con el script `vite build` y con el `package-lock.json` existente.
+- Se alinearon en `package.json` las restricciones de `@tailwindcss/vite` y `autoprefixer` con las que constan en el lockfile.
+- `package-lock.json` es el lockfile npm canónico para este proyecto; `bun.lock` existe pero su metadata identifica `react-example`, por lo que queda marcado como artefacto heredado/no canónico.
+- No se fabricó ni regeneró manualmente `package-lock.json`; la ejecución real de `npm ci` sigue pendiente de verificación.
+- No existe actualmente `.github/workflows/` en `main`; por lo tanto no hay CI automático que certifique tests/lint/build.
+
+### Commits relevantes de este ciclo
 - `d62a4a97275c98a0e02ba844780c19693a27ee87` — `fix(lighting): include uniformity result in document representation`
 - `808d2fb2e77bb5042dc7dceabcd40019b3a0ff77` — `fix(lighting): render normative snapshot section in PDF`
+- `de329e527b39b247ff8f3188ebbb0ad0776a0dd1` — `chore: align build dependencies with lockfile`
 
-### Estado
+### Estado actual
 - Cálculo SRT 84/2012: implementado.
 - Modelo documental: implementado.
 - Captura documental: implementada.
-- Mapper: implementado.
-- PDF: actualizado para campaña, puntos, cálculos y snapshot normativo.
-- Persistencia/reconstrucción end-to-end: todavía requiere verificación con flujo real y consumidores.
-- XLSX: pendiente; no implementar hasta cerrar reconstrucción y mapeo campo-por-campo.
+- Mapper: implementado y alineado con template.
+- PDF: actualizado y alineado con la representación.
+- Snapshot normativo: implementado.
+- Snapshot de instrumentos: implementado en validación y exigido para generación documental.
+- Tests específicos: presentes, pero ejecución real todavía no verificada.
+- Persistencia/reconstrucción end-to-end: arquitectura implementada; falta ejecución real.
+- CI: no configurado.
+- XLSX: pendiente.
 
 ---
 
@@ -56,7 +72,7 @@ WEB / PDF / XLSX
 
 ### Próximas tareas
 1. Auditar consumidores restantes de `LightingMeasurementData` y cualquier escritor alternativo.
-2. Verificar persistencia y reconstrucción del snapshot documental.
+2. Verificar persistencia y reconstrucción del snapshot documental mediante ejecución real.
 3. Revisar representación Web.
 4. Implementar/revisar exportador XLSX: actualmente no se encontró implementación.
 5. Buscar cualquier segunda fuente de `requiredLux`, criterio, versión o clasificación.
@@ -64,8 +80,8 @@ WEB / PDF / XLSX
 7. Revisar migración/compatibilidad de registros antiguos que todavía tengan `uniformityRatio`.
 8. Completar cobertura normativa de Iluminación sin coincidencias ambiguas.
 9. Cerrar el mapeo campo-por-campo con el formulario SRT 84/2012.
-10. Solo después de cerrar Iluminación de extremo a extremo, avanzar a Ruido.
-11. Completar tests/verificación integral al finalizar este ciclo.
+10. Crear CI solamente después de confirmar el camino reproducible npm.
+11. Solo después de cerrar Iluminación de extremo a extremo, avanzar a Ruido.
 
 ---
 
@@ -76,19 +92,21 @@ WEB / PDF / XLSX
 - Validación server-side y snapshot normativo: implementado.
 - Cálculo SRT 84/2012 del escritor principal: implementado.
 - Semántica de uniformidad: corregida en modelo, motor, editor y PDF.
-- Instrumento/calibración: modelo existente; certificado disponible en instrumento y campaña.
+- Instrumento/calibración: modelo existente; snapshot histórico capturado al validar.
 - Captura documental de campaña: implementada.
 - Captura documental por punto: implementada.
 - Preservación de campaign durante cálculo: implementada.
 - Mapper medición → representación documental: implementado.
-- PDF: actualizado y consume la representación documental.
-- Persistencia/reconstrucción documental end-to-end: pendiente.
-- Documento histórico desacoplado del catálogo vivo: parcialmente implementado; snapshot normativo congelado, falta verificar reconstrucción completa.
+- Contrato template ↔ mapper: alineado.
+- PDF renderer ↔ representación: alineado.
+- Persistencia/reconstrucción documental end-to-end: pendiente de ejecución/verificación real.
+- Documento histórico desacoplado del catálogo vivo: implementado en la ruta de generación que exige snapshots; falta prueba real de reconstrucción.
 - Auditoría de todos los consumidores/escritores: pendiente.
 - Web: pendiente.
 - XLSX: pendiente; no se encontró implementación actual.
 - Cobertura normativa completa: pendiente.
-- Tests/verificación integral: pendientes hasta finalizar este ciclo.
+- Tests específicos: implementados.
+- Tests/lint/build ejecutados: no verificados todavía por falta de ejecución en entorno/CI.
 
 ---
 
@@ -100,6 +118,8 @@ CATÁLOGO NORMATIVO VIVO
 selección + validación
         ↓
 SNAPSHOT NORMATIVO CONGELADO
+        ↓
+SNAPSHOT DE INSTRUMENTOS
         ↓
 SNAPSHOT DOCUMENTAL
         ↓
@@ -113,9 +133,20 @@ El catálogo vivo no debe intervenir en la reconstrucción de documentos histór
 
 ---
 
+## Reproducibilidad del proyecto
+
+- Package manager canónico: npm.
+- Lockfile canónico: `package-lock.json`.
+- `bun.lock`: presente pero marcado como heredado/no canónico por metadata `react-example`.
+- `vite`: declarado explícitamente en `devDependencies`.
+- `npm test`: ejecuta la suite legacy y la suite específica de Iluminación.
+- `npm run lint`: `tsc --noEmit`.
+- `npm run build`: `vite build` + `esbuild`.
+- CI: todavía inexistente.
+
 ## Regla de continuidad
 
-No ejecutar todavía la batería final de tests. Continuar con auditoría y correcciones funcionales/arquitectónicas. La verificación integral se realizará al finalizar este ciclo de consolidación.
+No declarar verde ningún test, lint o build sin resultado de ejecución real. Continuar con auditoría y correcciones funcionales/arquitectónicas; la verificación integral se realizará al finalizar este ciclo de consolidación.
 
 ## Regla de proyecto
 

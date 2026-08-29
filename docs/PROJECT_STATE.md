@@ -34,6 +34,15 @@
 - No se encontró en la búsqueda de código una operación que reescriba snapshots históricos al editar el catálogo.
 - Esto confirma desacoplamiento histórico a nivel de modelo; queda pendiente prueba end-to-end real.
 
+### Trust boundary de cálculo de Iluminación
+- Se confirmó el flujo real UI → `calculateLightingMeasurement()` → `saveLightingData()` → PATCH.
+- Se detectó que el backend recibía `rawData` genérico y podía confiar en métricas calculadas por el cliente.
+- Se añadió normalización condicional en `updateMeasurementWithAudit()` para mediciones cuyo `protocolType` existente es `lighting`.
+- Cuando cambia `rawData.lighting`, el servidor valida los puntos mínimos, recalcula las métricas con `calculateLightingMeasurement()` y reemplaza los indicadores enviados por el cliente.
+- Otros protocolos mantienen el comportamiento genérico actual.
+- La normalización no se ejecuta si el PATCH no toca `rawData.lighting`, evitando recalcular registros históricos innecesariamente.
+- La compilación real y las pruebas específicas de manipulación siguen pendientes antes de declarar esta barrera verificada.
+
 ### Reproducibilidad
 - Package manager canónico: npm.
 - Lockfile canónico: `package-lock.json`.

@@ -52,22 +52,24 @@ export function mapLightingMeasurementToDocument(
       },
     },
     {
-      key: 'campaign',
-      title: 'Campaña de medición',
+      key: 'context',
+      title: 'Contexto de la medición',
       data: {
-        ...campaign,
+        campaign,
         sourceType: lighting.sourceType,
         lightingSystem: lighting.lightingSystem,
         taskDescription: lighting.taskDescription,
       },
     },
     {
-      key: 'instrumentation',
-      title: 'Instrumentación',
+      key: 'technical',
+      title: 'Condiciones técnicas',
       data: {
-        instruments: resolvedInstruments.length > 0 ? resolvedInstruments : fallbackInstruments,
-        instrumentIds: measurement.instrumentIds,
-        snapshotAvailable: resolvedInstruments.length === measurement.instrumentIds.length,
+        methodology: campaign.methodology,
+        atmosphericConditions: campaign.atmosphericConditions,
+        workplaceConditions: campaign.workplaceConditions,
+        planOrSketchUrl: campaign.planOrSketchUrl,
+        observations: campaign.observations,
       },
     },
     {
@@ -76,8 +78,8 @@ export function mapLightingMeasurementToDocument(
       data: { points },
     },
     {
-      key: 'calculations',
-      title: 'Cálculos de iluminación',
+      key: 'indicators',
+      title: 'Indicadores y cálculos',
       data: {
         averageLux: lighting.averageLux,
         minimumLux: lighting.minimumLux,
@@ -91,7 +93,16 @@ export function mapLightingMeasurementToDocument(
       },
     },
     {
-      key: 'normative_evaluation',
+      key: 'instruments',
+      title: 'Instrumentación',
+      data: {
+        instruments: resolvedInstruments.length > 0 ? resolvedInstruments : fallbackInstruments,
+        instrumentIds: measurement.instrumentIds,
+        snapshotAvailable: resolvedInstruments.length === measurement.instrumentIds.length,
+      },
+    },
+    {
+      key: 'normative',
       title: 'Evaluación normativa',
       data: snapshot
         ? {
@@ -105,9 +116,21 @@ export function mapLightingMeasurementToDocument(
         : { status: 'not_available' },
     },
     {
-      key: 'notes',
-      title: 'Notas',
-      data: { notes: measurement.notes },
+      key: 'professional_review',
+      title: 'Revisión profesional',
+      data: {
+        status: measurement.status,
+        notes: measurement.notes,
+      },
+    },
+    {
+      key: 'traceability',
+      title: 'Trazabilidad',
+      data: {
+        documentSourceMeasurementId: measurement.id,
+        instrumentSnapshotAvailable: (measurement.instrumentSnapshots ?? []).length > 0,
+        normativeSnapshotAvailable: Boolean(snapshot),
+      },
     },
   ];
 

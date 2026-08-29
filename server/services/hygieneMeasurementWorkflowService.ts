@@ -9,7 +9,7 @@ function eventType(fromStatus: hygieneService.HygieneMeasurementStatus | undefin
   if (toStatus === "closed") return "closed";
   if (toStatus === "cancelled") return "cancelled";
   if (toStatus === "archived") return "archived";
-  return changed.length ? "updated" : "updated";
+  return "updated";
 }
 
 export async function createMeasurementWithAudit(
@@ -40,6 +40,13 @@ export async function updateMeasurementWithAudit(
 ) {
   const before = await hygieneService.getMeasurementById(id, orgId);
   if (!before) return undefined;
+
+  if (
+    updates.normativeEvaluationSnapshot !== undefined &&
+    ["validated", "closed", "archived"].includes(before.status)
+  ) {
+    throw new Error("NORMATIVE_SNAPSHOT_LOCKED");
+  }
 
   let effectiveUpdates = { ...updates };
   if (updates.status === "validated" && !before.instrumentSnapshots?.length) {

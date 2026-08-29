@@ -7,6 +7,29 @@
 
 ---
 
+## 2026-08-29 — Captura documental de Iluminación en editor y preservación en cálculo
+
+### Hallazgo
+El modelo ya disponía de `LightingCampaignData` y campos documentales adicionales en `LightingMeasurementPoint`, pero el editor todavía no los capturaba. Además, `calculateLightingMeasurement()` no propagaba `campaign`, por lo que esos datos se habrían perdido al construir `LightingMeasurementData`.
+
+### Correcciones aplicadas
+- El editor ahora captura y restaura datos de campaña: horario de inicio/fin, metodología, condiciones atmosféricas, condiciones habituales del puesto, URL de certificado, URL de plano/croquis y observaciones.
+- El editor ahora captura por punto: hora, sector, puesto, fuente lumínica y observaciones, además de los campos existentes.
+- El guardado pasa `campaign` al cálculo.
+- El cálculo conserva `campaign` en la salida persistible.
+
+### Commits
+- `e73cab2477777626a6a67bc80153bfe2cdd939be` — `fix(lighting): preserve campaign metadata during calculation`
+- `50ea6914f4f4278d36276189dd7f688f3f6586e2` — `feat(lighting): capture SRT campaign and point metadata in editor`
+
+### Estado
+- Modelo documental: implementado.
+- Captura documental: implementada.
+- Preservación durante cálculo: implementada.
+- Persistencia vía `saveLightingData`: pendiente de verificación end-to-end.
+
+---
+
 ## 2026-08-29 — Corrección del consumidor UI de uniformidad de Iluminación
 
 ### Hallazgo
@@ -43,7 +66,8 @@ El modelo actual de `LightingMeasurementData` contiene correctamente los cálcul
 
 El `HygieneMeasurement.normativeEvaluationSnapshot` congela la versión/criterios normativos, pero no constituye por sí mismo un snapshot documental completo de la campaña.
 
-El editor actual permite capturar tipo de iluminación, sistema, tarea y puntos con nombre, tipo, lux y ubicación, pero todavía deben revisarse/agregarse los campos documentales de campaña y de cada punto que correspondan al formulario oficial.
+### Corrección posterior
+Se incorporó `LightingCampaignData` y metadata documental por punto; ver el registro superior del mismo día.
 
 ### Implicación
 No implementar todavía el XLSX final. Primero debe completarse la cadena:
@@ -61,7 +85,7 @@ El XLSX debe ser un renderer pasivo del snapshot y no recalcular ni consultar el
 ### Hallazgo
 La auditoría directa de `src/services/hygieneDocumentPdfService.ts` encontró que el renderer todavía etiquetaba `uniformityRatio` como `Relación mín/máx`, pese a que el motor principal ya había sido corregido para SRT 84/2012.
 
-Además, la búsqueda del repositorio no encontró implementación de exportación XLSX (`xlsx`/`excel`) en el árbol indexado. Esto significa que el XLSX oficial todavía debe tratarse como una funcionalidad pendiente y no como una salida ya implementada.
+Además, la búsqueda del repositorio no encontró implementación de exportación XLSX (`xlsx`/`excel`) en el árbol indexado.
 
 ### Corrección aplicada
 - El PDF ya no presenta `uniformityRatio` como mínimo/máximo.
@@ -75,9 +99,6 @@ Además, la búsqueda del repositorio no encontró implementación de exportaci�
 - No se encontró implementación de exportador XLSX en la búsqueda del repositorio.
 - No se debe afirmar que XLSX está implementado.
 - Próximo objetivo: diseñar/implementar el renderer XLSX a partir del mismo `HygieneDocumentRepresentation`/snapshot, respetando el formulario oficial SRT 84/2012.
-
-### Referencia oficial
-La SRT publica para la Resolución 84/2012 el formulario PDF y el formulario editable XLSX. El formulario contiene, entre otras, las columnas Punto de Muestreo, Hora, Sector, Sección/Puesto, tipo de iluminación, fuente, sistema, uniformidad `E mínima ≥ (E media)/2`, Valor Medido (Lux) y Valor requerido legalmente. Fuente oficial: https://www.argentina.gob.ar/srt/prevencion/publicaciones/protocolos/iluminacion
 
 ---
 
@@ -126,16 +147,16 @@ WEB / PDF / XLSX
 
 ### Próximas tareas
 1. Auditar consumidores restantes de `LightingMeasurementData` y cualquier escritor alternativo.
-2. Completar el modelo/captura de datos documentales de campaña y de cada punto según SRT 84/2012.
-3. Verificar persistencia y reconstrucción del snapshot documental.
-4. Revisar representación Web.
-5. Implementar/revisar exportador XLSX: actualmente no se encontró implementación.
-6. Buscar cualquier segunda fuente de `requiredLux`, criterio, versión o clasificación.
-7. Verificar que el documento exponga el criterio seleccionado exclusivamente desde el snapshot.
-8. Revisar migración/compatibilidad de registros antiguos que todavía tengan `uniformityRatio`.
-9. Completar cobertura normativa de Iluminación sin coincidencias ambiguas.
-10. Cerrar el mapeo campo-por-campo con el formulario SRT 84/2012.
-11. Solo después de cerrar Iluminación de extremo a extremo, avanzar a Ruido.
+2. Verificar persistencia y reconstrucción del snapshot documental.
+3. Revisar representación Web.
+4. Implementar/revisar exportador XLSX: actualmente no se encontró implementación.
+5. Buscar cualquier segunda fuente de `requiredLux`, criterio, versión o clasificación.
+6. Verificar que el documento exponga el criterio seleccionado exclusivamente desde el snapshot.
+7. Revisar migración/compatibilidad de registros antiguos que todavía tengan `uniformityRatio`.
+8. Completar cobertura normativa de Iluminación sin coincidencias ambiguas.
+9. Cerrar el mapeo campo-por-campo con el formulario SRT 84/2012.
+10. Solo después de cerrar Iluminación de extremo a extremo, avanzar a Ruido.
+11. Completar tests/verificación integral al finalizar este ciclo.
 
 ---
 
@@ -146,15 +167,19 @@ WEB / PDF / XLSX
 - Validación server-side y snapshot normativo: implementado.
 - Cálculo SRT 84/2012 del escritor principal: implementado.
 - Semántica de uniformidad: corregida en modelo, motor, editor y PDF.
+- Instrumento/calibración: modelo existente; certificado disponible en instrumento y campaña.
+- Captura documental de campaña: implementada.
+- Captura documental por punto: implementada.
+- Preservación de campaign durante cálculo: implementada.
+- Persistencia/reconstrucción documental end-to-end: pendiente.
 - Documento histórico desacoplado del catálogo vivo: parcialmente implementado; falta completar snapshot documental de campaña.
-- PDF: corregido.
-- Editor UI: corregido respecto de uniformidad.
+- PDF: corregido; requiere auditoría de consumo del nuevo metadata.
+- Editor UI: corregido respecto de uniformidad y ampliado para metadata SRT.
 - Auditoría de todos los consumidores/escritores: pendiente.
-- Captura documental SRT completa: pendiente.
 - Web: pendiente.
 - XLSX: pendiente; no se encontró implementación actual.
 - Cobertura normativa completa: pendiente.
-- Tests/verificación integral: deliberadamente pendientes hasta finalizar este ciclo.
+- Tests/verificación integral: pendientes hasta finalizar este ciclo.
 
 ---
 
@@ -181,7 +206,7 @@ El catálogo vivo no debe intervenir en la reconstrucción de documentos histór
 
 ## Regla de continuidad
 
-No ejecutar la batería final de tests todavía. Continuar con auditoría y correcciones funcionales/arquitectónicas. La verificación integral se realizará al finalizar este ciclo de consolidación.
+No ejecutar todavía la batería final de tests. Continuar con auditoría y correcciones funcionales/arquitectónicas. La verificación integral se realizará al finalizar este ciclo de consolidación.
 
 ## Regla de proyecto
 

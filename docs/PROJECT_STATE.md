@@ -7,52 +7,47 @@
 
 ---
 
-## 2026-08-29 — Plantilla declarativa de documentos
+## 2026-08-29 — Exportación PDF de Iluminación
 
 ### Objetivo
 
-Hacer que la definición de un documento profesional sea independiente del visor React y del futuro exportador PDF.
+Permitir exportar el documento profesional de Iluminación sin volver a consultar la medición ni recalcular resultados. El PDF debe ser un renderizador de la representación documental versionada.
 
-### Corrección realizada
+### Correcciones realizadas
 
-Se amplió `src/types/hygieneDocument.ts` con `HygieneDocumentField` y `HygieneDocumentTemplate`.
+- Creado `src/services/hygieneDocumentPdfService.ts`.
+- Usa las dependencias `jspdf` y `jspdf-autotable` ya presentes en el proyecto.
+- Recibe exclusivamente `HygieneDocumentRepresentation`.
+- Renderiza encabezado, secciones, pares campo/valor, tabla de puntos de medición, tabla de instrumentos y disclaimer.
+- No consulta Firestore, no lee la medición original y no recalcula indicadores.
+- El nombre del archivo incorpora el `documentId` para conservar identificación documental.
+- `GeneratedDocumentsPanel` incorpora acción `PDF` para documentos de Iluminación y obtiene primero la representación versionada mediante `hygieneService.getDocumentRepresentation`.
 
-Se creó `src/config/hygieneDocumentTemplates.ts` con `LIGHTING_DOCUMENT_TEMPLATE` v1.0.0. La plantilla define su clave, versión, título y orden de secciones.
+### Commits
 
-`buildLightingDocumentRepresentation` ahora valida la plantilla soportada y utiliza el orden declarado por la plantilla en lugar de asumir que el orden del array interno es la especificación documental.
+- `b4f66a4f1b274f584157aeddb514173fe7a16768` — feat(hygiene): add lighting document PDF renderer
+- `5e3780eb7394a38afbd97c1909bd57db9297660b` — feat(hygiene): connect lighting document PDF export to document panel
 
 ### Resultado arquitectónico
 
 ```text
-SNAPSHOT DOCUMENTAL
-        ↓
-TEMPLATE KEY + VERSION
-        ↓
-REPRESENTACIÓN
-        ↓
-┌──────────────────┬──────────────────┐
-│ VISOR WEB        │ FUTURO PDF        │
-└──────────────────┴──────────────────┘
+SNAPSHOT HISTÓRICO
+       ↓
+DOCUMENTO VERSIONADO
+       ↓
+REPRESENTACIÓN DOCUMENTAL
+       ├───────────────┐
+       ↓               ↓
+    VISOR WEB       EXPORTADOR PDF
 ```
 
-### Commits
+La representación es la fuente común; Web y PDF no poseen cálculos propios.
 
-- `b8bd60400eee581ba46f24dd804308d290dc4a2c` — refactor(hygiene): define shared document template contract
-- `c4a1f0c0d53f7d7b74b57debc952de54612bf9e2` — feat(hygiene): add declarative lighting document template
-- `614d9f48f546924a330dac49b9d199d1c4433770` — refactor(hygiene): drive lighting representation from shared template
-- `02dba70dfde9de523b9c1b983ae66bda68c50777` — fix(hygiene): type document representation service contract
+### Nota de alcance
 
-### Estado
+Este PDF es un exportador documental técnico de la representación existente. No agrega firma digital, no declara certificación legal y no sustituye la validación o firma que corresponda al profesional competente.
 
-La arquitectura documental de Iluminación ya tiene contrato compartido, plantilla versionada y representación ordenada por esa plantilla. El frontend consume el contrato tipado.
-
-### Próxima acción
-
-Preparar el adaptador de exportación PDF sobre `HygieneDocumentRepresentation`, sin consultar nuevamente la medición ni ejecutar cálculos. Antes de eso, revisar el contrato PDF existente y reutilizar las dependencias ya presentes en el proyecto.
-
----
-
-## Estado funcional acumulado
+### Estado funcional acumulado
 
 ```text
 CAPTURA
@@ -74,29 +69,20 @@ DOCUMENTO VERSIONADO
 PLANTILLA DECLARATIVA
   ↓
 REPRESENTACIÓN ESTRUCTURADA
-  ↓
-VISOR WEB
+  ├── VISOR WEB
+  └── PDF
 ```
 
-### Principios vigentes
+### Próxima acción
 
-- Aislamiento por organización/workspace.
-- Extender dominios existentes, no duplicarlos.
-- Cálculo determinístico separado de IA y UI.
-- IA como asistencia, no autoridad normativa.
-- Snapshots históricos para documentos profesionales.
-- Nuevos datos críticos con backend como fuente de verdad.
-- No convertir `db.ts` en servicio universal.
-- Registrar cada fase relevante en este documento.
-- No introducir PDF ni firma como fuente de verdad del documento.
+Auditar y consolidar el catálogo normativo estructurado. Debe permitir que cada evaluación conserve norma, versión, referencia y valores utilizados de forma trazable, evitando valores legales hardcodeados dentro de los módulos de medición.
 
 ### Próximas fases prioritarias
 
-1. Adaptador PDF de Iluminación basado en representación.
-2. Consolidación del catálogo normativo estructurado.
-3. Protocolo de Ruido.
-4. Protocolo de Puesta a Tierra.
-5. Integración medición → hallazgo → acción correctiva.
-6. Alertas de calibración y vencimientos.
-7. Matriz integral de mediciones por empresa.
-8. Gestión comercial de alquiler después de consolidar inventario técnico.
+1. Catálogo normativo estructurado y versionado.
+2. Protocolo de Ruido.
+3. Protocolo de Puesta a Tierra.
+4. Integración medición → hallazgo → acción correctiva.
+5. Alertas de calibración y vencimientos.
+6. Matriz integral de mediciones por empresa.
+7. Gestión comercial de alquiler después de consolidar inventario técnico.

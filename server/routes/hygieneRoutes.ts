@@ -134,7 +134,7 @@ router.post("/measurements/:id/submit-for-review", requirePermission("hygiene:up
   res.json({ measurement: updated });
 });
 
-router.post("/measurements/:id/review", requirePermission("hygiene:update"), async (req: TenantRequest, res: Response) => {
+router.post("/measurements/:id/review", requirePermission("hygiene:review"), async (req: TenantRequest, res: Response) => {
   const context = req.authContext!;
   const measurement = await hygieneService.getMeasurementById(req.params.id, context.orgId);
   if (!measurement) return res.status(404).json({ error: "Medición no encontrada", code: "MEASUREMENT_NOT_FOUND" });

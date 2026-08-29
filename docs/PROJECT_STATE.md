@@ -56,28 +56,13 @@ La Resolución SRT 84/2012 establece una validez de 12 meses para los valores de
 4. Mantener el snapshot normativo completo como evidencia histórica: referencia, versión, criterio, parámetros, fuente y resultado aplicado.
 5. Completar el catálogo de requisitos de iluminación sólo con evidencia normativa verificable; nunca inventar `requiredLux` ante ambigüedad.
 6. Hacer cotejo campo-por-campo con el protocolo oficial SRT 84/2012.
-7. Agregar/ajustar pruebas de regresión para vigencia, snapshots y bypasses de escritura.
-8. Ejecutar realmente `npm test`, `npm run lint` y `npm run build` en un entorno reproducible y registrar resultados.
-9. Ejecutar prueba end-to-end de persistencia, validación y reconstrucción documental.
-10. Sólo después de cerrar Iluminación de extremo a extremo, avanzar a Ruido.
-
-## Cadena objetivo
-
-```text
-LECTURAS CRUDAS
-      ↓
-CÁLCULO FÍSICO CANÓNICO
-      ↓
-E mínima / E media / uniformidad
-      ↓
-CRITERIO NORMATIVO CONGELADO
-      ↓
-REVISIÓN PROFESIONAL
-      ↓
-DOCUMENT SNAPSHOT
-      ↓
-WEB / PDF / XLSX
-```
+7. Cotejar valor-por-valor los requisitos de iluminación y documentar el origen normativo de cada `requiredLux`.
+8. Revisar conclusiones y recomendaciones de PDF/Web/XLSX para asegurar que distingan resultado técnico, criterio normativo y decisión profesional.
+9. Revisar compatibilidad/migración de registros históricos que no tengan los campos nuevos.
+10. Agregar/ajustar pruebas de regresión para vigencia, snapshots y bypasses de escritura.
+11. Ejecutar realmente `npm test`, `npm run lint` y `npm run build` en un entorno reproducible y registrar resultados, incluyendo cualquier fallo que aparezca.
+12. Ejecutar prueba end-to-end de persistencia, validación y reconstrucción documental.
+13. Sólo después de cerrar Iluminación de extremo a extremo, avanzar a Ruido.
 
 ## Estado actual de Iluminación
 
@@ -100,6 +85,24 @@ WEB / PDF / XLSX
 | E2E | 🔴 pendiente |
 | Web | 🔴 pendiente |
 | XLSX | 🔴 pendiente |
+
+## Cadena objetivo
+
+```text
+LECTURAS CRUDAS
+      ↓
+CÁLCULO FÍSICO CANÓNICO
+      ↓
+E mínima / E media / uniformidad
+      ↓
+CRITERIO NORMATIVO CONGELADO
+      ↓
+REVISIÓN PROFESIONAL
+      ↓
+DOCUMENT SNAPSHOT
+      ↓
+WEB / PDF / XLSX
+```
 
 ## Regla de continuidad
 Este registro corresponde exclusivamente a **Safety V2**. No mezclar con CONEXA, Fletes Ya ni otros proyectos. Cada nuevo descubrimiento debe indicar si está **verificado en código**, **implementado pero no ejecutado**, o **pendiente/no verificado**.

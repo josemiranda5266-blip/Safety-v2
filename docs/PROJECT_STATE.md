@@ -556,3 +556,34 @@ Inspeccionar la implementación real de Higiene antes de crear nuevos dominios o
 ### Próxima acción
 
 Auditar el backend y las reglas de seguridad aplicables a Higiene y, con ese patrón confirmado, corregir primero la capa de persistencia y contexto antes de ampliar la interfaz.
+
+
+## 2026-08-29 — Implementación: permisos RBAC para Higiene
+
+### Cambio realizado
+
+Se incorporó el dominio de permisos de Higiene al núcleo central de autorización:
+
+- hygiene:read
+- hygiene:create
+- hygiene:update
+
+### Matriz aplicada
+
+- owner: lectura, creación y actualización.
+- admin: lectura, creación y actualización.
+- member: lectura, creación y actualización.
+- auditor: solo lectura.
+- platform_admin: mantiene acceso total por la regla existente de plataforma.
+
+### Decisión de seguridad
+
+No se agregó hygiene:delete. Las mediciones profesionales requieren trazabilidad y la eliminación física no será el mecanismo inicial de ciclo de vida. La futura evolución utilizará estados, cancelación o archivado según el dominio.
+
+### Commit
+
+- d311a299b30894e66c2f2fcd87245c9121cc5f82 — feat(auth): add hygiene domain permissions
+
+### Próxima implementación
+
+Crear schemas estrictos de validación para instrumentos y para el contexto común de una medición, reutilizando Zod y el patrón de rutas API v2 existente. Después se implementará hygieneRoutes y la persistencia mediante Firebase Admin.

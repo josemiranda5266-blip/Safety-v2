@@ -1,0 +1,503 @@
+# Safety-v2 — Estado del Proyecto y Registro de Dirección Técnica
+
+> **Propósito de este documento:** mantener dentro del repositorio el contexto técnico, los objetivos, decisiones arquitectónicas, hallazgos y avances. Debe actualizarse después de cada fase relevante de auditoría o modificación para que el trabajo pueda retomarse sin depender de memoria conversacional.
+
+**Última actualización:** 2026-08-29  
+**Repositorio:** `josemiranda5266-blip/Safety-v2`
+
+---
+
+## 1. Visión del producto
+
+Evolucionar Safety-v2 hacia una plataforma integral para profesionales, consultoras y empresas de Higiene y Seguridad.
+
+La plataforma debe permitir gestionar:
+
+- organizaciones/workspaces y miembros;
+- empresas propias y clientes;
+- establecimientos, sectores, puestos y trabajadores;
+- inspecciones y hallazgos;
+- acciones correctivas;
+- documentación y normativa;
+- mediciones instrumentales de higiene ocupacional;
+- protocolos técnicos;
+- instrumental, calibraciones y certificados;
+- informes y trazabilidad;
+- vencimientos y seguimiento;
+- asistencia mediante IA, bajo control profesional.
+
+### Principio comercial
+
+El producto no debe presentarse como una herramienta que certifica automáticamente el cumplimiento legal de una empresa.
+
+La plataforma debe asistir al profesional habilitado mediante instrumental, gestión de datos, cálculos, protocolos, documentación, trazabilidad y automatización. La interpretación, validación y firma profesional corresponden al responsable actuante.
+
+---
+
+## 2. Objetivo estratégico
+
+Construir una plataforma con tres líneas complementarias:
+
+1. **Gestión digital de Higiene y Seguridad.**
+2. **Gestión/alquiler de instrumental.**
+3. **Servicios profesionales de medición.**
+
+Flujo objetivo:
+
+```
+Empresa / profesional
+        ↓
+Contexto de trabajo
+        ↓
+Inspección o necesidad de evaluación
+        ↓
+Medición instrumental
+        ↓
+Cálculo técnico determinístico
+        ↓
+Evaluación con reglas y referencia normativa
+        ↓
+Revisión profesional
+        ↓
+Documento / informe
+        ↓
+Seguimiento, acciones y vencimientos
+```
+
+---
+
+## 3. Protocolos prioritarios
+
+### Etapa inicial
+
+1. Iluminación.
+2. Ruido.
+3. Puesta a tierra.
+
+### Etapas posteriores
+
+- estrés térmico;
+- ergonomía;
+- vibraciones;
+- contaminantes químicos;
+- gases;
+- calidad de aire;
+- otros riesgos especializados.
+
+**Regla:** antes de codificar criterios técnicos o valores normativos, verificar la fuente normativa oficial aplicable y versionarla.
+
+---
+
+## 4. Principios arquitectónicos
+
+### 4.1 Multi-tenancy
+
+Toda información privada del nuevo dominio debe respetar la frontera de organización/workspace.
+
+Flujo esperado:
+
+```
+Request
+  ↓
+Authentication
+  ↓
+User identity
+  ↓
+Organization context
+  ↓
+Membership / permission
+  ↓
+Resource ownership
+  ↓
+Operation
+```
+
+No confiar solamente en IDs enviados por el frontend.
+
+### 4.2 No duplicar dominios existentes
+
+Antes de crear una entidad o servicio nuevo, verificar si Safety-v2 ya implementa un modelo equivalente.
+
+El repositorio ya muestra una arquitectura funcional relacionada con:
+
+- organizaciones;
+- empresas;
+- establecimientos;
+- sectores;
+- puestos;
+- empleados;
+- inspecciones;
+- hallazgos;
+- acciones correctivas/CAPA;
+- documentos;
+- normativa;
+- reportes;
+- IA.
+
+La estrategia es **extender e integrar**, no construir sistemas paralelos.
+
+### 4.3 Separación entre motor técnico e IA
+
+```
+INPUT
+  ↓
+VALIDACIÓN
+  ↓
+MOTOR DETERMINÍSTICO
+  ↓
+CÁLCULO
+  ↓
+REGLAS / EVALUACIÓN
+  ↓
+RESULTADO TÉCNICO
+  ↓
+IA ASISTIVA
+  ↓
+REVISIÓN PROFESIONAL
+```
+
+La IA puede asistir con:
+
+- explicaciones;
+- resúmenes;
+- observaciones;
+- recomendaciones;
+- borradores.
+
+La IA no debe ser la autoridad que inventa valores legales ni declarar automáticamente cumplimiento normativo.
+
+### 4.4 Fuente de verdad
+
+Las nuevas mediciones y datos críticos no deben usar `localStorage` como fuente principal de verdad.
+
+Los borradores locales, si existen en el futuro, deben ser explícitos y distinguibles de datos confirmados en el backend.
+
+### 4.5 No ampliar servicios monolíticos
+
+No agregar el nuevo dominio indiscriminadamente al servicio heredado `db.ts`.
+
+El dominio de mediciones debe tener responsabilidades separadas.
+
+---
+
+## 5. Estado encontrado hasta ahora
+
+### Confirmado
+
+- Firebase está integrado.
+- Existe autenticación y verificación de tokens.
+- Existe backend propio.
+- Existe autorización basada en contexto organizacional.
+- El repositorio tiene trabajo reciente de aislamiento multi-tenant para inspecciones.
+- Existen controles orientados a evitar accesos entre organizaciones.
+- Existe gestión documental.
+- La gestión documental contempla categorías relacionadas con mediciones.
+- Existe infraestructura de IA.
+- Existe un módulo/pantalla de Higiene.
+- Existen pantallas y/o flujos para empresas, establecimientos, sectores, puestos y empleados.
+- Existen módulos de inspecciones, IPER, CAPA/acciones correctivas, normativa y reportes.
+
+### Hallazgo relevante
+
+Un commit reciente de multi-tenancy para inspecciones documenta:
+
+- aislamiento de `InspectionReport` por organización;
+- reglas de Firestore orientadas a acceso organizacional;
+- campos de verificación y seguimiento CAPA en hallazgos;
+- uso del identificador de organización activa en API y estado.
+
+Este patrón debe servir como referencia para las futuras mediciones.
+
+---
+
+## 6. Arquitectura funcional objetivo
+
+```
+ORGANIZACIÓN / WORKSPACE
+│
+├── Miembros
+│
+├── Empresas
+│   └── Establecimientos
+│       ├── Sectores
+│       ├── Puestos
+│       └── Empleados
+│
+├── Inspecciones
+│   └── Hallazgos
+│       └── Acciones / CAPA
+│
+├── Higiene
+│   ├── Mediciones
+│   ├── Protocolos
+│   ├── Instrumentos
+│   └── Matriz de mediciones
+│
+├── Documentos
+│
+├── Normativa
+│
+└── Reportes
+```
+
+---
+
+## 7. Integración clave: inspección → medición
+
+Una inspección puede detectar una situación que requiera evaluación instrumental.
+
+Flujo objetivo:
+
+```
+INSPECCIÓN
+    ↓
+HALLAZGO
+    ↓
+¿REQUIERE MEDICIÓN?
+    ↓
+SOLICITUD / CREACIÓN DE MEDICIÓN
+    ↓
+MEDICIÓN
+    ↓
+RESULTADO
+    ↓
+ACTUALIZACIÓN DEL HALLAZGO
+    ↓
+ACCIÓN CORRECTIVA / SEGUIMIENTO
+```
+
+Antes de modificar el modelo de hallazgos se debe inspeccionar su estructura actual y evitar agregar campos redundantes.
+
+---
+
+## 8. Dominio futuro de mediciones
+
+La entidad central prevista es conceptualmente:
+
+```
+Measurement
+```
+
+Debe soportar como mínimo:
+
+- identidad;
+- organización/workspace;
+- empresa;
+- establecimiento;
+- alcance contextual;
+- tipo y versión de protocolo;
+- estado;
+- fecha de medición;
+- profesional responsable;
+- instrumentos utilizados;
+- datos crudos;
+- datos calculados;
+- evaluación;
+- referencia normativa utilizada;
+- conclusiones;
+- recomendaciones;
+- validación profesional;
+- documentos asociados;
+- auditoría temporal.
+
+Estados conceptuales a validar contra los patrones existentes:
+
+```
+DRAFT
+IN_PROGRESS
+COMPLETED
+UNDER_REVIEW
+VALIDATED
+ACTION_REQUIRED
+ARCHIVED
+```
+
+No introducir estos estados sin comprobar los patrones actuales de enumeraciones y máquinas de estado del repositorio.
+
+---
+
+## 9. Instrumental
+
+Dominio futuro previsto:
+
+- tipo de instrumento;
+- fabricante;
+- modelo;
+- número de serie;
+- propietario;
+- disponibilidad;
+- mantenimiento;
+- calibración;
+- certificados;
+- historial de uso.
+
+Estados conceptuales:
+
+```
+AVAILABLE
+RESERVED
+RENTED
+IN_USE
+MAINTENANCE
+CALIBRATION_DUE
+OUT_OF_SERVICE
+RETIRED
+```
+
+La gestión comercial de alquiler no debe implementarse antes de consolidar el inventario técnico y su trazabilidad.
+
+---
+
+## 10. Base normativa
+
+Separar dos conceptos:
+
+### Biblioteca documental
+
+Documentos, legislación, guías y material de consulta para búsqueda y asistencia de IA.
+
+### Catálogo normativo estructurado
+
+Debe permitir modelar:
+
+- identificador;
+- versión;
+- vigencia;
+- fuente oficial;
+- protocolo;
+- parámetros;
+- reglas;
+- referencias técnicas.
+
+Una medición debe conservar la referencia/versionado utilizado en su evaluación para mantener trazabilidad histórica.
+
+---
+
+## 11. Deuda técnica identificada
+
+### `db.ts`
+
+Existe una concentración elevada de responsabilidades históricas. No continuar ampliándolo como servicio universal.
+
+### Persistencia híbrida
+
+Existen mecanismos que combinan almacenamiento local y sincronización. Para nuevos datos críticos, definir explícitamente la fuente de verdad.
+
+### Gestión documental
+
+Existen mecanismos de fallback local. Los protocolos e informes profesionales no deben quedar silenciosamente como si estuvieran confirmados en servidor cuando solo existen localmente.
+
+### `App.tsx`
+
+La navegación parece concentrada mediante coordinación de múltiples pantallas y estados. Evitar añadir cada protocolo como un nuevo bloque global; preferir que Higiene concentre su navegación interna.
+
+---
+
+## 12. Próxima fase de auditoría
+
+Antes de modificar el dominio de mediciones, completar la lectura directa de:
+
+1. `HygieneScreen` y sus componentes.
+2. Modelos actuales de Company/Establishment/Sector/Position/Employee.
+3. API multi-tenant existente.
+4. Rutas backend relacionadas.
+5. Modelo de inspecciones y hallazgos.
+6. Patrones de autorización.
+7. Persistencia Firestore de los dominios existentes.
+8. Sistema actual de reportes y generación documental.
+
+### Objetivo de esta fase
+
+Determinar exactamente:
+
+- qué ya está implementado;
+- qué está incompleto;
+- qué debe corregirse;
+- qué puede reutilizarse;
+- dónde integrar las mediciones sin duplicación.
+
+---
+
+## 13. Regla de trabajo
+
+Después de cada fase relevante se debe actualizar este documento con:
+
+- fecha;
+- auditoría realizada;
+- hallazgos;
+- decisiones;
+- archivos modificados;
+- cambios realizados;
+- pendientes;
+- siguiente acción concreta.
+
+### Formato del registro
+
+```
+## YYYY-MM-DD — Fase / avance
+
+### Objetivo
+...
+
+### Hallazgos
+...
+
+### Decisiones
+...
+
+### Cambios realizados
+...
+
+### Archivos modificados
+...
+
+### Pendientes
+...
+
+### Próxima acción
+...
+```
+
+---
+
+# Registro de avances
+
+## 2026-08-29 — Inicio de transformación y auditoría
+
+### Objetivo
+
+Determinar si Safety-v2 puede evolucionar hacia una plataforma integral de Higiene y Seguridad con mediciones instrumentales.
+
+### Hallazgos
+
+- La aplicación ya posee una base SaaS/multi-tenant.
+- Existen organizaciones y controles de autorización.
+- Existe un dominio de inspecciones y hallazgos.
+- Existe gestión documental.
+- Existe infraestructura de IA.
+- Existen módulos empresariales y de Higiene.
+- La aplicación no debe tratarse como un proyecto vacío ni duplicar sus dominios existentes.
+
+### Decisiones
+
+- Evolucionar Safety-v2 en lugar de crear una aplicación paralela.
+- Reutilizar el dominio empresarial existente.
+- Integrar mediciones dentro del área de Higiene.
+- Mantener separación estricta entre motor técnico, catálogo normativo e IA.
+- Registrar el estado técnico dentro del repositorio.
+
+### Cambios realizados
+
+- Se creó este documento de continuidad y dirección técnica.
+
+### Pendientes
+
+- Auditoría directa de HygieneScreen.
+- Auditoría de modelos y servicios empresariales.
+- Auditoría de inspecciones/hallazgos.
+- Auditoría de rutas y autorización.
+- Diseño final de la integración del dominio Measurement.
+
+### Próxima acción
+
+Completar la auditoría del módulo de Higiene y del flujo multi-tenant existente antes de implementar la primera modificación del dominio de mediciones.

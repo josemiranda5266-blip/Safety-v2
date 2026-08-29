@@ -50,14 +50,8 @@ export function exportLightingDocumentPdf(representation: HygieneDocumentReprese
         startY: y,
         head: [['Hora', 'Sector', 'Puesto', 'Fuente', 'Tipo', 'Ubicación', 'Lux', 'Observaciones']],
         body: points.map((p, i) => [
-          scalar(p.measuredAt),
-          scalar(p.sector),
-          scalar(p.workplace),
-          scalar(p.lightSourceType),
-          scalar(p.pointType),
-          scalar(p.locationDescription ?? p.name ?? `Punto ${i + 1}`),
-          `${scalar(p.lux)} lux`,
-          scalar(p.observations),
+          scalar(p.measuredAt), scalar(p.sector), scalar(p.workplace), scalar(p.lightSourceType), scalar(p.pointType),
+          scalar(p.locationDescription ?? p.name ?? `Punto ${i + 1}`), `${scalar(p.lux)} lux`, scalar(p.observations),
         ]),
         margin: { left: PAGE_MARGIN, right: PAGE_MARGIN },
         styles: { fontSize: 6.5, cellPadding: 1.5 },
@@ -66,49 +60,53 @@ export function exportLightingDocumentPdf(representation: HygieneDocumentReprese
       y = (doc as any).lastAutoTable.finalY + 8;
       continue;
     }
+
     const rows: string[][] = [];
-    for (const [key, value] of Object.entries(section.data)) {
-      if (key === 'instruments' && Array.isArray(value)) {
-        const instruments = value as Array<Record<string, unknown>>;
-        for (const instrument of instruments) {
-          rows.push(['Instrumento', [
-            instrument.instrumentType,
-            instrument.brand,
-            instrument.model,
-            instrument.serialNumber,
-            instrument.calibrationDate,
-            instrument.calibrationExpiry,
-          ].filter(Boolean).map(scalar).join(' · ') || scalar(instrument.id)]);
+    if (section.key === 'normative_evaluation') {
+      const data = section.data;
+      rows.push(['Referencia normativa', scalar(data.reference)]);
+      rows.push(['Versión normativa', scalar(data.version)]);
+      rows.push(['Evaluado el', scalar(data.evaluatedAt)]);
+      rows.push(['Criterio seleccionado', scalar(data.selectedCriterionId)]);
+      if (Array.isArray(data.criteriaSnapshot)) {
+        for (const criterion of data.criteriaSnapshot as Array<Record<string, unknown>>) {
+          const parameters = criterion.parameters as Record<string, unknown> | undefined;
+          const required = criterion.requiredLux ?? parameters?.requiredLux;
+          rows.push(['Criterio congelado', [criterion.id, criterion.code, criterion.title, required !== undefined ? `${scalar(required)} lux` : undefined]
+            .filter(Boolean).map(scalar).join(' · ')]);
         }
-      } else if (key === 'reference' && value && typeof value === 'object') {
-        const reference = value as Record<string, unknown>;
-        rows.push(['Referencia normativa', scalar(reference.resolution ?? reference.id)]);
-        if (reference.version !== undefined) rows.push(['Versión normativa', scalar(reference.version)]);
-        if (reference.title !== undefined) rows.push(['Título', scalar(reference.title)]);
-        if (reference.sourceUrl !== undefined) rows.push(['Fuente oficial', scalar(reference.sourceUrl)]);
-      } else if (key === 'evaluation' && value && typeof value === 'object') {
-        const evaluation = value as Record<string, unknown>;
-        if (evaluation.selectedCriterionId !== undefined) rows.push(['Criterio seleccionado', scalar(evaluation.selectedCriterionId)]);
-        if (evaluation.requiredLux !== undefined) rows.push(['Lux requeridos', scalar(evaluation.requiredLux)]);
-        if (evaluation.status !== undefined) rows.push(['Estado de evaluación', scalar(evaluation.status)]);
-        if (evaluation.evaluatedAt !== undefined) rows.push(['Evaluado el', scalar(evaluation.evaluatedAt)]);
-        const criteria = evaluation.criteriaSnapshot;
-        if (Array.isArray(criteria)) {
-          for (const criterion of criteria as Array<Record<string, unknown>>) {
-            const id = criterion.id ?? criterion.criterionId;
-            const title = criterion.title ?? criterion.name;
-            const required = criterion.requiredLux ?? (criterion.parameters as Record<string, unknown> | undefined)?.requiredLux;
-            rows.push(['Criterio congelado', [id, title, required !== undefined ? `${scalar(required)} lux` : undefined].filter(Boolean).map(scalar).join(' · ')]);
+      }
+      rows.push(['Versión de protocolo', scalar(data.normativeProtocolVersionId)]);
+    } else {
+      for (const [key, value] of Object.entries(section.data)) {
+        if (key === 'instruments' && Array.isArray(value)) {
+          const instruments = value as Array<Record<string, unknown>>;
+          for (const instrument of instruments) {
+            rows.push(['Instrumento', [instrument.instrumentType, instrument.brand, instrument.model, instrument.serialNumber,
+              instrument.calibrationDate, instrument.calibrationExpiry].filter(Boolean).map(scalar).join(' · ') || scalar(instrument.id)]);
           }
+        } else if (key === 'campaign' && value && typeof value === 'object') {
+          for (const [campaignKey, campaignValue] of Object.entries(value as Record<string, unknown>)) {
+            rows.push([label(campaignKey), scalar(campaignValue)]);
+          }
+        } else if (key !== 'instrumentIds') {
+          rows.push([label(key), scalar(value)]);
         }
-      } else if (key === 'campaign' && value && typeof value === 'object') {
-        for (const [campaignKey, campaignValue] of Object.entries(value as Record<string, unknown>)) {
-          rows.push([label(campaignKey), scalar(campaignValue)]);
-        }
-      } else if (key !== 'instrumentIds') rows.push([label(key), scalar(value)]);
+      }
     }
-    if (rows.length) { autoTable(doc, { startY: y, body: rows, margin: { left: PAGE_MARGIN, right: PAGE_MARGIN }, styles: { fontSize: 8, cellPadding: 2 }, columnStyles: { 0: { fontStyle: 'bold', cellWidth: 58 } } }); y = (doc as any).lastAutoTable.finalY + 8; }
+
+    if (rows.length) {
+      autoTable(doc, {
+        startY: y,
+        body: rows,
+        margin: { left: PAGE_MARGIN, right: PAGE_MARGIN },
+        styles: { fontSize: 8, cellPadding: 2 },
+        columnStyles: { 0: { fontStyle: 'bold', cellWidth: 58 } },
+      });
+      y = (doc as any).lastAutoTable.finalY + 8;
+    }
   }
+
   if (y > 265) { doc.addPage(); y = PAGE_MARGIN; }
   doc.setFontSize(8); doc.setFont('helvetica', 'italic'); doc.text(doc.splitTextToSize(representation.disclaimer, 174), PAGE_MARGIN, y);
   doc.save(`protocolo-iluminacion-${representation.documentId}.pdf`);

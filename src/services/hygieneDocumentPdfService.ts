@@ -17,7 +17,7 @@ function label(key: string): string {
     averageLux: 'Iluminancia promedio (lux)', minimumLux: 'Iluminancia mínima (lux)', maximumLux: 'Iluminancia máxima (lux)',
     uniformityMinimumLux: 'E mínima (lux)', uniformityThresholdLux: 'Umbral de uniformidad E media/2 (lux)',
     uniformityMinOverAverage: 'Relación E mínima / E media', uniformityPasses: 'Uniformidad E mínima ≥ E media/2',
-    uniformityRatio: 'Uniformidad histórica (campo legado)', calculationVersion: 'Versión del cálculo', calculatedAt: 'Calculado el',
+    calculationVersion: 'Versión del cálculo', calculatedAt: 'Calculado el',
     sourceType: 'Tipo de iluminación', lightingSystem: 'Sistema de iluminación', taskDescription: 'Descripción de tarea',
     startTime: 'Hora de inicio', endTime: 'Hora de finalización', methodology: 'Metodología',
     atmosphericConditions: 'Condiciones atmosféricas', workplaceConditions: 'Condiciones habituales del puesto',
@@ -25,7 +25,7 @@ function label(key: string): string {
     documentId: 'Documento', generatedAt: 'Fecha de generación', generatedBy: 'Generado por', templateKey: 'Plantilla', templateVersion: 'Versión de plantilla',
     id: 'Identificador', authority: 'Autoridad', resolution: 'Resolución', year: 'Año', title: 'Título', sourceUrl: 'Fuente oficial',
     selectedCriterionId: 'Criterio seleccionado', requiredLux: 'Lux requeridos', reference: 'Referencia normativa', version: 'Versión normativa',
-    evaluatedAt: 'Evaluado el', status: 'Estado de evaluación',
+    evaluatedAt: 'Evaluado el', status: 'Estado', instrumentSnapshotAvailable: 'Snapshot de instrumento', normativeSnapshotAvailable: 'Snapshot normativo',
   };
   return labels[key] ?? key.replace(/([A-Z])/g, ' $1').replace(/^./, c => c.toUpperCase());
 }
@@ -62,7 +62,7 @@ export function exportLightingDocumentPdf(representation: HygieneDocumentReprese
     }
 
     const rows: string[][] = [];
-    if (section.key === 'normative_evaluation') {
+    if (section.key === 'normative') {
       const data = section.data;
       rows.push(['Referencia normativa', scalar(data.reference)]);
       rows.push(['Versión normativa', scalar(data.version)]);
@@ -89,7 +89,7 @@ export function exportLightingDocumentPdf(representation: HygieneDocumentReprese
           for (const [campaignKey, campaignValue] of Object.entries(value as Record<string, unknown>)) {
             rows.push([label(campaignKey), scalar(campaignValue)]);
           }
-        } else if (key !== 'instrumentIds') {
+        } else if (key !== 'instrumentIds' && key !== 'points') {
           rows.push([label(key), scalar(value)]);
         }
       }

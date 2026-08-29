@@ -587,3 +587,48 @@ No se agregó hygiene:delete. Las mediciones profesionales requieren trazabilida
 ### Próxima implementación
 
 Crear schemas estrictos de validación para instrumentos y para el contexto común de una medición, reutilizando Zod y el patrón de rutas API v2 existente. Después se implementará hygieneRoutes y la persistencia mediante Firebase Admin.
+
+
+## 2026-08-29 — Implementación: validación estricta de API para Higiene
+
+### Cambio realizado
+
+Se agregaron schemas Zod estrictos al núcleo de validación del backend:
+
+- hygieneMeasurementContextSchema
+- createHygieneInstrumentSchema
+- updateHygieneInstrumentSchema
+- createHygieneMeasurementSchema
+- updateHygieneMeasurementSchema
+
+También se definieron enums controlados para:
+
+- estado de medición;
+- estado de instrumento;
+- categoría de instrumento.
+
+### Estados de medición
+
+- draft
+- in_progress
+- pending_review
+- validated
+- closed
+- cancelled
+- archived
+
+### Decisiones
+
+- Los schemas usan strict() para rechazar campos inesperados.
+- Los IDs y strings técnicos tienen límites explícitos.
+- rawData queda como contenedor temporal controlado por protocolo, pero los protocolos concretos reemplazarán progresivamente esa entrada genérica por schemas especializados.
+- La creación exige al menos un instrumento.
+- El contexto exige empresa y establecimiento; sector, puesto y empleado permanecen opcionales según el tipo de medición.
+
+### Commit
+
+- 4469ef8259bcf6ba617480495fa3b002353186e6 — feat(hygiene): add strict API validation schemas
+
+### Próxima acción
+
+Implementar el servicio backend de Higiene con Firebase Admin, trazabilidad y aislamiento por organizationId. Luego crear hygieneRoutes reutilizando requireAuth, requireTenantContext, requirePermission y los guards jerárquicos existentes.

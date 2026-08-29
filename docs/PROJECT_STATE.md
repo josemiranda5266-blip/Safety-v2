@@ -717,3 +717,41 @@ También se valida que cada instrumento pertenezca al tenant y no esté retirado
 ### Próxima acción
 
 Auditar y corregir el cliente `src/services/hygieneService.ts` para migrarlo de acceso directo a Firestore/localStorage hacia la nueva API. Después se evolucionará la UI para trabajar con el modelo multi-tenant.
+
+
+## 2026-08-29 — Implementación: migración del cliente de Higiene a API protegida
+
+### Cambio realizado
+
+Se refactorizó `src/services/hygieneService.ts`.
+
+Se eliminó de este servicio el acceso directo del frontend a:
+
+- Firestore client SDK;
+- colecciones organizations/{orgId}/hygieneMeasurements;
+- colecciones organizations/{orgId}/hygieneInstruments;
+- auditService del cliente;
+- lectura del tenant desde localStorage como fuente de autoridad.
+
+El servicio ahora utiliza:
+
+- Firebase Auth para obtener el ID token del usuario autenticado;
+- Authorization Bearer;
+- /api/v2/hygiene;
+- tenant context resuelto por el backend.
+
+### Compatibilidad temporal
+
+Las interfaces UI existentes `HygieneMeasurement` y `HygieneInstrument` siguen siendo utilizadas mediante adaptadores de API. Esto permite migrar la persistencia sin romper inmediatamente las pantallas legacy.
+
+### Deuda técnica identificada
+
+Los tipos de frontend son más pobres que el modelo backend. La siguiente evolución debe reemplazar los adaptadores legacy por DTOs profesionales compartidos o tipos de dominio del cliente.
+
+### Commit
+
+- a9e99ea47841733527382bc47a2e0f6ed087a882 — refactor(hygiene): migrate frontend service to protected v2 API
+
+### Próxima acción
+
+Auditar todas las pantallas y componentes que consumen hygieneService. Identificar dependencias del modelo legacy y evolucionar primero los tipos del frontend, evitando que category, instrumentType, status, lifecycle y trazabilidad permanezcan ocultos detrás de adaptadores temporales.

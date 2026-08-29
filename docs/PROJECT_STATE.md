@@ -1487,3 +1487,37 @@ LightingMeasurementEditor muestra el panel cuando la medición está validated. 
 ### Próxima acción
 
 Diseñar el contenido estructurado de la plantilla de Iluminación v1.0.0 y crear una representación reproducible del documento antes de elegir el motor de PDF. Debe incluir encabezado, identificación, contexto, instrumento, puntos, indicadores, referencia normativa, evaluación asistida y bloque explícito de revisión profesional.
+
+
+## 2026-08-29 — Plantilla estructurada: Iluminación v1.0.0
+
+Se incorporó una capa de representación documental independiente del almacenamiento y del futuro formato PDF.
+
+### Principio
+
+El documento generado conserva el snapshot. La representación interpreta ese snapshot mediante una plantilla identificada por templateKey/templateVersion. Esto permite cambiar el renderizador futuro sin recalcular ni consultar nuevamente la medición original.
+
+### Iluminación
+
+buildLightingDocumentRepresentation produce secciones estructuradas para: identificación documental, empresa/contexto, datos técnicos y puntos de medición, instrumentación, referencia normativa y evaluación, revisión profesional y trazabilidad.
+
+Incluye un disclaimer explícito: el documento es apoyo técnico/documental y no reemplaza la interpretación, validación ni firma profesional competente.
+
+### API
+
+GET /generated-documents/:documentId/representation requiere document:read, verifica aislamiento por organización y actualmente soporta protocolo lighting.
+
+### Frontend API
+
+hygieneService.getDocumentRepresentation(documentId) permite consumir la representación desde la interfaz.
+
+### Commits
+
+- 001020d6d944f55924abf514e8f28b9f8e20db0b — feat(hygiene): add structured lighting document representation
+- f0d1ba1b049f1845818f3de719c34ed167bc5f57 — feat(hygiene): add generated document lookup for safe rendering
+- 7e8c2be63056f1965a1f8c6ef13f4302d3ce9c93 — feat(hygiene): expose structured lighting document representation
+- 18b733b147f97768cceea828f850f2466a275882 — feat(hygiene): expose document representation to frontend
+
+### Próxima acción
+
+Crear el visor documental de Iluminación en frontend utilizando esta representación y separarlo del futuro exportador. Luego definir el adaptador PDF como una fase posterior sobre la misma representación.

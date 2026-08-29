@@ -7,61 +7,52 @@
 
 ---
 
-## 2026-08-29 — Contrato reutilizable de representación documental
+## 2026-08-29 — Plantilla declarativa de documentos
 
 ### Objetivo
 
-Separar la representación documental de la implementación concreta del visor React y preparar una única estructura reutilizable por Web y futuros exportadores PDF.
-
-### Hallazgo
-
-El visor de Iluminación definía localmente sus interfaces `Section` y `Representation`. Eso acoplaba el contrato documental a un componente de presentación y obligaba a duplicar tipos cuando se incorporaran otros renderizadores.
+Hacer que la definición de un documento profesional sea independiente del visor React y del futuro exportador PDF.
 
 ### Corrección realizada
 
-Se creó `src/types/hygieneDocument.ts` con los contratos `HygieneDocumentSection` y `HygieneDocumentRepresentation`.
+Se amplió `src/types/hygieneDocument.ts` con `HygieneDocumentField` y `HygieneDocumentTemplate`.
 
-`LightingDocumentViewer.tsx` ahora consume ese contrato mediante import type. El componente conserva únicamente tipos específicos de presentación, como la forma del snapshot de instrumento utilizado por su tabla.
+Se creó `src/config/hygieneDocumentTemplates.ts` con `LIGHTING_DOCUMENT_TEMPLATE` v1.0.0. La plantilla define su clave, versión, título y orden de secciones.
+
+`buildLightingDocumentRepresentation` ahora valida la plantilla soportada y utiliza el orden declarado por la plantilla en lugar de asumir que el orden del array interno es la especificación documental.
 
 ### Resultado arquitectónico
-
-La separación queda:
 
 ```text
 SNAPSHOT DOCUMENTAL
         ↓
-REPRESENTACIÓN DOCUMENTAL
+TEMPLATE KEY + VERSION
+        ↓
+REPRESENTACIÓN
         ↓
 ┌──────────────────┬──────────────────┐
 │ VISOR WEB        │ FUTURO PDF        │
 └──────────────────┴──────────────────┘
 ```
 
-El contrato no depende de React ni de un motor de PDF.
-
-### Cambios realizados
-
-- Creado `src/types/hygieneDocument.ts`.
-- Refactorizado `src/components/Console/Hygiene/LightingDocumentViewer.tsx` para consumir el contrato compartido.
-
 ### Commits
 
-- `b2bb3c74e77d545076314d55e2a91ba10587f1ac` — refactor(hygiene): add reusable document representation contract
-- `f1d956f0b0e5078166d6172c869a6c2b075f0c72` — refactor(hygiene): consume shared document representation contract
+- `b8bd60400eee581ba46f24dd804308d290dc4a2c` — refactor(hygiene): define shared document template contract
+- `c4a1f0c0d53f7d7b74b57debc952de54612bf9e2` — feat(hygiene): add declarative lighting document template
+- `614d9f48f546924a330dac49b9d199d1c4433770` — refactor(hygiene): drive lighting representation from shared template
+- `02dba70dfde9de523b9c1b983ae66bda68c50777` — fix(hygiene): type document representation service contract
 
-### Nota
+### Estado
 
-Se intentó tipar también el método de servicio frontend `getDocumentRepresentation`, pero la actualización concurrente del archivo fue rechazada por un SHA obsoleto. No se considera necesario reintentar esa modificación sin volver a leer el archivo; el visor ya consume el contrato explícitamente y el backend mantiene su propia interfaz compatible.
+La arquitectura documental de Iluminación ya tiene contrato compartido, plantilla versionada y representación ordenada por esa plantilla. El frontend consume el contrato tipado.
 
 ### Próxima acción
 
-Construir un esquema de plantilla específico para Iluminación que describa secciones, campos y tablas de manera declarativa. Ese esquema será la fuente de presentación para Web/PDF y permitirá incorporar posteriormente Ruido y Puesta a Tierra sin duplicar la arquitectura documental.
+Preparar el adaptador de exportación PDF sobre `HygieneDocumentRepresentation`, sin consultar nuevamente la medición ni ejecutar cálculos. Antes de eso, revisar el contrato PDF existente y reutilizar las dependencias ya presentes en el proyecto.
 
 ---
 
 ## Estado funcional acumulado
-
-La cadena de Iluminación actualmente alcanza:
 
 ```text
 CAPTURA
@@ -80,6 +71,8 @@ SNAPSHOT
   ↓
 DOCUMENTO VERSIONADO
   ↓
+PLANTILLA DECLARATIVA
+  ↓
 REPRESENTACIÓN ESTRUCTURADA
   ↓
 VISOR WEB
@@ -95,15 +88,15 @@ VISOR WEB
 - Nuevos datos críticos con backend como fuente de verdad.
 - No convertir `db.ts` en servicio universal.
 - Registrar cada fase relevante en este documento.
+- No introducir PDF ni firma como fuente de verdad del documento.
 
 ### Próximas fases prioritarias
 
-1. Esquema declarativo de plantilla de Iluminación.
-2. Exportación PDF basada en la misma representación, sin recalcular.
-3. Consolidación del catálogo normativo estructurado.
-4. Protocolo de Ruido.
-5. Protocolo de Puesta a Tierra.
-6. Integración medición → hallazgo → acción correctiva.
-7. Alertas de calibración y vencimientos.
-8. Matriz integral de mediciones por empresa.
-9. Gestión comercial de alquiler después de consolidar inventario técnico.
+1. Adaptador PDF de Iluminación basado en representación.
+2. Consolidación del catálogo normativo estructurado.
+3. Protocolo de Ruido.
+4. Protocolo de Puesta a Tierra.
+5. Integración medición → hallazgo → acción correctiva.
+6. Alertas de calibración y vencimientos.
+7. Matriz integral de mediciones por empresa.
+8. Gestión comercial de alquiler después de consolidar inventario técnico.

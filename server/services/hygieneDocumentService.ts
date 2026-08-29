@@ -54,3 +54,35 @@ export async function listGeneratedDocuments(orgId: string, measurementId?: stri
   const snapshot = await query.get();
   return snapshot.docs.map((doc) => ({ id: doc.id, ...doc.data() } as HygieneGeneratedDocument));
 }
+
+export interface LightingDocumentSection { key: string; title: string; data: Record<string, unknown>; }
+export interface LightingDocumentRepresentation {
+  documentId: string; templateKey: "lighting_protocol"; templateVersion: string;
+  generatedAt: string; sections: LightingDocumentSection[];
+  disclaimer: string;
+}
+
+export function buildLightingDocumentRepresentation(document: HygieneGeneratedDocument): LightingDocumentRepresentation {
+  if (document.protocolType !== "lighting") throw new Error("DOCUMENT_PROTOCOL_NOT_LIGHTING");
+  const snapshot = document.measurementSnapshot;
+  const context = snapshot.context as unknown as Record<string, unknown>;
+  const raw = snapshot.rawData ?? {};
+  const normative = snapshot.normativeEvaluationSnapshot as unknown as Record<string, unknown> | undefined;
+  const review = snapshot.review as unknown as Record<string, unknown> | undefined;
+  return {
+    documentId: document.id,
+    templateKey: "lighting_protocol",
+    templateVersion: document.templateVersion,
+    generatedAt: document.generatedAt,
+    sections: [
+      { key: "identification", title: "Identificación documental", data: { measurementId: snapshot.id, protocolType: snapshot.protocolType, measurementDate: snapshot.measurementDate } },
+      { key: "context", title: "Empresa y contexto de la medición", data: context },
+      { key: "technical", title: "Datos técnicos y puntos de medición", data: raw },
+      { key: "instruments", title: "Instrumentación", data: { instrumentIds: snapshot.instrumentIds } },
+      { key: "normative", title: "Referencia normativa y evaluación", data: normative ?? {} },
+      { key: "professional_review", title: "Revisión profesional", data: review ?? {} },
+      { key: "traceability", title: "Trazabilidad", data: { documentId: document.id, generatedAt: document.generatedAt, generatedBy: document.generatedBy, templateKey: document.templateKey, templateVersion: document.templateVersion } },
+    ],
+    disclaimer: "Documento generado como apoyo técnico y documental. La interpretación, validación profesional y firma que eventualmente corresponda permanecen bajo responsabilidad del profesional competente.",
+  };
+}

@@ -40,9 +40,33 @@ export async function updateMeasurementWithAudit(
 ) {
   const before = await hygieneService.getMeasurementById(id, orgId);
   if (!before) return undefined;
-  const measurement = await hygieneService.updateMeasurement(id, orgId, actorId, updates);
+
+  let effectiveUpdates = { ...updates };
+  if (updates.status === "validated" && !before.instrumentSnapshots?.length) {
+    const capturedAt = new Date().toISOString();
+    const instrumentSnapshots: hygieneService.HygieneInstrumentSnapshot[] = [];
+    for (const instrumentId of before.instrumentIds) {
+      const instrument = await hygieneService.getInstrumentById(instrumentId, orgId);
+      if (!instrument) throw new Error(`INSTRUMENT_NOT_FOUND:${instrumentId}`);
+      instrumentSnapshots.push({
+        id: instrument.id,
+        category: instrument.category,
+        instrumentType: instrument.instrumentType,
+        brand: instrument.brand,
+        model: instrument.model,
+        serialNumber: instrument.serialNumber,
+        calibrationDate: instrument.calibrationDate ?? null,
+        calibrationExpiry: instrument.calibrationExpiry ?? null,
+        certificateUrl: instrument.certificateUrl ?? null,
+        capturedAt,
+      });
+    }
+    effectiveUpdates = { ...effectiveUpdates, instrumentSnapshots };
+  }
+
+  const measurement = await hygieneService.updateMeasurement(id, orgId, actorId, effectiveUpdates);
   if (!measurement) return undefined;
-  const changed = Object.keys(updates);
+  const changed = Object.keys(effectiveUpdates);
   await audit.recordMeasurementAuditEvent({
     orgId,
     measurementId: id,

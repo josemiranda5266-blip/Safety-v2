@@ -10,7 +10,7 @@
     "preview": "vite preview",
     "clean": "rm -rf dist server.cjs",
     "lint": "tsc --noEmit",
-    "test": "tsx server/tests/tenantAuth.test.ts && vitest run src/services/lightingDocumentMapper.test.ts"
+    "test": "tsx server/tests/tenantAuth.test.ts && vitest run src/services/lightingDocumentMapper.test.ts src/services/lightingMeasurement.test.ts"
   },
   "dependencies": {
     "@google/genai": "^2.4.0",

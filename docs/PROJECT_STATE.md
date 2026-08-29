@@ -668,3 +668,52 @@ Por el momento se utiliza una colección de nivel raíz con aislamiento obligato
 ### Próxima acción
 
 Implementar `server/routes/hygieneRoutes.ts` con autenticación, tenant context, permisos y validación jerárquica de company/establishment antes de crear o exponer mediciones.
+
+
+## 2026-08-29 — Implementación: API protegida y validación jerárquica de Higiene
+
+### Cambio realizado
+
+Se creó `server/routes/hygieneRoutes.ts` y se registró en `server.ts` bajo:
+
+- /api/v2/hygiene
+
+### Endpoints iniciales
+
+Instrumentos:
+
+- GET /instruments
+- GET /instruments/:id
+- POST /instruments
+- PATCH /instruments/:id
+
+Mediciones:
+
+- GET /measurements
+- GET /measurements/:id
+- POST /measurements
+- PATCH /measurements/:id
+
+### Seguridad aplicada
+
+Todas las rutas utilizan:
+
+- requireAuth
+- requireTenantContext
+- requirePermission
+- aislamiento por orgId
+
+La creación de mediciones verifica la jerarquía real:
+
+Organization -> Company -> Establishment -> Sector? -> Position? -> Employee?
+
+También se valida que cada instrumento pertenezca al tenant y no esté retirado ni fuera de servicio antes de asociarlo a una medición.
+
+### Commits
+
+- 35d94cfd1ada67afc24128ab8039ff986c629712 — feat(hygiene): add protected API routes and hierarchy validation
+- 8995fe61fe77c065bd8b70788a781eb3e99b9dba — feat(hygiene): register protected v2 hygiene routes
+
+### Próxima acción
+
+Auditar y corregir el cliente `src/services/hygieneService.ts` para migrarlo de acceso directo a Firestore/localStorage hacia la nueva API. Después se evolucionará la UI para trabajar con el modelo multi-tenant.

@@ -39,9 +39,11 @@
 - Se detectó que el backend recibía `rawData` genérico y podía confiar en métricas calculadas por el cliente.
 - Se añadió normalización condicional en `updateMeasurementWithAudit()` para mediciones cuyo `protocolType` existente es `lighting`.
 - Cuando cambia `rawData.lighting`, el servidor valida los puntos mínimos, recalcula las métricas con `calculateLightingMeasurement()` y reemplaza los indicadores enviados por el cliente.
+- Se endureció el cálculo canónico: una lectura `lux` no finita o negativa ahora se rechaza en lugar de descartarse silenciosamente.
 - Otros protocolos mantienen el comportamiento genérico actual.
 - La normalización no se ejecuta si el PATCH no toca `rawData.lighting`, evitando recalcular registros históricos innecesariamente.
-- La compilación real y las pruebas específicas de manipulación siguen pendientes antes de declarar esta barrera verificada.
+- Se añadió `src/services/lightingMeasurement.test.ts` con cobertura del cálculo, rechazo de Lux negativo y rechazo de lecturas no finitas.
+- La barrera está implementada en código, pero ejecución real de tests/lint/build y prueba end-to-end siguen pendientes.
 
 ### Reproducibilidad
 - Package manager canónico: npm.
@@ -55,6 +57,7 @@
 
 ### Estado actual de Iluminación
 - Cálculo SRT 84/2012: implementado.
+- Validación física de lecturas Lux: implementada en cálculo canónico.
 - Modelo documental: implementado.
 - Captura documental: implementada.
 - Mapper: implementado y alineado con template.
@@ -62,6 +65,7 @@
 - Snapshot normativo: implementado y protegido contra mutación post-validación.
 - Snapshot de instrumentos: implementado y exigido para generación documental.
 - Integridad de mediciones validadas: protegida en schema + servicio.
+- Integridad de métricas de iluminación frente a manipulación del cliente: protegida en workflow.
 - Tests específicos: presentes; ejecución real pendiente.
 - Persistencia/reconstrucción end-to-end: pendiente de ejecución real.
 - Web: pendiente.

@@ -17,8 +17,7 @@ export function mapLightingMeasurementToDocument(
   const snapshot = measurement.normativeEvaluationSnapshot;
 
   const uniformityPasses =
-    typeof lighting.minimumLux === 'number' &&
-    typeof lighting.uniformityThresholdLux === 'number'
+    typeof lighting.minimumLux === 'number' && typeof lighting.uniformityThresholdLux === 'number'
       ? lighting.minimumLux >= lighting.uniformityThresholdLux
       : undefined;
 
@@ -38,49 +37,40 @@ export function mapLightingMeasurementToDocument(
 
   const sections = [
     {
-      key: 'identification',
-      title: 'Identificación',
-      data: {
+      key: 'identification', title: 'Identificación', data: {
         measurementId: measurement.id,
         protocolType: measurement.protocolType,
         measurementDate: measurement.measurementDate,
+      }
+    },
+    {
+      key: 'context', title: 'Contexto de la medición', data: {
         companyId: measurement.context.companyId,
         establishmentId: measurement.context.establishmentId,
         sectorId: measurement.context.sectorId,
         positionId: measurement.context.positionId,
         employeeId: measurement.context.employeeId,
-      },
-    },
-    {
-      key: 'context',
-      title: 'Contexto de la medición',
-      data: {
         campaign,
         sourceType: lighting.sourceType,
         lightingSystem: lighting.lightingSystem,
         taskDescription: lighting.taskDescription,
-      },
+      }
     },
     {
-      key: 'technical',
-      title: 'Condiciones técnicas',
-      data: {
+      key: 'technical', title: 'Información técnica', data: {
         methodology: campaign.methodology,
+        startTime: campaign.startTime,
+        endTime: campaign.endTime,
         atmosphericConditions: campaign.atmosphericConditions,
         workplaceConditions: campaign.workplaceConditions,
         planOrSketchUrl: campaign.planOrSketchUrl,
+        calibrationCertificateUrl: campaign.calibrationCertificateUrl,
         observations: campaign.observations,
-      },
+      }
     },
+    { key: 'measurement_points', title: 'Puntos de medición', data: { points } },
     {
-      key: 'measurement_points',
-      title: 'Puntos de medición',
-      data: { points },
-    },
-    {
-      key: 'indicators',
-      title: 'Indicadores y cálculos',
-      data: {
+      key: 'indicators', title: 'Indicadores y cálculos', data: {
         averageLux: lighting.averageLux,
         minimumLux: lighting.minimumLux,
         maximumLux: lighting.maximumLux,
@@ -90,47 +80,37 @@ export function mapLightingMeasurementToDocument(
         uniformityPasses,
         calculationVersion: lighting.calculationVersion,
         calculatedAt: lighting.calculatedAt,
-      },
+      }
     },
     {
-      key: 'instruments',
-      title: 'Instrumentación',
-      data: {
+      key: 'instruments', title: 'Instrumentación', data: {
         instruments: resolvedInstruments.length > 0 ? resolvedInstruments : fallbackInstruments,
         instrumentIds: measurement.instrumentIds,
         snapshotAvailable: resolvedInstruments.length === measurement.instrumentIds.length,
-      },
+      }
     },
     {
-      key: 'normative',
-      title: 'Evaluación normativa',
-      data: snapshot
-        ? {
-            normativeProtocolVersionId: snapshot.normativeProtocolVersionId,
-            reference: snapshot.reference,
-            version: snapshot.version,
-            evaluatedAt: snapshot.evaluatedAt,
-            selectedCriterionId: snapshot.selectedCriterionId,
-            criteriaSnapshot: snapshot.criteriaSnapshot,
-          }
-        : { status: 'not_available' },
+      key: 'normative', title: 'Evaluación normativa', data: snapshot ? {
+        normativeProtocolVersionId: snapshot.normativeProtocolVersionId,
+        reference: snapshot.reference,
+        version: snapshot.version,
+        evaluatedAt: snapshot.evaluatedAt,
+        selectedCriterionId: snapshot.selectedCriterionId,
+        criteriaSnapshot: snapshot.criteriaSnapshot,
+      } : { status: 'not_available' }
     },
     {
-      key: 'professional_review',
-      title: 'Revisión profesional',
-      data: {
+      key: 'professional_review', title: 'Revisión profesional', data: {
         status: measurement.status,
         notes: measurement.notes,
-      },
+      }
     },
     {
-      key: 'traceability',
-      title: 'Trazabilidad',
-      data: {
+      key: 'traceability', title: 'Trazabilidad', data: {
         documentSourceMeasurementId: measurement.id,
         instrumentSnapshotAvailable: (measurement.instrumentSnapshots ?? []).length > 0,
         normativeSnapshotAvailable: Boolean(snapshot),
-      },
+      }
     },
   ];
 

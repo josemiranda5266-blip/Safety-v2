@@ -6,6 +6,7 @@ import * as hygieneService from "../services/hygieneService";
 import { getNormativeProtocolVersion } from "../services/normativeCatalogService";
 import * as hygieneWorkflowService from "../services/hygieneMeasurementWorkflowService";
 import * as hygieneAuditService from "../services/hygieneAuditService";
+import * as hygieneDocumentService from "../services/hygieneDocumentService";
 import { validateMeasurementForSubmission } from "../services/hygieneSubmissionService";
 import * as companyService from "../services/companyService";
 import * as establishmentService from "../services/establishmentService";
@@ -152,6 +153,26 @@ router.post("/measurements/:id/review", requirePermission("hygiene:review"), asy
     metadata: { comments: comments || null, decision },
   });
   res.json({ measurement: updated });
+});
+
+router.get("/measurements/:id/generated-documents", requirePermission("document:read"), async (req: TenantRequest, res: Response) => {
+  const context = req.authContext!;
+  const measurement = await hygieneService.getMeasurementById(req.params.id, context.orgId);
+  if (!measurement) return res.status(404).json({ error: "Medición no encontrada", code: "MEASUREMENT_NOT_FOUND" });
+  const documents = await hygieneDocumentService.listGeneratedDocuments(context.orgId, measurement.id);
+  res.json({ documents });
+});
+
+router.post("/measurements/:id/generated-documents", requirePermission("document:create"), async (req: TenantRequest, res: Response) => {
+  const context = req.authContext!;
+  const measurement = await hygieneService.getMeasurementById(req.params.id, context.orgId);
+  if (!measurement) return res.status(404).json({ error: "Medición no encontrada", code: "MEASUREMENT_NOT_FOUND" });
+  if (measurement.status !== "validated") return res.status(409).json({ error: "Solo una medición validada puede generar documentos", code: "MEASUREMENT_NOT_VALIDATED" });
+  const templateKey = typeof req.body?.templateKey === "string" && req.body.templateKey.trim() ? req.body.templateKey.trim() : measurement.protocolType + "_protocol";
+  const templateVersion = typeof req.body?.templateVersion === "string" && req.body.templateVersion.trim() ? req.body.templateVersion.trim() : "1.0.0";
+  const document = await hygieneDocumentService.createGeneratedDocument({ measurement, generatedBy: context.userId, templateKey, templateVersion });
+  await hygieneAuditService.recordMeasurementAuditEvent({ orgId: context.orgId, measurementId: measurement.id, actorId: context.userId, type: "updated", fromStatus: measurement.status, toStatus: measurement.status, metadata: { action: "generated_document_created", documentId: document.id, templateKey, templateVersion } });
+  res.status(201).json({ document });
 });
 
 router.post("/measurements/:id/normative-snapshot", requirePermission("hygiene:update"), async (req: TenantRequest, res: Response) => {

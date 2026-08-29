@@ -1,21 +1,35 @@
 import { CreateLightingMeasurementData, LightingMeasurementData, LightingMeasurementPoint } from '../types/safety';
 
-function round(value: number): number { return Math.round(value * 100) / 100; }
+function round(value: number): number {
+  return Math.round(value * 100) / 100;
+}
 
+/**
+ * Calculates the SRT 84/2012 lighting metrics from the complete set of
+ * valid lux readings in the campaign.
+ *
+ * Uniformity is NOT minimum/maximum. The regulatory relationship is:
+ * E mínima >= E media / 2.
+ */
 export function calculateLightingMeasurement(input: CreateLightingMeasurementData): LightingMeasurementData {
-  const values = input.points.map((point) => Number(point.lux)).filter((value) => Number.isFinite(value));
-  if (values.length === 0) throw new Error('Se requiere al menos un punto de medición válido.');
+  const points: LightingMeasurementPoint[] = input.points
+    .map((point, index) => ({
+      ...point,
+      id: `lighting-point-${index + 1}`,
+      lux: Number(point.lux),
+    }))
+    .filter((point) => Number.isFinite(point.lux));
 
+  if (points.length === 0) {
+    throw new Error('Se requiere al menos un punto de medición válido.');
+  }
+
+  const values = points.map((point) => point.lux);
   const averageLux = round(values.reduce((sum, value) => sum + value, 0) / values.length);
   const minimumLux = round(Math.min(...values));
   const maximumLux = round(Math.max(...values));
-  const uniformityRatio = maximumLux > 0 ? round(minimumLux / maximumLux) : undefined;
-
-  const points: LightingMeasurementPoint[] = input.points.map((point, index) => ({
-    ...point,
-    id: `lighting-point-${index + 1}`,
-    lux: Number(point.lux),
-  }));
+  const uniformityThresholdLux = round(averageLux / 2);
+  const uniformityMinOverAverage = averageLux > 0 ? round(minimumLux / averageLux) : undefined;
 
   return {
     sourceType: input.sourceType,
@@ -25,8 +39,10 @@ export function calculateLightingMeasurement(input: CreateLightingMeasurementDat
     averageLux,
     minimumLux,
     maximumLux,
-    uniformityRatio,
-    calculationVersion: 'lighting-v1',
+    uniformityMinimumLux: minimumLux,
+    uniformityThresholdLux,
+    uniformityMinOverAverage,
+    calculationVersion: 'lighting-v2-srt84-uniformity',
     calculatedAt: new Date().toISOString(),
   };
 }

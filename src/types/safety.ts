@@ -494,6 +494,60 @@ export interface CreateHygieneMeasurementInput {
   notes?: string;
 }
 
+// ----------------------------------------------------
+// PROTOCOLOS ESPECÍFICOS DE HIGIENE
+// ----------------------------------------------------
+
+export type HygieneProtocolType =
+  | 'lighting'
+  | 'noise'
+  | 'grounding'
+  | 'thermal_stress'
+  | 'vibration'
+  | 'chemical';
+
+export type LightingSourceType = 'natural' | 'artificial' | 'mixed';
+export type LightingPointType = 'general' | 'work_surface' | 'task_area' | 'other';
+
+export interface LightingMeasurementPoint {
+  id: string;
+  name: string;
+  pointType: LightingPointType;
+  lux: number;
+  locationDescription?: string;
+  observations?: string;
+}
+
+export interface LightingMeasurementData {
+  sourceType: LightingSourceType;
+  lightingSystem?: string;
+  taskDescription?: string;
+  points: LightingMeasurementPoint[];
+  averageLux?: number;
+  minimumLux?: number;
+  maximumLux?: number;
+  uniformityRatio?: number;
+  calculationVersion: string;
+  calculatedAt?: string;
+}
+
+export interface CreateLightingMeasurementData {
+  sourceType: LightingSourceType;
+  lightingSystem?: string;
+  taskDescription?: string;
+  points: Array<Omit<LightingMeasurementPoint, 'id'>>;
+}
+
+export interface HygieneProtocolEvaluation {
+  protocolType: HygieneProtocolType;
+  normativeReference?: string;
+  normativeVersion?: string;
+  sourceDocumentId?: string;
+  evaluatedAt?: string;
+  result?: 'pending' | 'informative' | 'requires_professional_review';
+  professionalConclusion?: string;
+}
+
 export interface Investigation {
   immediateCauses: string[];
   basicCauses: string[];

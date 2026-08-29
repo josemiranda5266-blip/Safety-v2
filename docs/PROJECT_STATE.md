@@ -1460,3 +1460,30 @@ Esta fase crea la entidad documental y su snapshot, pero todavía no produce un 
 ### Próxima acción
 
 Integrar la entidad generada al frontend y diseñar una representación documental específica para Iluminación. Después definir un renderizador de plantilla versionada y un formato de salida, manteniendo separados datos técnicos, contenido generado y cualquier futura firma profesional.
+
+
+## 2026-08-29 — Integración visual de documentos generados
+
+Se conectó la arquitectura documental con el frontend.
+
+### Frontend API
+
+src/services/hygieneService.ts ahora expone getGeneratedDocuments(id) y generateDocument(id, templateKey?, templateVersion?).
+
+### Nuevo componente
+
+src/components/Console/Hygiene/GeneratedDocumentsPanel.tsx muestra documentos existentes, versión de plantilla, fecha de generación, estado e identificador. La generación solo se ofrece visualmente cuando la medición está validated; el servidor mantiene la misma restricción como control autoritativo.
+
+### Integración inicial
+
+LightingMeasurementEditor muestra el panel cuando la medición está validated. Esto mantiene el flujo en una sola experiencia: captura -> revisión -> validación -> documento.
+
+### Commits
+
+- 65aae03588de4556398a04fc2a4b45eda5eaa4b3 — feat(hygiene): expose generated document API to frontend
+- f9b8faa5dec0bf4f8cbf5d36ab7f758647d4063a — feat(hygiene): add generated documents frontend panel
+- 33a578a0ab095b946a16ebcc2bdd6bdb2cbbf373 — feat(hygiene): surface generated documents in validated lighting workflow
+
+### Próxima acción
+
+Diseñar el contenido estructurado de la plantilla de Iluminación v1.0.0 y crear una representación reproducible del documento antes de elegir el motor de PDF. Debe incluir encabezado, identificación, contexto, instrumento, puntos, indicadores, referencia normativa, evaluación asistida y bloque explícito de revisión profesional.

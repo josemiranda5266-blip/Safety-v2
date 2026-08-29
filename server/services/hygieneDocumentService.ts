@@ -1,6 +1,7 @@
 import { getAdminFirestore } from "../auth/firestoreAdmin";
 import * as hygieneService from "./hygieneService";
 import { LIGHTING_DOCUMENT_TEMPLATE } from "../../src/config/hygieneDocumentTemplates";
+import { getSrtReference } from "../../src/config/srtRegulatoryCatalog";
 import type { HygieneDocumentRepresentation } from "../../src/types/hygieneDocument";
 
 export type HygieneGeneratedDocumentStatus = "generated" | "superseded" | "archived";
@@ -21,6 +22,8 @@ export async function listGeneratedDocuments(orgId: string, measurementId?: stri
 export function buildLightingDocumentRepresentation(document: HygieneGeneratedDocument): HygieneDocumentRepresentation {
   if (document.protocolType !== "lighting") throw new Error("DOCUMENT_PROTOCOL_NOT_LIGHTING");
   if (document.templateKey !== LIGHTING_DOCUMENT_TEMPLATE.key || document.templateVersion !== LIGHTING_DOCUMENT_TEMPLATE.version) throw new Error("DOCUMENT_TEMPLATE_NOT_SUPPORTED");
+  const regulatoryReference = getSrtReference(document.protocolType);
+  if (!regulatoryReference || regulatoryReference.id !== LIGHTING_DOCUMENT_TEMPLATE.regulatoryReferenceId) throw new Error("REGULATORY_REFERENCE_NOT_CONFIGURED");
   const snapshot = document.measurementSnapshot; const context = snapshot.context as unknown as Record<string, unknown>; const raw = snapshot.rawData ?? {}; const lighting = (raw.lighting ?? raw) as Record<string, unknown>; const points = Array.isArray(lighting.points) ? lighting.points : []; const normative = snapshot.normativeEvaluationSnapshot as unknown as Record<string, unknown> | undefined; const review = snapshot.review as unknown as Record<string, unknown> | undefined;
   const sections = [
     { key: "identification", title: "Identificación documental", data: { measurementId: snapshot.id, protocolType: snapshot.protocolType, measurementDate: snapshot.measurementDate } },
@@ -29,9 +32,9 @@ export function buildLightingDocumentRepresentation(document: HygieneGeneratedDo
     { key: "measurement_points", title: "Puntos de medición", data: { points } },
     { key: "indicators", title: "Indicadores calculados", data: { averageLux: lighting.averageLux, minimumLux: lighting.minimumLux, maximumLux: lighting.maximumLux, uniformityRatio: lighting.uniformityRatio, calculationVersion: lighting.calculationVersion, calculatedAt: lighting.calculatedAt } },
     { key: "instruments", title: "Instrumentación", data: { instruments: snapshot.instrumentSnapshots ?? [], instrumentIds: snapshot.instrumentIds } },
-    { key: "normative", title: "Referencia normativa y evaluación", data: normative ?? {} },
+    { key: "normative", title: "Referencia normativa y evaluación", data: { reference: { id: regulatoryReference.id, authority: regulatoryReference.authority, resolution: regulatoryReference.resolution, year: regulatoryReference.year, title: regulatoryReference.title, sourceUrl: regulatoryReference.sourceUrl }, evaluation: normative ?? {} } },
     { key: "professional_review", title: "Revisión profesional", data: review ?? {} },
     { key: "traceability", title: "Trazabilidad", data: { documentId: document.id, generatedAt: document.generatedAt, generatedBy: document.generatedBy, templateKey: document.templateKey, templateVersion: document.templateVersion } },
   ];
-  return { documentId: document.id, templateKey: LIGHTING_DOCUMENT_TEMPLATE.key, templateVersion: LIGHTING_DOCUMENT_TEMPLATE.version, generatedAt: document.generatedAt, sections: LIGHTING_DOCUMENT_TEMPLATE.sectionKeys.map((key) => sections.find((section) => section.key === key)!).filter(Boolean), disclaimer: "Documento generado como apoyo técnico y documental. La interpretación, validación profesional y firma que eventualmente corresponda permanecen bajo responsabilidad del profesional competente." };
+  return { documentId: document.id, templateKey: LIGHTING_DOCUMENT_TEMPLATE.key, templateVersion: LIGHTING_DOCUMENT_TEMPLATE.version, generatedAt: document.generatedAt, sections: LIGHTING_DOCUMENT_TEMPLATE.sectionKeys.map((key) => sections.find((section) => section.key === key)!).filter(Boolean), disclaimer: "Documento generado como apoyo técnico y documental. La interpretación, validación profesional y firma que eventualmente corresponda permanecen bajo responsabilidad del profesional competente.", regulatoryReferenceId: regulatoryReference.id };
 }

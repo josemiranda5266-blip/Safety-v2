@@ -7,33 +7,68 @@
 
 ---
 
+## 2026-08-29 — Motor de criterios regulatorios de Iluminación
+
+### Objetivo
+
+Separar la referencia normativa del criterio técnico utilizado para evaluar una medición. El motor debe recibir el valor medido y el valor requerido aplicable, evaluar también la uniformidad cuando exista información suficiente, y devolver el resultado junto con la referencia y versión normativa utilizadas.
+
+### Auditoría normativa
+
+La SRT establece que el protocolo de Iluminación de la Res. 84/2012 es obligatorio y que los valores de medición consignados en el protocolo tienen una validez de 12 meses. El formulario oficial incluye, por punto de muestreo, valor medido en lux, valor requerido legalmente según Anexo IV del Decreto 351/79 y el criterio de uniformidad. El Anexo IV establece una relación no menor de 0,5 entre los valores mínimo y medio para una uniformidad razonable. Fuentes oficiales consultadas: SRT y normativa nacional.
+
+### Implementación
+
+- Creado `src/config/srtLightingCriteria.ts`.
+- El criterio tiene identificador propio `srt_84_2012_lighting` y referencia `srt-84-2012`.
+- El motor distingue `compliant`, `non_compliant` e `insufficient_data`.
+- Evalúa `measuredLux >= requiredLux`.
+- Cuando existen mínimo y promedio, calcula `minimumLux / averageLux` y exige una relación mínima de 0,5.
+- Conserva en el resultado la referencia normativa, versión y fuente oficial.
+- El valor requerido no se hardcodea en el motor: debe provenir del criterio aplicable al puesto/tarea/local. Esto evita fabricar un único límite de lux para todas las actividades.
+- Se corrigió el acceso al catálogo para utilizar `getSrtReference()` en lugar de indexar incorrectamente una colección.
+
+### Commits
+
+- `6b23413e74e04cfd89f7febe7aea53fbafacf8fb` — feat(hygiene): add versioned lighting regulatory criterion engine
+- `15197c7b3a0fb0cf72a726d48dbc4796a5735694` — fix(hygiene): resolve lighting regulation through catalog API
+
+### Estado arquitectónico
+
+```text
+CATÁLOGO DE NORMAS
+       ↓
+CRITERIO VERSIONADO
+       ↓
+VALOR REQUERIDO APLICABLE
+       ↓
+MEDICIÓN
+       ↓
+EVALUACIÓN
+       ↓
+SNAPSHOT HISTÓRICO
+       ↓
+DOCUMENTO
+```
+
+### Próxima acción
+
+Conectar el criterio con la clasificación real del punto de medición para obtener el valor requerido aplicable desde una tabla normativa estructurada, conservando en el snapshot el criterio y valor utilizados. Después llevar ese resultado al documento y al PDF.
+
+---
+
 ## 2026-08-29 — Catálogo normativo SRT y trazabilidad documental
 
 ### Objetivo
 
 Consolidar las referencias normativas utilizadas por los protocolos en un catálogo central, identificable y versionable, evitando que cada módulo invente o hardcodee referencias legales de forma aislada.
 
-### Auditoría externa de referencia
-
-La SRT mantiene un repositorio oficial de protocolos que incluye Iluminación, Ruido, Contaminantes Químicos, Ergonomía, Puesta a Tierra y estrés por calor. La referencia oficial de Iluminación corresponde a Res. SRT 84/2012 y la de Ruido a Res. SRT 85/2012. La SRT también identifica Res. 861/2015 para contaminantes químicos, Res. 886/2015 para ergonomía y Res. 900/2015 para puesta a tierra. Para estrés por calor, la normativa oficial vigente consultada incluye Res. SRT 30/2023.
-
 ### Implementación
 
 - Creado `src/config/srtRegulatoryCatalog.ts`.
-- Se incorporaron referencias canónicas para Iluminación, Ruido, Contaminantes Químicos, Ergonomía, Puesta a Tierra y estrés por calor.
-- Cada referencia posee identificador estable, autoridad, resolución, año, título, tipo de protocolo, estado y fuente oficial.
-- El catálogo identifica referencias normativas; deliberadamente no almacena todavía límites legales ni umbrales técnicos, evitando convertir una primera catalogación en una base de valores regulatorios incompleta.
-- La plantilla `lighting_protocol` quedó vinculada a `srt-84-2012`.
-- El contrato `HygieneDocumentTemplate` / `HygieneDocumentRepresentation` ahora puede transportar `regulatoryReferenceId`.
-- El backend exige que la plantilla de Iluminación tenga configurada la referencia SRT correcta antes de construir la representación.
-- La sección normativa del documento ahora conserva autoridad, resolución, año, título e identificación de la fuente junto con la evaluación normativa congelada del snapshot.
-
-### Commits
-
-- `aa41fd1170669e8914b05ac00b5643140a629810` — feat(hygiene): add canonical SRT regulatory reference catalog
-- `10e5d974f2bb1de38773cef6524d75ce151829ab` — feat(hygiene): bind lighting template to SRT regulatory catalog
-- `f7c0db6c3cce9ecd01d725e48b35e4343be4bb30` — fix(hygiene): extend document contract with regulatory reference identity
-- `bf084d5077565cd574fa93f10b980cd995bf64ce` — feat(hygiene): bind lighting documents to versioned SRT reference
+- Referencias canónicas para Iluminación, Ruido, Contaminantes Químicos, Ergonomía, Puesta a Tierra y estrés por calor.
+- La plantilla `lighting_protocol` está vinculada a `srt-84-2012`.
+- La representación conserva identidad de la referencia normativa y evaluación congelada del snapshot.
 
 ### Estado arquitectónico
 
@@ -53,21 +88,9 @@ REPRESENTACIÓN
     └── PDF
 ```
 
-### Regla de seguridad documental
-
-La aplicación no debe presentar un valor legal como si fuera vigente únicamente porque está almacenado en código. Los futuros límites/criterios regulatorios deberán tener referencia normativa, versión/fecha de vigencia, fuente y snapshot de los valores efectivamente utilizados al evaluar una medición.
-
-### Próxima acción
-
-Separar el catálogo de referencias normativas del futuro catálogo de criterios/valores regulatorios. Luego implementar el primer conjunto de criterios de Iluminación con trazabilidad explícita, sin modificar todavía los protocolos de Ruido u otros módulos.
-
 ---
 
 ## 2026-08-29 — Exportación PDF de Iluminación
-
-### Objetivo
-
-Permitir exportar el documento profesional de Iluminación sin volver a consultar la medición ni recalcular resultados. El PDF debe ser un renderizador de la representación documental versionada.
 
 ### Resultado arquitectónico
 
@@ -86,10 +109,11 @@ La representación es la fuente común; Web y PDF no poseen cálculos propios.
 
 ### Próximas fases prioritarias
 
-1. Criterios/valores regulatorios versionados para Iluminación.
-2. Protocolo de Ruido.
-3. Protocolo de Puesta a Tierra.
-4. Integración medición → hallazgo → acción correctiva.
-5. Alertas de calibración y vencimientos.
-6. Matriz integral de mediciones por empresa.
-7. Gestión comercial de alquiler después de consolidar inventario técnico.
+1. Tabla normativa aplicable para clasificar tareas/locales de Iluminación.
+2. Persistencia del criterio y valor requerido utilizado en cada medición.
+3. Protocolo de Ruido.
+4. Protocolo de Puesta a Tierra.
+5. Integración medición → hallazgo → acción correctiva.
+6. Alertas de calibración y vencimientos.
+7. Matriz integral de mediciones por empresa.
+8. Gestión comercial de alquiler después de consolidar inventario técnico.

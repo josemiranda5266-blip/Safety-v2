@@ -48,6 +48,13 @@ export async function createGeneratedDocument(input: {
   return document;
 }
 
+export async function getGeneratedDocumentById(id: string, orgId: string): Promise<HygieneGeneratedDocument | null> {
+  const snapshot = await getAdminFirestore().collection(collection).doc(id).get();
+  if (!snapshot.exists) return null;
+  const document = { id: snapshot.id, ...snapshot.data() } as HygieneGeneratedDocument;
+  return document.orgId === orgId ? document : null;
+}
+
 export async function listGeneratedDocuments(orgId: string, measurementId?: string): Promise<HygieneGeneratedDocument[]> {
   let query = getAdminFirestore().collection(collection).where("orgId", "==", orgId);
   if (measurementId) query = query.where("measurementId", "==", measurementId);

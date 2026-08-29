@@ -1547,3 +1547,27 @@ La cadena completa de Iluminación ya alcanza: captura -> validación -> snapsho
 ### Próxima acción
 
 Auditar la estructura de datos específica de los puntos de Iluminación para reemplazar las claves técnicas genéricas del visor por etiquetas profesionales y tablas específicas. Luego definir un modelo de plantilla compartido para renderizadores web/PDF.
+
+
+## 2026-08-29 — Profesionalización de la plantilla de Iluminación
+
+### Auditoría de datos reales
+
+Se confirmó que LightingMeasurementData contiene sourceType, lightingSystem, taskDescription, points, averageLux, minimumLux, maximumLux, uniformityRatio, calculationVersion y calculatedAt. Cada punto contiene name, pointType, lux, locationDescription y observations.
+
+### Backend
+
+La representación documental dejó de agrupar rawData como bloque genérico. Ahora separa: condiciones de la medición, puntos de medición e indicadores calculados.
+
+### Frontend
+
+El visor traduce claves técnicas a etiquetas profesionales y presenta los puntos en una tabla con punto, tipo, ubicación, iluminancia y observaciones. Esto elimina la visualización de objetos JSON como formato documental principal.
+
+### Commits
+
+- 05af96e914a51f9140020ce819a1a2653c0c2e09 — feat(hygiene): specialize lighting document data sections
+- d2612ab15a964083bba0371e5d5abb5ebad054d6 — feat(hygiene): render professional lighting document labels and points table
+
+### Próxima acción
+
+Extraer un modelo de plantilla común que pueda ser utilizado por el visor y por futuros exportadores, sin acoplar la estructura documental a React ni a un motor de PDF. Luego evaluar la capa de instrumentos para resolver nombres y trazabilidad documental en lugar de mostrar solamente IDs.

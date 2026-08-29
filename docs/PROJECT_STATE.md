@@ -1397,3 +1397,33 @@ Se confirmó que la ruta sigue utilizando requirePermission("hygiene:update"). L
 ### Próxima acción
 
 Auditar y modificar el sistema central de permisos para introducir higiene:review de manera compatible. Después, comenzar la arquitectura de documentos generados a partir de una medición validada, incluyendo snapshot de datos, versión de plantilla y trazabilidad, sin implementar todavía firma legal automática.
+
+
+## 2026-08-29 — RBAC: separación efectiva entre edición y revisión profesional
+
+### Hallazgo
+
+El sistema central de autorización está concentrado en server/authorization/types.ts y utiliza un tipo Permission junto con MEMBERSHIP_ROLE_PERMISSIONS. La auditoría confirmó que hygiene:update era el único permiso de modificación para el dominio y que auditor solo tenía higiene:read.
+
+### Cambio
+
+Se incorporó hygiene:review al catálogo tipado de permisos. owner y admin reciben el permiso por administración global de la organización. El rol auditor recibe hygiene:review sin recibir hygiene:update, preservando separación entre capacidad de editar y capacidad de revisar.
+
+La ruta POST /measurements/:id/review ahora exige requirePermission("hygiene:review").
+
+### Modelo resultante
+
+- Técnico/editor: higiene de lectura/creación/actualización según su rol, sin capacidad automática de revisión.
+- Auditor/revisor: hygiene:read + hygiene:review, sin hygiene:update.
+- Owner/admin: capacidades de administración y revisión.
+
+La granularidad de un rol profesional de Higiene específico queda como futura evolución del modelo de membresías; no se introdujo un nuevo MembershipRole para evitar ampliar innecesariamente el alcance transversal actual.
+
+### Commits
+
+- dcc1b252c413f100ae182b46588bd9e2013f8826 — feat(auth): add dedicated hygiene review permission to RBAC matrix
+- 09650b749d9730cd36a7e7f3504c4887dfa12b7f — fix(auth): protect hygiene review with dedicated permission
+
+### Próxima acción
+
+Diseñar e implementar el modelo de documento generado para mediciones validadas: entidad documental, snapshot de datos, referencia normativa, versión de plantilla, generación reproducible y trazabilidad. La generación no implicará certificación ni firma legal automática.

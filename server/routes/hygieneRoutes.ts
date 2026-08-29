@@ -5,6 +5,7 @@ import { createHygieneInstrumentSchema, updateHygieneInstrumentSchema, createHyg
 import * as hygieneService from "../services/hygieneService";
 import { getNormativeProtocolVersion } from "../services/normativeCatalogService";
 import * as hygieneAuditService from "../services/hygieneAuditService";
+import * as hygieneWorkflowService from "../services/hygieneMeasurementWorkflowService";
 import * as companyService from "../services/companyService";
 import * as establishmentService from "../services/establishmentService";
 import * as sectorService from "../services/sectorService";
@@ -98,7 +99,7 @@ router.post("/measurements", requirePermission("hygiene:create"), async (req: Te
     }
   }
 
-  const measurement = await hygieneService.createMeasurement({
+  const measurement = await hygieneWorkflowService.createMeasurementWithAudit({
     ...parsed.data,
     orgId: context.orgId,
     status: "draft",
@@ -124,7 +125,7 @@ router.post("/measurements/:id/review", requirePermission("hygiene:update"), asy
   const decision = req.body?.decision;
   if (decision !== "approved" && decision !== "changes_requested") return res.status(400).json({ error: "Decisión de revisión inválida", code: "INVALID_REVIEW_DECISION" });
   const now = new Date().toISOString();
-  const updated = await hygieneService.updateMeasurement(req.params.id, context.orgId, context.userId, {
+  const updated = await hygieneWorkflowService.updateMeasurementWithAudit(req.params.id, context.orgId, context.userId, {
     status: decision === "approved" ? "validated" : "in_progress",
     review: { status: decision, reviewedBy: context.userId, reviewedAt: now, comments: typeof req.body?.comments === "string" ? req.body.comments : null },
   });
@@ -142,8 +143,7 @@ router.post("/measurements/:id/normative-snapshot", requirePermission("hygiene:u
   if (!version) return res.status(404).json({ error: "Versión normativa no encontrada", code: "NORMATIVE_VERSION_NOT_FOUND" });
   if (version.protocolType !== measurement.protocolType) return res.status(400).json({ error: "La versión normativa no corresponde al protocolo de la medición", code: "NORMATIVE_PROTOCOL_MISMATCH" });
   const snapshot = { normativeProtocolVersionId: version.id, reference: version.reference, version: version.version, evaluatedAt: new Date().toISOString(), criteriaSnapshot: version.criteria.map((criterion) => ({ ...criterion, parameters: { ...criterion.parameters } })) };
-  const updated = await hygieneService.updateMeasurement(req.params.id, context.orgId, context.userId, { normativeEvaluationSnapshot: snapshot });
-  if (updated) await hygieneAuditService.recordMeasurementAuditEvent({ orgId: context.orgId, measurementId: updated.id, actorId: context.userId, type: "normative_snapshot_attached", metadata: { normativeProtocolVersionId: snapshot.normativeProtocolVersionId, reference: snapshot.reference, version: snapshot.version } });
+  const updated = await hygieneWorkflowService.updateMeasurementWithAudit(req.params.id, context.orgId, context.userId, { normativeEvaluationSnapshot: snapshot });
   res.json({ measurement: updated });
 });
 
@@ -159,7 +159,7 @@ router.patch("/measurements/:id", requirePermission("hygiene:update"), async (re
       }
     }
   }
-  const measurement = await hygieneService.updateMeasurement(req.params.id, context.orgId, context.userId, parsed.data);
+  const measurement = await hygieneWorkflowService.updateMeasurementWithAudit(req.params.id, context.orgId, context.userId, parsed.data);
   if (!measurement) return res.status(404).json({ error: "Medición no encontrada", code: "MEASUREMENT_NOT_FOUND" });
   res.json({ measurement });
 });

@@ -14,7 +14,7 @@ export function validateMeasurementForSubmission(measurement: HygieneMeasurement
   if (!measurement.rawData || Object.keys(measurement.rawData).length === 0) errors.push({ code: "MEASUREMENT_DATA_REQUIRED", message: "La medición no contiene datos técnicos." });
 
   if (measurement.protocolType === "lighting") {
-    const points = (measurement.rawData as any)?.points;
+    const points = (measurement.rawData as any)?.lighting?.points ?? (measurement.rawData as any)?.points;
     if (!Array.isArray(points) || points.length === 0) errors.push({ code: "LIGHTING_POINTS_REQUIRED", message: "Debe cargarse al menos un punto de medición de iluminación." });
   }
 

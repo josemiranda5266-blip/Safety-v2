@@ -3,12 +3,12 @@ import { calculateLightingMeasurement } from './lightingMeasurement';
 
 describe('calculateLightingMeasurement', () => {
   const base = {
-    sourceType: 'luxmeter',
+    sourceType: 'artificial',
     campaign: 'campaign-1',
     points: [
-      { name: 'P1', lux: 100 },
-      { name: 'P2', lux: 200 },
-      { name: 'P3', lux: 300 },
+      { name: 'P1', pointType: 'general', lux: 100 },
+      { name: 'P2', pointType: 'general', lux: 200 },
+      { name: 'P3', pointType: 'general', lux: 300 },
     ],
   } as const;
 
@@ -26,14 +26,14 @@ describe('calculateLightingMeasurement', () => {
   it('rejects negative lux readings', () => {
     expect(() => calculateLightingMeasurement({
       ...base,
-      points: [{ name: 'P1', lux: -1 }],
+      points: [{ name: 'P1', pointType: 'general', lux: -1 }],
     })).toThrow('Lectura Lux inválida');
   });
 
   it('rejects non-finite lux readings instead of silently dropping them', () => {
     expect(() => calculateLightingMeasurement({
       ...base,
-      points: [{ name: 'P1', lux: Number.NaN }],
+      points: [{ name: 'P1', pointType: 'general', lux: Number.NaN }],
     })).toThrow('Lectura Lux inválida');
   });
 });

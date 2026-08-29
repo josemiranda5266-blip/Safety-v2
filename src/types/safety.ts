@@ -463,6 +463,7 @@ export interface HygieneMeasurement {
   measurementDate: string;
   instrumentIds: string[];
   rawData?: Record<string, unknown>;
+  normativeEvaluationSnapshot?: NormativeEvaluationSnapshot;
   notes?: string;
   status: HygieneMeasurementStatus;
   active: boolean;

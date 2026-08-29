@@ -107,6 +107,21 @@ router.post("/measurements", requirePermission("hygiene:create"), async (req: Te
   res.status(201).json({ measurement });
 });
 
+router.post("/measurements/:id/review", requirePermission("hygiene:update"), async (req: TenantRequest, res: Response) => {
+  const context = req.authContext!;
+  const measurement = await hygieneService.getMeasurementById(req.params.id, context.orgId);
+  if (!measurement) return res.status(404).json({ error: "Medición no encontrada", code: "MEASUREMENT_NOT_FOUND" });
+  if (measurement.status !== "pending_review") return res.status(409).json({ error: "La medición debe estar pendiente de revisión", code: "MEASUREMENT_NOT_READY_FOR_REVIEW" });
+  const decision = req.body?.decision;
+  if (decision !== "approved" && decision !== "changes_requested") return res.status(400).json({ error: "Decisión de revisión inválida", code: "INVALID_REVIEW_DECISION" });
+  const now = new Date().toISOString();
+  const updated = await hygieneService.updateMeasurement(req.params.id, context.orgId, context.userId, {
+    status: decision === "approved" ? "validated" : "in_progress",
+    review: { status: decision, reviewedBy: context.userId, reviewedAt: now, comments: typeof req.body?.comments === "string" ? req.body.comments : null },
+  });
+  res.json({ measurement: updated });
+});
+
 router.post("/measurements/:id/normative-snapshot", requirePermission("hygiene:update"), async (req: TenantRequest, res: Response) => {
   const context = req.authContext!;
   const measurement = await hygieneService.getMeasurementById(req.params.id, context.orgId);

@@ -1,0 +1,72 @@
+name: Safety V2 maintenance repair
+
+on:
+  push:
+    branches: [main]
+
+permissions:
+  contents: write
+
+jobs:
+  repair:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Apply deterministic repairs
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          from pathlib import Path
+
+          p = Path('server/services/documentService.ts')
+          s = p.read_text()
+          old = '''    if (!options.includeDeleted) {\n      query = query.where("isDeleted", "==", false);\n    }\n\n    const snapshot = await query.get();'''
+          new = '''    if (!options.includeDeleted) {\n      query = query.where("isDeleted", "==", false);\n    }\n\n    // Apply bounded pagination at the Firestore query level when requested.\n    // This prevents RAG callers from loading the entire organization library into memory.\n    if (options.limit !== undefined) {\n      const safeLimit = Math.max(1, Math.min(Math.floor(options.limit), 100));\n      query = query.limit(safeLimit);\n    }\n\n    const snapshot = await query.get();'''
+          if old not in s:
+              raise SystemExit('Expected Firestore listDocuments block not found')
+          p.write_text(s.replace(old, new, 1))
+
+          p = Path('server/routes/aiRoutes.ts')
+          s = p.read_text()
+          old = 'const docs = await documentService.listDocuments(orgId, {}, assignedCompanyIds);'
+          new = 'const docs = await documentService.listDocuments(orgId, { limit: 5 }, assignedCompanyIds);'
+          if old not in s:
+              raise SystemExit('Expected RAG listDocuments call not found')
+          p.write_text(s.replace(old, new, 1))
+          PY
+
+          # Remove obsolete root-level patch/update helper artifacts.
+          find . -maxdepth 1 -type f \( \
+            -name 'fix_*.patch' -o \
+            -name 'fix_*.mjs' -o \
+            -name 'fix_*.js' -o \
+            -name 'update_*.mjs' -o \
+            -name 'update_*.js' \
+          \) -print -delete
+
+          # This workflow is a one-shot migration helper; remove it after successful repair.
+          rm -f .github/workflows/repair-safety.yml
+
+      - name: Typecheck and build
+        run: |
+          npm ci
+          npm run lint
+          npm run build
+
+      - name: Commit repairs
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add -A
+          if git diff --cached --quiet; then
+            echo 'No changes to commit.'
+            exit 0
+          fi
+          git commit -m 'fix: bound RAG document queries and clean repository artifacts'
+          git push

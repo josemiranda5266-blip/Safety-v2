@@ -4,64 +4,61 @@ import { InspectionReport, FindingStatus } from '../types/safety';
 import { auditService } from './auditService';
 import { auth } from './firebase';
 import { tenantApi } from './tenantApi';
+import { isPersonalMode } from '../utils/personalMode';
 
 function sanitizeAuditDetails(details: any) {
   if (!details || typeof details !== 'object') return details;
   const copy = JSON.parse(JSON.stringify(details));
-  if (copy.inspectorSignatureUrl) {
-    copy.inspectorSignatureUrl = '[SIGNATURE_OMITTED]';
-  }
+  if (copy.inspectorSignatureUrl) copy.inspectorSignatureUrl = '[SIGNATURE_OMITTED]';
   if (Array.isArray(copy.findings)) {
-    copy.findings = copy.findings.map((f: any) => {
-      if (f.photoUrl && f.photoUrl.length > 100) {
-        f.photoUrl = '[IMAGE_DATA_OMITTED]';
-      }
-      if (Array.isArray(f.verifications)) {
-        f.verifications = f.verifications.map((v: any) => ({
-          ...v,
-          photoUrl: v.photoUrl && v.photoUrl.length > 100 ? '[IMAGE_DATA_OMITTED]' : v.photoUrl,
-        }));
-      }
-      return f;
-    });
+    copy.findings = copy.findings.map((f: any) => ({
+      ...f,
+      photoUrl: f.photoUrl && f.photoUrl.length > 100 ? '[IMAGE_DATA_OMITTED]' : f.photoUrl,
+      verifications: Array.isArray(f.verifications)
+        ? f.verifications.map((v: any) => ({ ...v, photoUrl: v.photoUrl && v.photoUrl.length > 100 ? '[IMAGE_DATA_OMITTED]' : v.photoUrl }))
+        : f.verifications,
+    }));
   }
   return copy;
 }
 
 const testStore = new Map<string, InspectionReport>();
+const PERSONAL_STORAGE_KEY = 'safety_ia_inspection_reports_v1';
+
+function readPersonalReports(): InspectionReport[] {
+  if (typeof localStorage === 'undefined') return [];
+  try {
+    const raw = localStorage.getItem(PERSONAL_STORAGE_KEY);
+    return raw ? JSON.parse(raw) : [];
+  } catch {
+    return [];
+  }
+}
+
+function writePersonalReports(reports: InspectionReport[]) {
+  if (typeof localStorage !== 'undefined') {
+    localStorage.setItem(PERSONAL_STORAGE_KEY, JSON.stringify(reports));
+  }
+}
 
 export const inspectionService = {
   getOrgId(): string | null {
-    const active = tenantApi.getActiveOrgId();
-    if (active) return active;
-    if (typeof localStorage !== 'undefined') {
-      return localStorage.getItem('safetyia_active_org_id');
-    }
-    return null;
+    return tenantApi.getActiveOrgId() || (typeof localStorage !== 'undefined' ? localStorage.getItem('safetyia_active_org_id') : null) || 'org_personal_default';
   },
 
   getCollectionRef(orgId?: string) {
-    const targetOrgId = orgId || this.getOrgId();
-    if (!targetOrgId) throw new Error("No organization selected");
-    return collection(dbFirestore, 'organizations', targetOrgId, 'inspections');
+    return collection(dbFirestore, 'organizations', orgId || this.getOrgId()!, 'inspections');
   },
 
   getDocRef(id: string, orgId?: string) {
-    const targetOrgId = orgId || this.getOrgId();
-    if (!targetOrgId) throw new Error("No organization selected");
-    return doc(dbFirestore, 'organizations', targetOrgId, 'inspections', id);
+    return doc(dbFirestore, 'organizations', orgId || this.getOrgId()!, 'inspections', id);
   },
 
   async createInspection(inspection: Omit<InspectionReport, 'id'>, orgId?: string): Promise<string> {
-    const activeOrgId = this.getOrgId();
-    const targetOrgId = orgId || activeOrgId;
-    if (!targetOrgId) throw new Error("No organization selected");
-
-    const currentUid = auth.currentUser?.uid;
-    const createdByUid = currentUid || (inspection as any).createdBy || (typeof localStorage !== 'undefined' && localStorage.getItem('safetyia_user_uid')) || 'user_personal_owner';
+    const targetOrgId = orgId || this.getOrgId()!;
     const reportId = `insp_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`;
-
-    const formattedReport: InspectionReport = {
+    const createdByUid = isPersonalMode() ? 'personal_local_user' : (auth.currentUser?.uid || (inspection as any).createdBy || 'user_owner');
+    const formattedReport = {
       ...inspection,
       id: reportId,
       organizationId: targetOrgId,
@@ -70,9 +67,9 @@ export const inspectionService = {
       updatedAt: new Date().toISOString(),
     } as InspectionReport;
 
-    if (process.env.IS_RUNNING_TESTS === 'true') {
-      testStore.set(`${targetOrgId}/${reportId}`, formattedReport);
-      await auditService.logAction('CREATE_INSPECTION', 'Inspection', reportId, createdByUid, sanitizeAuditDetails(formattedReport));
+    if (isPersonalMode() || process.env.IS_RUNNING_TESTS === 'true') {
+      if (process.env.IS_RUNNING_TESTS === 'true') testStore.set(`${targetOrgId}/${reportId}`, formattedReport);
+      else writePersonalReports([formattedReport, ...readPersonalReports()]);
       return reportId;
     }
 
@@ -82,79 +79,57 @@ export const inspectionService = {
   },
 
   async saveInspectionReport(report: InspectionReport, orgId?: string): Promise<string> {
-    const activeOrgId = this.getOrgId();
-    const targetOrgId = orgId || activeOrgId;
-    if (!targetOrgId) throw new Error("No organization selected");
-
-    const currentUid = auth.currentUser?.uid;
-    const reportId = report.id || `insp_${Date.now()}`;
-    const storeKey = `${targetOrgId}/${reportId}`;
-
-    let createdByUid = currentUid || report.createdBy || (typeof localStorage !== 'undefined' && localStorage.getItem('safetyia_user_uid')) || 'user_personal_owner';
-    if (process.env.IS_RUNNING_TESTS === 'true' && testStore.has(storeKey)) {
-      const existing = testStore.get(storeKey);
-      if (existing?.createdBy) {
-        createdByUid = existing.createdBy; // Preserve immutability
-      }
-    }
-
-    const formattedReport: InspectionReport = {
+    const targetOrgId = orgId || this.getOrgId()!;
+    const reportId = report.id || `insp_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`;
+    const formattedReport = {
       ...report,
       id: reportId,
-      organizationId: targetOrgId, // Preserves targetOrgId
-      createdBy: createdByUid, // Preserves createdBy
+      organizationId: targetOrgId,
+      createdBy: isPersonalMode() ? 'personal_local_user' : (auth.currentUser?.uid || report.createdBy || 'user_owner'),
       createdAt: report.createdAt || new Date().toISOString(),
       updatedAt: new Date().toISOString(),
-    };
+    } as InspectionReport;
 
-    if (process.env.IS_RUNNING_TESTS === 'true') {
-      testStore.set(storeKey, formattedReport);
-      await auditService.logAction('SAVE_INSPECTION', 'Inspection', reportId, createdByUid, sanitizeAuditDetails(formattedReport));
+    if (isPersonalMode() || process.env.IS_RUNNING_TESTS === 'true') {
+      if (process.env.IS_RUNNING_TESTS === 'true') testStore.set(`${targetOrgId}/${reportId}`, formattedReport);
+      else {
+        const reports = readPersonalReports().filter(r => r.id !== reportId);
+        writePersonalReports([formattedReport, ...reports]);
+      }
       return reportId;
     }
 
-    const docRef = doc(dbFirestore, 'organizations', targetOrgId, 'inspections', reportId);
-    await setDoc(docRef, sanitizeForFirestore(formattedReport));
-    await auditService.logAction('SAVE_INSPECTION', 'Inspection', reportId, createdByUid, sanitizeAuditDetails(formattedReport));
+    await setDoc(this.getDocRef(reportId, targetOrgId), sanitizeForFirestore(formattedReport));
+    await auditService.logAction('SAVE_INSPECTION', 'Inspection', reportId, formattedReport.createdBy, sanitizeAuditDetails(formattedReport));
     return reportId;
   },
 
   async getInspections(orgId?: string): Promise<InspectionReport[]> {
-    const targetOrgId = orgId || this.getOrgId();
-    if (!targetOrgId) return [];
+    const targetOrgId = orgId || this.getOrgId()!;
+    if (isPersonalMode()) return readPersonalReports().filter(r => !r.organizationId || r.organizationId === targetOrgId);
 
     if (process.env.IS_RUNNING_TESTS === 'true') {
-      const result: InspectionReport[] = [];
-      const prefix = `${targetOrgId}/`;
-      for (const [key, value] of testStore.entries()) {
-        if (key.startsWith(prefix)) {
-          result.push(JSON.parse(JSON.stringify(value)));
-        }
-      }
-      return result;
+      return Array.from(testStore.entries())
+        .filter(([key]) => key.startsWith(`${targetOrgId}/`))
+        .map(([, value]) => JSON.parse(JSON.stringify(value)));
     }
 
     const snapshot = await getDocs(this.getCollectionRef(targetOrgId));
-    return snapshot.docs.map(docSnap => ({
-      id: docSnap.id,
-      ...(docSnap.data() as any)
-    } as InspectionReport));
+    return snapshot.docs.map(d => ({ id: d.id, ...(d.data() as any) } as InspectionReport));
   },
 
   async deleteInspection(id: string, orgId?: string): Promise<void> {
-    const targetOrgId = orgId || this.getOrgId();
-    if (!targetOrgId) throw new Error("No organization selected");
-
-    if (process.env.IS_RUNNING_TESTS === 'true') {
-      const storeKey = `${targetOrgId}/${id}`;
-      testStore.delete(storeKey);
-      await auditService.logAction('DELETE_INSPECTION', 'Inspection', id, auth.currentUser?.uid || 'user_personal_owner', { id, organizationId: targetOrgId });
+    const targetOrgId = orgId || this.getOrgId()!;
+    if (isPersonalMode()) {
+      writePersonalReports(readPersonalReports().filter(r => r.id !== id));
       return;
     }
-
-    const docRef = doc(dbFirestore, 'organizations', targetOrgId, 'inspections', id);
-    await deleteDoc(docRef);
-    await auditService.logAction('DELETE_INSPECTION', 'Inspection', id, auth.currentUser?.uid || 'user_personal_owner', { id, organizationId: targetOrgId });
+    if (process.env.IS_RUNNING_TESTS === 'true') {
+      testStore.delete(`${targetOrgId}/${id}`);
+      return;
+    }
+    await deleteDoc(this.getDocRef(id, targetOrgId));
+    await auditService.logAction('DELETE_INSPECTION', 'Inspection', id, auth.currentUser?.uid || 'user_owner', { id, organizationId: targetOrgId });
   },
 
   async updateFindingStatus(
@@ -165,83 +140,56 @@ export const inspectionService = {
     closingNotes?: string,
     verificationPhoto?: string
   ): Promise<void> {
-    const targetOrgId = orgId || this.getOrgId();
-    if (!targetOrgId) throw new Error("No organization selected");
-
+    const targetOrgId = orgId || this.getOrgId()!;
     let inspectionData: InspectionReport | null = null;
-    const storeKey = `${targetOrgId}/${inspectionId}`;
 
-    if (process.env.IS_RUNNING_TESTS === 'true') {
-      if (!testStore.has(storeKey)) {
-        throw new Error("Inspection not found");
-      }
-      inspectionData = testStore.get(storeKey)!;
+    if (isPersonalMode()) {
+      inspectionData = readPersonalReports().find(r => r.id === inspectionId) || null;
+    } else if (process.env.IS_RUNNING_TESTS === 'true') {
+      inspectionData = testStore.get(`${targetOrgId}/${inspectionId}`) || null;
     } else {
-      const inspectionRef = this.getDocRef(inspectionId, targetOrgId);
-      const inspectionSnap = await getDoc(inspectionRef);
-      if (!inspectionSnap.exists()) {
-        throw new Error("Inspection not found");
-      }
-      inspectionData = inspectionSnap.data() as InspectionReport;
+      const snap = await getDoc(this.getDocRef(inspectionId, targetOrgId));
+      if (snap.exists()) inspectionData = { id: snap.id, ...(snap.data() as any) } as InspectionReport;
     }
+
+    if (!inspectionData) throw new Error('Inspection not found');
 
     const updatedFindings = (inspectionData.findings || []).map(f => {
-      if (f.id === findingId) {
-        const updatedFinding = { ...f, status };
-        if (status === 'Corregido') {
-          updatedFinding.closedDate = new Date().toISOString().split('T')[0];
-          if (closingNotes) updatedFinding.closingNotes = closingNotes;
-          if (verificationPhoto) {
-            updatedFinding.verifications = updatedFinding.verifications || [];
-            updatedFinding.verifications.push({
-              id: `verif-${Date.now()}`,
-              photoUrl: verificationPhoto,
-              date: new Date().toISOString(),
-              notes: closingNotes || 'Foto de verificación agregada',
-            });
-          }
+      if (f.id !== findingId) return f;
+      const updated: any = { ...f, status };
+      if (status === 'Corregido') {
+        updated.closedDate = new Date().toISOString().split('T')[0];
+        if (closingNotes) updated.closingNotes = closingNotes;
+        if (verificationPhoto) {
+          updated.verifications = [...(updated.verifications || []), {
+            id: `verif-${Date.now()}`,
+            photoUrl: verificationPhoto,
+            date: new Date().toISOString(),
+            notes: closingNotes || 'Foto de verificación agregada',
+          }];
         }
-        return updatedFinding;
       }
-      return f;
+      return updated;
     });
 
-    const updatedActionPlan = (inspectionData.actionPlan || []).map(a => {
-      if (a.findingId === findingId) {
-        return { ...a, status };
-      }
-      return a;
-    });
-
+    const updatedActionPlan = (inspectionData.actionPlan || []).map(a => a.findingId === findingId ? { ...a, status } : a);
     const allCorrected = updatedFindings.length > 0 && updatedFindings.every(f => f.status === 'Corregido');
-    const newReportStatus = allCorrected ? 'Cerrada' : 'En Proceso';
+    const updatedInspection = { ...inspectionData, findings: updatedFindings, actionPlan: updatedActionPlan, status: allCorrected ? 'Cerrada' : 'En Proceso', updatedAt: new Date().toISOString() } as InspectionReport;
 
-    const updatedInspection: InspectionReport = {
-      ...inspectionData,
+    if (isPersonalMode()) {
+      writePersonalReports(readPersonalReports().map(r => r.id === inspectionId ? updatedInspection : r));
+      return;
+    }
+    if (process.env.IS_RUNNING_TESTS === 'true') {
+      testStore.set(`${targetOrgId}/${inspectionId}`, updatedInspection);
+      return;
+    }
+    await updateDoc(this.getDocRef(inspectionId, targetOrgId), sanitizeForFirestore({
       findings: updatedFindings,
       actionPlan: updatedActionPlan,
-      status: newReportStatus,
-      updatedAt: new Date().toISOString(),
-    };
-
-    if (process.env.IS_RUNNING_TESTS === 'true') {
-      testStore.set(storeKey, updatedInspection);
-    } else {
-      const inspectionRef = this.getDocRef(inspectionId, targetOrgId);
-      await updateDoc(inspectionRef, sanitizeForFirestore({
-        findings: updatedFindings,
-        actionPlan: updatedActionPlan,
-        status: newReportStatus,
-        updatedAt: new Date().toISOString(),
-      }));
-    }
-
-    await auditService.logAction('UPDATE_FINDING', 'Inspection', inspectionId, auth.currentUser?.uid || 'user_owner_a', {
-      findingId,
-      status,
-      closingNotes: closingNotes || null,
-      hasVerificationPhoto: !!verificationPhoto,
-      organizationId: targetOrgId
-    });
-  }
+      status: updatedInspection.status,
+      updatedAt: updatedInspection.updatedAt,
+    }));
+    await auditService.logAction('UPDATE_FINDING', 'Inspection', inspectionId, auth.currentUser?.uid || 'user_owner', { findingId, status, closingNotes: closingNotes || null, hasVerificationPhoto: !!verificationPhoto, organizationId: targetOrgId });
+  },
 };

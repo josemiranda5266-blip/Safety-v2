@@ -32,8 +32,8 @@ export function parsePrivateKey(rawKey: string): string {
 
 /**
  * Resolves Firebase Admin credentials exclusively from explicit Firebase
- * environment variables. Safety-v2 does not depend on
- * GOOGLE_APPLICATION_CREDENTIALS or Application Default Credentials.
+ * environment variables. Safety-v2 does not depend on external credential
+ * files or Application Default Credentials.
  */
 export function resolveAdminCredentials(): {
   projectId?: string;
@@ -67,7 +67,7 @@ export function resolveAdminCredentials(): {
 
   throw new Error(
     `Firebase Admin credentials are not configured. Missing: ${missing.join(", ")}. ` +
-      "Configure Firebase environment variables on the server; GOOGLE_APPLICATION_CREDENTIALS is not used by Safety-v2."
+      "Configure the explicit Firebase environment variables on the server."
   );
 }
 

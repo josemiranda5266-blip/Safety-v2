@@ -1,0 +1,50 @@
+name: Fix personal Inspector no Firestore
+
+on:
+  push:
+    branches: [main]
+
+permissions:
+  contents: write
+
+jobs:
+  patch:
+    runs-on: ubuntu-latest
+    if: github.actor != 'github-actions[bot]'
+    steps:
+      - uses: actions/checkout@v4
+      - name: Disable server Firestore RAG fallback in personal mode
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          p = Path('server/routes/aiRoutes.ts')
+          s = p.read_text(encoding='utf-8')
+          old = '''      const { topChunks, formattedLibraryContext } = isPersonalMode() && localChunks.length > 0
+        ? {
+            topChunks: localChunks,
+            formattedLibraryContext: localChunks
+              .map((c: any, i: number) => `[DOCUMENTO BIBLIOTECA LOCAL ${i + 1}]\\nID Documento: ${c.docId || c.id || `doc_${i}`}\\nTítulo: "${c.docTitle || 'Documento local'}"\\nCategoría: ${c.category || 'Normativa'}\\nPágina: ${c.pageNumber || 'N/A'}\\nSección/Artículo: ${c.article || c.chapter || c.section || 'N/A'}\\nTexto Normativo:\\n"${c.text || ''}"`)
+              .join("\\n\\n--------------------\\n\\n"),
+          }
+        : await retrieveServerTenantChunks(orgId, assignedCompanyIds, searchTerms);'''
+          new = '''      const { topChunks, formattedLibraryContext } = isPersonalMode()
+        ? {
+            topChunks: localChunks,
+            formattedLibraryContext: localChunks.length > 0
+              ? localChunks
+                  .map((c: any, i: number) => `[DOCUMENTO BIBLIOTECA LOCAL ${i + 1}]\\nID Documento: ${c.docId || c.id || `doc_${i}`}\\nTítulo: "${c.docTitle || 'Documento local'}"\\nCategoría: ${c.category || 'Normativa'}\\nPágina: ${c.pageNumber || 'N/A'}\\nSección/Artículo: ${c.article || c.chapter || c.section || 'N/A'}\\nTexto Normativo:\\n"${c.text || ''}"`)
+                  .join("\\n\\n--------------------\\n\\n")
+              : "NO HAY FRAGMENTOS VERIFICADOS EN LA BIBLIOTECA LOCAL.",
+          }
+        : await retrieveServerTenantChunks(orgId, assignedCompanyIds, searchTerms);'''
+          if old not in s:
+              raise SystemExit('Target block not found; refusing unsafe patch')
+          p.write_text(s.replace(old, new, 1), encoding='utf-8')
+          PY
+      - name: Commit patch
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add server/routes/aiRoutes.ts
+          git diff --cached --quiet || git commit -m "fix: prevent personal Inspector RAG from using Firestore"
+          git push

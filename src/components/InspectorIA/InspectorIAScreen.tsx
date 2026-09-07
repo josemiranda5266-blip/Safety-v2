@@ -370,6 +370,11 @@ export const InspectorIAScreen: React.FC = () => {
       
       const rawBase64 = selectedImageBase64.includes(',') ? selectedImageBase64.split(',')[1] : selectedImageBase64;
 
+      const localRagChunks = db.searchRelevantChunks(
+        activityDescription.trim() || 'inspección de seguridad e higiene',
+        8
+      );
+
       const resultReport = await db.callAiApi<any>('/api/inspector-ai-analyze', {
         imageBase64: rawBase64,
         mimeType: imageMimeType,
@@ -378,6 +383,7 @@ export const InspectorIAScreen: React.FC = () => {
         inspectorName,
         inspectorRegistration,
         activityDescription: activityDescription.trim() || undefined,
+        documentChunks: localRagChunks,
       }, 90000);
 
       setAnalysisProgressStep('3/3 Compilando informe técnico y plan de acción preventivo...');

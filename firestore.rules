@@ -147,6 +147,14 @@ service cloud.firestore {
           isAdmin()
         ) && resource.data.organizationId == orgId;
       }
+
+      // Organization subcollections (emergencyPlans, trainingActivities, iperMatrices, incidents, etc.)
+      match /{subcollection}/{docId} {
+        allow read, write: if isSignedIn() && (
+          exists(/databases/$(database)/documents/memberships/$(orgId + '_' + request.auth.uid)) ||
+          isAdmin()
+        );
+      }
     }
 
     // Multi-tenant Memberships
@@ -187,6 +195,13 @@ service cloud.firestore {
     match /subscriptions/{subId} {
       allow read: if isExistingOwner() || isAdmin();
       allow write: if isAdmin(); // Managed server-side
+    }
+
+    // Audit Logs (Client & Server Audit Trail)
+    match /auditLogs/{logId} {
+      allow create: if true;
+      allow read: if isSignedIn() || isAdmin();
+      allow update, delete: if false;
     }
   }
 }

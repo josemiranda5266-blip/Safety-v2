@@ -20,6 +20,7 @@ import normativeCatalogRoutes from "./server/routes/normativeCatalogRoutes";
 import {
   initializeAuthorizationRepository,
   getAuthorizationRepository,
+  isPersonalMode,
 } from "./server/authorization/store";
 import { InMemoryAuthorizationRepository } from "./server/authorization/repository";
 import { logStructured } from "./server/utils/logger";
@@ -27,7 +28,8 @@ import { logStructured } from "./server/utils/logger";
 dotenv.config({ override: false });
 
 const app = express();
-const PORT = Number(process.env.PORT) || 3000;
+app.set("trust proxy", 1);
+const PORT = 3000;
 
 // Security Middlewares (H-03 Hardening)
 const isProd = process.env.NODE_ENV === "production";
@@ -59,7 +61,7 @@ if (isProd) {
           fontSrc: ["'self'", "data:", "https://fonts.gstatic.com"],
           objectSrc: ["'none'"],
           baseUri: ["'self'"],
-          frameAncestors: ["'none'"],
+          frameAncestors: ["'self'", "https://*.google.com", "https://*.run.app", "https://*.ai.studio"],
         },
       },
       hsts: { maxAge: 31536000, includeSubDomains: true },
@@ -92,15 +94,15 @@ app.use((req, res, next) => {
   next();
 });
 
-// General Rate Limiter for all API routes
-app.use("/api/", generalApiLimiter);
-
-// Body parser with secure limits
-app.use(express.json({ limit: "20mb" }));
-app.use(express.urlencoded({ extended: true, limit: "20mb" }));
+// Body parser with secure limits (50mb to support high-res field inspection photos)
+app.use(express.json({ limit: "50mb" }));
+app.use(express.urlencoded({ extended: true, limit: "50mb" }));
 
 // User identity extractor middleware
 app.use(extractAuthUser);
+
+// General Rate Limiter for all API routes
+app.use("/api/", generalApiLimiter);
 
 // Liveness check (independent of Firestore)
 app.get("/api/health/liveness", (_req, res) => {
@@ -142,11 +144,7 @@ const checkReadiness = async (_req: express.Request, res: express.Response) => {
 app.get("/api/health/readiness", checkReadiness);
 app.get("/api/health", checkReadiness);
 
-// Modular Routes
-app.use("/api", aiRoutes);
-app.use("/api/user", userRoutes);
-
-// Safety IA V2 Multi-tenant Routes
+// Safety IA V2 Multi-tenant Routes (Mounted BEFORE general /api routes to prevent intercept)
 app.use("/api/v2/companies", companyRoutes);
 app.use("/api/v2/establishments", establishmentRoutes);
 app.use("/api/v2/sectors", sectorRoutes);
@@ -157,6 +155,10 @@ app.use("/api/v2/documents", documentRoutes);
 app.use("/api/v2/tenant", tenantContextRoutes);
 app.use("/api/v2/hygiene", hygieneRoutes);
 app.use("/api/v2/normative-catalog", normativeCatalogRoutes);
+
+// Modular Routes
+app.use("/api/user", userRoutes);
+app.use("/api", aiRoutes);
 
 // Global API Error Handler (Ensures all Express /api errors return JSON, never HTML)
 app.use((err: any, _req: express.Request, res: express.Response, _next: express.NextFunction) => {
@@ -186,9 +188,10 @@ async function startServer() {
     await initializeAuthorizationRepository();
     logStructured("info", "AUTHORIZATION_REPOSITORY_READY", {});
 
-    // 2. Explicit production check: ensure active repository is NOT InMemory
+    // 2. Explicit production check: ensure active repository is NOT InMemory unless personal mode is active
     if (
       process.env.NODE_ENV === "production" &&
+      !isPersonalMode() &&
       getAuthorizationRepository() instanceof InMemoryAuthorizationRepository
     ) {
       throw new Error(

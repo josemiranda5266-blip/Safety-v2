@@ -7,6 +7,7 @@ import {
   validateComparisonPayload,
 } from "../middleware/payloadValidator";
 import { requireAuth, requireTenantContext, TenantRequest } from "../authorization/middleware";
+import { isPersonalMode } from "../middleware/auth";
 import { generateContentWithRetry, generateContentWithRetryWithTimeout, Type, GeminiPublicError, mapToGeminiPublicError } from "../services/gemini";
 import * as documentService from "../services/documentService";
 
@@ -14,7 +15,7 @@ const router = Router();
 
 // Apply AI rate limiter, concurrency guard, and mandatory verified auth across all AI routes
 router.use(aiEndpointsLimiter);
-router.use(concurrencyLimiter(3));
+router.use(concurrencyLimiter(8));
 router.use(requireAuth);
 
 /**
@@ -93,7 +94,7 @@ PREGUNTA / CONSULTA DEL USUARIO:
 Instrucción: Analiza minuciosamente los fragmentos anteriores de la biblioteca. Si contienen respuesta precisa, responde con rigurosidad técnica, citas exactas y la frase final obligatoria. Si no hay información suficiente, responde únicamente con "No encontré información suficiente sobre este tema dentro de tu biblioteca documental."`;
 
       const response = await generateContentWithRetry({
-        model: "gemini-3.7-flash",
+        model: "gemini-3.1-flash-lite",
         contents: userPrompt,
         config: {
           systemInstruction,
@@ -174,7 +175,7 @@ Instrucciones:
 }`;
 
       const response = await generateContentWithRetry({
-        model: "gemini-3.7-flash",
+        model: "gemini-3.1-flash-lite",
         contents: promptText,
         config: {
           responseMimeType: "application/json",
@@ -254,7 +255,7 @@ Devuelve únicamente una estructura JSON válida con el siguiente formato:
 }`;
 
       const response = await generateContentWithRetry({
-        model: "gemini-3.7-flash",
+        model: "gemini-3.1-flash-lite",
         contents: { parts: [imagePart, { text: promptText }] },
         config: {
           responseMimeType: "application/json",
@@ -469,7 +470,7 @@ Responde únicamente en formato JSON con la siguiente estructura:
 }`;
 
       const response = await generateContentWithRetry({
-        model: "gemini-3.7-flash",
+        model: "gemini-3.1-flash-lite",
         contents: { parts: [imagePart, { text: promptText }] },
         config: {
           responseMimeType: "application/json",
@@ -558,6 +559,7 @@ router.post(
         inspectorName,
         inspectorRegistration,
         activityDescription,
+        documentChunks,
       } = req.body;
 
       if (!orgId) {
@@ -567,13 +569,17 @@ router.post(
         });
       }
 
-      // Server-side RAG retrieval
+      // Server-side / Local RAG retrieval
       const searchTerms = `${activityDescription || ""} ${companyName || ""} ${siteLocation || ""}`;
-      const { topChunks, formattedLibraryContext } = await retrieveServerTenantChunks(
-        orgId,
-        assignedCompanyIds,
-        searchTerms
-      );
+      const localChunks = Array.isArray(documentChunks) ? documentChunks.slice(0, 12) : [];
+      const { topChunks, formattedLibraryContext } = isPersonalMode() && localChunks.length > 0
+        ? {
+            topChunks: localChunks,
+            formattedLibraryContext: localChunks
+              .map((c: any, i: number) => `[DOCUMENTO BIBLIOTECA LOCAL ${i + 1}]\nID Documento: ${c.docId || c.id || `doc_${i}`}\nTítulo: "${c.docTitle || 'Documento local'}"\nCategoría: ${c.category || 'Normativa'}\nPágina: ${c.pageNumber || 'N/A'}\nSección/Artículo: ${c.article || c.chapter || c.section || 'N/A'}\nTexto Normativo:\n"${c.text || ''}"`)
+              .join("\n\n--------------------\n\n"),
+          }
+        : await retrieveServerTenantChunks(orgId, assignedCompanyIds, searchTerms);
 
       const mediaPart = {
         inlineData: {
@@ -610,8 +616,9 @@ ${formattedLibraryContext}
 Realiza un informe técnico riguroso de inspección visual en formato JSON estructurado integrando la imagen y la descripción de la actividad como un todo:`;
 
       const response = await generateContentWithRetryWithTimeout({
-        model: "gemini-3.7-flash",
+        model: "gemini-3.1-flash-lite",
         contents: { parts: [mediaPart, { text: promptText }] },
+        operationType: "INSPECTOR_IA",
         config: {
           systemInstruction,
           responseMimeType: "application/json",
@@ -805,7 +812,7 @@ Genera un informe analítico completo estructurado exactamente con el siguiente 
 }`;
 
       const response = await generateContentWithRetry({
-        model: "gemini-3.7-flash",
+        model: "gemini-3.1-flash-lite",
         contents: promptText,
         config: {
           responseMimeType: "application/json",
@@ -885,7 +892,7 @@ Responde únicamente en formato JSON con la estructura:
 }`;
 
       const response = await generateContentWithRetry({
-        model: "gemini-3.7-flash",
+        model: "gemini-3.1-flash-lite",
         contents: promptText,
         config: {
           responseMimeType: "application/json",
@@ -950,7 +957,7 @@ Sugiere peligros potenciales y controles preventivos (Jerarquía de Controles).
 Responde en formato JSON: { "hazards": [...], "controls": [...] }`;
 
       const response = await generateContentWithRetry({
-        model: "gemini-3.7-flash",
+        model: "gemini-3.1-flash-lite",
         contents: promptText,
         config: { responseMimeType: "application/json" },
         operationType: "SUGGESTIONS",
@@ -980,7 +987,7 @@ router.post(
 Responde en formato JSON: { "dates": [{ "date": "YYYY-MM-DD", "description": "..." }] }`;
 
       const response = await generateContentWithRetry({
-        model: "gemini-3.7-flash",
+        model: "gemini-3.1-flash-lite",
         contents: promptText,
         config: { responseMimeType: "application/json" },
         operationType: "OCR",
@@ -1010,7 +1017,7 @@ router.post(
 Formato: Título, Introducción, Cuerpo, Conclusión.`;
 
       const response = await generateContentWithRetry({
-        model: "gemini-3.7-flash",
+        model: "gemini-3.1-flash-lite",
         contents: promptText,
         operationType: "DRAFTING",
       });
@@ -1037,7 +1044,7 @@ router.post(
 Formato JSON: { "actions": [{ "action": "...", "responsible": "...", "deadline": "..." }] }`;
 
       const response = await generateContentWithRetry({
-        model: "gemini-3.7-flash",
+        model: "gemini-3.1-flash-lite",
         contents: promptText,
         config: { responseMimeType: "application/json" },
         operationType: "PLANNING",
@@ -1094,7 +1101,7 @@ Responde únicamente en formato JSON con la siguiente estructura:
 }`;
 
       const response = await generateContentWithRetry({
-        model: "gemini-3.7-flash",
+        model: "gemini-3.1-flash-lite",
         contents: promptText,
         config: {
           responseMimeType: "application/json",
@@ -1192,7 +1199,7 @@ Responde únicamente en formato JSON con la siguiente estructura:
 }`;
 
       const response = await generateContentWithRetry({
-        model: "gemini-3.7-flash",
+        model: "gemini-3.1-flash-lite",
         contents: promptText,
         config: {
           responseMimeType: "application/json",
@@ -1312,7 +1319,7 @@ Responde únicamente en formato JSON con la siguiente estructura:
       parts.push({ text: promptText });
 
       const response = await generateContentWithRetry({
-        model: "gemini-3.7-flash",
+        model: "gemini-3.1-flash-lite",
         contents: { parts },
         config: {
           responseMimeType: "application/json",
@@ -1396,7 +1403,7 @@ Responde únicamente en formato JSON con la siguiente estructura:
 }`;
 
       const response = await generateContentWithRetry({
-        model: "gemini-3.7-flash",
+        model: "gemini-3.1-flash-lite",
         contents: promptText,
         config: {
           responseMimeType: "application/json",

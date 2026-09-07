@@ -107,7 +107,8 @@ export const FINOPS_BUDGETS = {
   CHAT_RAG: { inputLimit: 20000, outputLimit: 2000 },
   DOCUMENT_COMPARISON: { inputLimit: 30000, outputLimit: 3000 },
   OCR: { inputLimit: 15000, outputLimit: 4000 },
-  IMAGE_ANALYSIS: { inputLimit: 15000, outputLimit: 3000 },
+  IMAGE_ANALYSIS: { inputLimit: 20000, outputLimit: 3500 },
+  INSPECTOR_IA: { inputLimit: 25000, outputLimit: 4000 },
   SUGGESTIONS: { inputLimit: 10000, outputLimit: 2000 },
   DRAFTING: { inputLimit: 10000, outputLimit: 2000 },
   PLANNING: { inputLimit: 10000, outputLimit: 2000 }
@@ -119,7 +120,7 @@ export interface GenerateWithRetryOptions {
   config?: any;
   maxRetries?: number;
   initialDelayMs?: number;
-  operationType?: "CHAT_RAG" | "DOCUMENT_COMPARISON" | "OCR" | "IMAGE_ANALYSIS" | "SUGGESTIONS" | "DRAFTING" | "PLANNING";
+  operationType?: "CHAT_RAG" | "DOCUMENT_COMPARISON" | "OCR" | "IMAGE_ANALYSIS" | "INSPECTOR_IA" | "SUGGESTIONS" | "DRAFTING" | "PLANNING";
 }
 
 /**
@@ -127,8 +128,8 @@ export interface GenerateWithRetryOptions {
  * Also supports fallback model degradation if primary model remains overloaded.
  */
 export async function generateContentWithRetry(options: GenerateWithRetryOptions): Promise<any> {
-  const primaryModel = options.model || "gemini-3.7-flash";
-  const fallbackModel = "gemini-3.7-flash";
+  const primaryModel = options.model || "gemini-3.1-flash-lite";
+  const fallbackModel = "gemini-flash-latest";
   const maxRetries = options.maxRetries ?? 3;
   let delay = options.initialDelayMs ?? 1000;
 

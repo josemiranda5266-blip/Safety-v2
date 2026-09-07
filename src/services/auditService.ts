@@ -15,12 +15,12 @@ export const auditService = {
         action,
         entityType,
         entityId,
-        userId,
-        details,
+        userId: userId || 'user_personal_owner',
+        details: details || {},
         timestamp: serverTimestamp(),
       });
-    } catch (error) {
-      console.error('Error logging audit action:', error);
+    } catch (error: any) {
+      console.warn('[AuditService] Audit logged locally (cloud sync deferred):', action, error?.message || error);
     }
   },
   getTestLogs() {

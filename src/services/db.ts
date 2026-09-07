@@ -43,6 +43,12 @@ export class LocalSafetyDB {
   }
 
   private async initCloudSync() {
+    // Safety-v2 is a personal/local-first application. Do not initialize
+    // Firebase Auth/Firestore as a prerequisite for normal application use.
+    // The AI pipeline receives the local RAG context explicitly when needed.
+    return;
+
+    /*
     try {
       const user = await ensureAuth();
       if (!user) return;
@@ -123,6 +129,7 @@ export class LocalSafetyDB {
     } catch (e) {
       console.warn('[CloudSync] Firestore initialization note:', e);
     }
+    */
   }
 
   public static getInstance(): LocalSafetyDB {
@@ -1119,10 +1126,17 @@ export class LocalSafetyDB {
   }
 
   public async callAiApi<T>(endpoint: string, payload: any, customTimeoutMs = 90000): Promise<T> {
-    // Safety-v2 is a personal application: AI requests must not depend on Firebase Auth.
-    // The backend explicitly accepts unauthenticated requests in personal mode.
     const isPersonalAiEndpoint = endpoint.includes('/inspector-ai-analyze') || endpoint.includes('/analyze-image');
-    const headers = isPersonalAiEndpoint ? {} : await this.getAuthHeaders();
+    let headers: Record<string, string> = {};
+    try {
+      headers = await this.getAuthHeaders();
+    } catch (_authErr) {
+      // Graceful fallback in personal mode or when offline
+      const orgId = typeof localStorage !== 'undefined' ? localStorage.getItem('safetyia_active_org_id') || 'org_personal_default' : 'org_personal_default';
+      headers = {
+        'x-org-id': orgId,
+      };
+    }
     const url = buildApiUrl(endpoint);
     
     const controller = new AbortController();
@@ -1220,6 +1234,9 @@ export class LocalSafetyDB {
       if (err.name === 'AbortError') {
         console.error(`[callAiApi] AI_REQUEST_TIMEOUT para ${endpoint}`);
         throw new Error('AI_REQUEST_TIMEOUT');
+      }
+      if (err?.message === 'Failed to fetch' || (err?.name === 'TypeError' && err?.message?.includes('fetch'))) {
+        throw new Error('No se pudo establecer conexión con el servidor de análisis IA. Comprueba tu conexión a internet o reintenta en unos instantes.');
       }
       throw err;
     }

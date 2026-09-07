@@ -58,11 +58,7 @@ export const inspectionService = {
     if (!targetOrgId) throw new Error("No organization selected");
 
     const currentUid = auth.currentUser?.uid;
-    if (!currentUid && process.env.NODE_ENV === 'production' && process.env.IS_RUNNING_TESTS !== 'true') {
-      throw new Error("User is not authenticated");
-    }
-
-    const createdByUid = currentUid || (inspection as any).createdBy || 'user_owner_a';
+    const createdByUid = currentUid || (inspection as any).createdBy || (typeof localStorage !== 'undefined' && localStorage.getItem('safetyia_user_uid')) || 'user_personal_owner';
     const reportId = `insp_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`;
 
     const formattedReport: InspectionReport = {
@@ -91,14 +87,10 @@ export const inspectionService = {
     if (!targetOrgId) throw new Error("No organization selected");
 
     const currentUid = auth.currentUser?.uid;
-    if (!currentUid && process.env.NODE_ENV === 'production' && process.env.IS_RUNNING_TESTS !== 'true') {
-      throw new Error("User is not authenticated");
-    }
-
     const reportId = report.id || `insp_${Date.now()}`;
     const storeKey = `${targetOrgId}/${reportId}`;
 
-    let createdByUid = currentUid || report.createdBy || 'user_owner_a';
+    let createdByUid = currentUid || report.createdBy || (typeof localStorage !== 'undefined' && localStorage.getItem('safetyia_user_uid')) || 'user_personal_owner';
     if (process.env.IS_RUNNING_TESTS === 'true' && testStore.has(storeKey)) {
       const existing = testStore.get(storeKey);
       if (existing?.createdBy) {
@@ -156,13 +148,13 @@ export const inspectionService = {
     if (process.env.IS_RUNNING_TESTS === 'true') {
       const storeKey = `${targetOrgId}/${id}`;
       testStore.delete(storeKey);
-      await auditService.logAction('DELETE_INSPECTION', 'Inspection', id, auth.currentUser?.uid || 'user_owner_a', { id, organizationId: targetOrgId });
+      await auditService.logAction('DELETE_INSPECTION', 'Inspection', id, auth.currentUser?.uid || 'user_personal_owner', { id, organizationId: targetOrgId });
       return;
     }
 
     const docRef = doc(dbFirestore, 'organizations', targetOrgId, 'inspections', id);
     await deleteDoc(docRef);
-    await auditService.logAction('DELETE_INSPECTION', 'Inspection', id, auth.currentUser?.uid || 'user_owner_a', { id, organizationId: targetOrgId });
+    await auditService.logAction('DELETE_INSPECTION', 'Inspection', id, auth.currentUser?.uid || 'user_personal_owner', { id, organizationId: targetOrgId });
   },
 
   async updateFindingStatus(

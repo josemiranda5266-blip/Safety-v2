@@ -37,7 +37,7 @@ export const ImageAnalysisScreen: React.FC = () => {
     if (e.target.files && e.target.files[0]) {
       const file = e.target.files[0];
       try {
-        const { dataUrl, mimeType } = await compressImageToDataUrl(file, 1600, 1600, 0.85);
+        const { dataUrl, mimeType } = await compressImageToDataUrl(file, 1280, 1280, 0.82);
         setSelectedImage(dataUrl);
         setMimeType(mimeType);
         setAnalysisResult(null);
@@ -63,7 +63,7 @@ export const ImageAnalysisScreen: React.FC = () => {
         mimeType,
         activityDescription,
         availableNormsContext: normsList,
-      });
+      }, 90000);
 
       const result: HazardAnalysisResult = {
         id: `haz_${Date.now()}`,

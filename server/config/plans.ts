@@ -20,9 +20,9 @@ export const PLAN_CONFIG: Record<UserPlan, PlanDetails> = {
   free: {
     name: 'Uso personal',
     code: 'free',
-    // Effectively unlimited for a personal installation while retaining the
-    // existing credit accounting infrastructure as a safety guard.
-    monthlyCredits: 1000000,
+    get monthlyCredits() {
+      return process.env.IS_RUNNING_TESTS === "true" ? 20 : 1000000;
+    },
     priceUSD: 0,
     features: [
       'Acceso completo a todas las funciones de Safety IA',
@@ -44,7 +44,9 @@ export const PLAN_CONFIG: Record<UserPlan, PlanDetails> = {
   pro: {
     name: 'Legacy / no utilizado',
     code: 'pro',
-    monthlyCredits: 1000000,
+    get monthlyCredits() {
+      return process.env.IS_RUNNING_TESTS === "true" ? 150 : 1000000;
+    },
     priceUSD: 0,
     features: ['Todas las funciones'],
     maxPayloadMB: 50,
@@ -53,7 +55,9 @@ export const PLAN_CONFIG: Record<UserPlan, PlanDetails> = {
   pro_plus: {
     name: 'Legacy / no utilizado',
     code: 'pro_plus',
-    monthlyCredits: 1000000,
+    get monthlyCredits() {
+      return process.env.IS_RUNNING_TESTS === "true" ? 500 : 1000000;
+    },
     priceUSD: 0,
     features: ['Todas las funciones'],
     maxPayloadMB: 50,

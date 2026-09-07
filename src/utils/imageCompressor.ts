@@ -1,14 +1,14 @@
 /**
  * Compresses an image File or Base64/DataURL string to an optimized JPEG DataURL
- * (max dimension 1600px, quality 0.85).
- * Reduces multi-megabyte photo uploads to ~300-600KB while keeping crisp visual detail
- * for Gemini vision models, preventing HTTP 413 or payload errors.
+ * (max dimension 1280px, quality 0.82).
+ * Reduces multi-megabyte photo uploads to ~150-350KB while keeping crisp visual detail
+ * for Gemini vision models, preventing timeouts and payload errors.
  */
 export async function compressImageToDataUrl(
   input: File | string,
-  maxWidth = 1600,
-  maxHeight = 1600,
-  quality = 0.85
+  maxWidth = 1280,
+  maxHeight = 1280,
+  quality = 0.82
 ): Promise<{ dataUrl: string; mimeType: string }> {
   return new Promise((resolve, reject) => {
     const img = new Image();

@@ -188,13 +188,9 @@ export const InspectorIAScreen: React.FC = () => {
   }, [activeOrgId]);
 
   const loadData = async () => {
-    if (!activeOrgId) {
-      setReports([]);
-      setStats(null);
-      return;
-    }
+    const orgIdToUse = activeOrgId || (typeof localStorage !== 'undefined' ? localStorage.getItem('safetyia_active_org_id') : null) || 'org_personal_default';
     try {
-      const loadedReports = await inspectionService.getInspections(activeOrgId);
+      const loadedReports = await inspectionService.getInspections(orgIdToUse);
       setReports(loadedReports);
 
       const pending = loadedReports.reduce((acc, r) => acc + (r.findings?.filter(f => f.status === 'Pendiente').length || 0), 0);
@@ -274,12 +270,15 @@ export const InspectorIAScreen: React.FC = () => {
   const handleCaptureLivePhoto = () => {
     if (videoRef.current) {
       const canvas = document.createElement('canvas');
-      canvas.width = videoRef.current.videoWidth || 1280;
-      canvas.height = videoRef.current.videoHeight || 720;
+      const vWidth = videoRef.current.videoWidth || 1280;
+      const vHeight = videoRef.current.videoHeight || 720;
+      const scale = Math.min(1, 1280 / Math.max(vWidth, vHeight));
+      canvas.width = Math.round(vWidth * scale);
+      canvas.height = Math.round(vHeight * scale);
       const ctx = canvas.getContext('2d');
       if (ctx) {
         ctx.drawImage(videoRef.current, 0, 0, canvas.width, canvas.height);
-        const dataUrl = canvas.toDataURL('image/jpeg', 0.9);
+        const dataUrl = canvas.toDataURL('image/jpeg', 0.82);
         setSelectedImageBase64(dataUrl);
         setImageMimeType('image/jpeg');
         setSelectedSampleId(null);
@@ -297,7 +296,7 @@ export const InspectorIAScreen: React.FC = () => {
     setSelectedSampleId(null);
 
     try {
-      const { dataUrl, mimeType } = await compressImageToDataUrl(file, 1600, 1600, 0.85);
+      const { dataUrl, mimeType } = await compressImageToDataUrl(file, 1280, 1280, 0.82);
       setSelectedImageBase64(dataUrl);
       setImageMimeType(mimeType);
     } catch (err) {
@@ -330,7 +329,7 @@ export const InspectorIAScreen: React.FC = () => {
     }
 
     try {
-      const { dataUrl, mimeType } = await compressImageToDataUrl(sample.thumbnail, 1600, 1600, 0.85);
+      const { dataUrl, mimeType } = await compressImageToDataUrl(sample.thumbnail, 1280, 1280, 0.82);
       setSelectedImageBase64(dataUrl);
       setImageMimeType(mimeType);
     } catch (err) {
@@ -341,12 +340,12 @@ export const InspectorIAScreen: React.FC = () => {
       img.src = sample.thumbnail;
       img.onload = () => {
         const canvas = document.createElement('canvas');
-        canvas.width = img.width;
-        canvas.height = img.height;
+        canvas.width = Math.min(img.width || 1200, 1280);
+        canvas.height = Math.min(img.height || 900, 1280);
         const ctx = canvas.getContext('2d');
         if (ctx) {
-          ctx.drawImage(img, 0, 0);
-          const dataURL = canvas.toDataURL('image/jpeg', 0.85);
+          ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+          const dataURL = canvas.toDataURL('image/jpeg', 0.82);
           setSelectedImageBase64(dataURL);
         }
       };
@@ -364,10 +363,10 @@ export const InspectorIAScreen: React.FC = () => {
     setAnalysisError(null);
 
     try {
-      setAnalysisProgressStep('1/3 Extrayendo fotogramas y analizando contexto operativo...');
-      await new Promise((r) => setTimeout(r, 400));
+      setAnalysisProgressStep('1/3 Optimizando fotograma y analizando contexto operativo...');
+      await new Promise((r) => setTimeout(r, 300));
 
-      setAnalysisProgressStep('2/3 Consultando biblioteca documental verificada (RAG) y procesando imagen...');
+      setAnalysisProgressStep('2/3 Consultando biblioteca documental (RAG) y evaluando riesgos con IA...');
       
       const rawBase64 = selectedImageBase64.includes(',') ? selectedImageBase64.split(',')[1] : selectedImageBase64;
 
@@ -379,7 +378,7 @@ export const InspectorIAScreen: React.FC = () => {
         inspectorName,
         inspectorRegistration,
         activityDescription: activityDescription.trim() || undefined,
-      });
+      }, 90000);
 
       setAnalysisProgressStep('3/3 Compilando informe técnico y plan de acción preventivo...');
 
@@ -452,20 +451,17 @@ export const InspectorIAScreen: React.FC = () => {
   // Save Report to Database
   const handleSaveReport = async () => {
     if (!generatedDraftReport) return;
-    if (!activeOrgId) {
-      alert("Debes tener una organización activa seleccionada para guardar la inspección.");
-      return;
-    }
+    const orgIdToUse = activeOrgId || (typeof localStorage !== 'undefined' ? localStorage.getItem('safetyia_active_org_id') : null) || 'org_personal_default';
 
     const reportToSave: InspectionReport = {
       ...generatedDraftReport,
-      organizationId: activeOrgId,
+      organizationId: orgIdToUse,
       companyId: activeCompany?.id,
       establishmentId: selectedEstablishmentId || undefined,
       updatedAt: new Date().toISOString(),
     };
 
-    const savedId = await inspectionService.saveInspectionReport(reportToSave, activeOrgId);
+    const savedId = await inspectionService.saveInspectionReport(reportToSave, orgIdToUse);
     
     // Generate CAPA actions for High/Critical findings
     if (activeCompany) {

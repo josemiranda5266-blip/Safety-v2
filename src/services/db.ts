@@ -1073,7 +1073,7 @@ export class LocalSafetyDB {
         displayName: user.displayName || 'Profesional H&S',
         role: 'professional',
         plan: 'free',
-        monthlyCredits: 20,
+        monthlyCredits: 1000000,
         creditsUsed: 0,
         billingPeriodStart: now.toISOString(),
         billingPeriodEnd: new Date(now.getTime() + 30 * 24 * 60 * 60 * 1000).toISOString(),
@@ -1088,7 +1088,7 @@ export class LocalSafetyDB {
         uid: 'local_user',
         role: 'professional',
         plan: 'free',
-        monthlyCredits: 20,
+        monthlyCredits: 1000000,
         creditsUsed: 0,
         billingPeriodStart: now.toISOString(),
         billingPeriodEnd: new Date(now.getTime() + 30 * 24 * 60 * 60 * 1000).toISOString(),
@@ -1118,12 +1118,12 @@ export class LocalSafetyDB {
     return updated;
   }
 
-  public async callAiApi<T>(endpoint: string, payload: any): Promise<T> {
+  public async callAiApi<T>(endpoint: string, payload: any, customTimeoutMs = 90000): Promise<T> {
     const headers = await this.getAuthHeaders();
     const url = buildApiUrl(endpoint);
     
     const controller = new AbortController();
-    const timeoutId = setTimeout(() => controller.abort(), 30000);
+    const timeoutId = setTimeout(() => controller.abort(), customTimeoutMs);
 
     try {
       const response = await fetch(url, {

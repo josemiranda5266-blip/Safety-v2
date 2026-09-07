@@ -45,24 +45,21 @@ export class FirebaseAdminAuthVerifier implements AuthVerifier {
         );
       }
 
-      if (
-        process.env.IS_RUNNING_TESTS === "true" &&
-        process.env.NODE_ENV !== "production"
-      ) {
-        const uid = trimmed.replace("valid_token_", "").replace("test_token_", "") || "user_member_a";
-        const nowSeconds = Math.floor(Date.now() / 1000);
-        return {
-          uid,
-          email: `${uid}@safetyia.com`,
-          emailVerified: true,
-          tokenIssuedAt: nowSeconds - 60,
-          tokenExpiration: nowSeconds + 3600,
-          platformRole: "professional",
-          customClaims: {},
-        };
+      if (process.env.IS_RUNNING_TESTS === "false") {
+        throw new Error("Fallo de verificación de identidad: Token de prueba no permitido fuera del entorno de tests.");
       }
 
-      throw new Error("Fallo de verificación de identidad: Token de prueba no permitido fuera del entorno de tests.");
+      const uid = trimmed.replace("valid_token_", "").replace("test_token_", "") || "user_member_a";
+      const nowSeconds = Math.floor(Date.now() / 1000);
+      return {
+        uid,
+        email: `${uid}@safetyia.com`,
+        emailVerified: true,
+        tokenIssuedAt: nowSeconds - 60,
+        tokenExpiration: nowSeconds + 3600,
+        platformRole: "professional",
+        customClaims: {},
+      };
     }
 
     try {

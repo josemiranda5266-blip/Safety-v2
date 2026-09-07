@@ -2,18 +2,37 @@ import { initializeApp, getApps, getApp } from 'firebase/app';
 import { getAuth, signInAnonymously, onAuthStateChanged, User } from 'firebase/auth';
 import { getFirestore, collection, doc, setDoc, getDocs, deleteDoc, query, where, onSnapshot } from 'firebase/firestore';
 import firebaseConfig from '../../firebase-applet-config.json';
+import { isPersonalMode } from '../utils/personalMode';
 
-// Initialize Firebase App
+// Initialize Firebase App only for legacy/cloud features.
 const app = getApps().length === 0 ? initializeApp(firebaseConfig) : getApp();
 
-// Initialize Auth & Firestore with specific databaseId if provided
 export const auth = getAuth(app);
 export const dbFirestore = firebaseConfig.firestoreDatabaseId
   ? getFirestore(app, firebaseConfig.firestoreDatabaseId)
   : getFirestore(app);
 
-// Helper to ensure user is authenticated anonymously or signed in
+function createPersonalUser(): User {
+  let storedUid = (typeof window !== 'undefined' && localStorage.getItem('safetyia_user_uid')) || '';
+  if (!storedUid) {
+    storedUid = `user_personal_${Math.random().toString(36).substring(2, 10)}`;
+    if (typeof window !== 'undefined') localStorage.setItem('safetyia_user_uid', storedUid);
+  }
+
+  return {
+    uid: storedUid,
+    email: 'profesional@safetyia.local',
+    displayName: 'Profesional H&S',
+    isAnonymous: true,
+    emailVerified: true,
+    getIdToken: async () => `personal_local_token_${storedUid}`,
+  } as unknown as User;
+}
+
+// Personal mode must never initiate Firebase Auth just to use the application.
 export function ensureAuth(): Promise<User> {
+  if (isPersonalMode()) return Promise.resolve(createPersonalUser());
+
   return new Promise((resolve) => {
     if (auth.currentUser) {
       resolve(auth.currentUser);
@@ -34,28 +53,8 @@ export function ensureAuth(): Promise<User> {
           resolve(userCred.user);
         } catch (err) {
           unsubscribe();
-          console.warn('Firebase signInAnonymously fallback to personal local session:', err);
-          let storedUid = (typeof window !== 'undefined' && localStorage.getItem('safetyia_user_uid')) || '';
-          if (!storedUid) {
-            storedUid = `user_personal_${Math.random().toString(36).substring(2, 10)}`;
-            if (typeof window !== 'undefined') {
-              localStorage.setItem('safetyia_user_uid', storedUid);
-            }
-          }
-          const fallbackUser: any = {
-            uid: auth.currentUser?.uid || storedUid,
-            email: auth.currentUser?.email || 'profesional@safetyia.com',
-            displayName: auth.currentUser?.displayName || 'Profesional H&S',
-            isAnonymous: true,
-            emailVerified: true,
-            getIdToken: async () => {
-              if (auth.currentUser) {
-                return await auth.currentUser.getIdToken();
-              }
-              return `valid_token_${storedUid}`;
-            },
-          };
-          resolve(fallbackUser);
+          console.warn('Firebase anonymous authentication unavailable; using local session:', err);
+          resolve(createPersonalUser());
         }
       }
     });
@@ -102,4 +101,3 @@ export function sanitizeForFirestore<T>(data: T): T {
 }
 
 export { collection, doc, setDoc, getDocs, deleteDoc, query, where, onSnapshot };
-

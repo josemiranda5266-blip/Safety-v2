@@ -1,0 +1,65 @@
+name: Fix Inspector IA personal pipeline
+on:
+  push:
+    branches: [main]
+permissions:
+  contents: write
+jobs:
+  patch:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Patch personal client/server pipeline
+        shell: python
+        run: |
+          from pathlib import Path
+
+          db = Path('src/services/db.ts')
+          s = db.read_text(encoding='utf-8')
+          old = '''  private async initCloudSync() {\n    try {\n      const user = await ensureAuth();'''
+          new = '''  private async initCloudSync() {\n    // Safety-v2 is a personal/local-first application. Do not initialize\n    // Firebase Auth/Firestore as a prerequisite for normal application use.\n    // The AI pipeline receives the local RAG context explicitly when needed.\n    return;\n\n    /*\n    try {\n      const user = await ensureAuth();'''
+          if old not in s:
+              raise SystemExit('db.ts cloud-sync anchor not found')
+          s = s.replace(old, new, 1)
+          marker = '''      // Legacy Realtime listener for Inspector Reports disabled - multi-tenant inspections are handled via inspectionService\n    } catch (e) {\n      console.warn('[CloudSync] Firestore initialization note:', e);\n    }\n  }'''
+          replacement = '''      // Legacy Realtime listener for Inspector Reports disabled - multi-tenant inspections are handled via inspectionService\n    } catch (e) {\n      console.warn('[CloudSync] Firestore initialization note:', e);\n    }\n    */\n  }'''
+          if marker not in s:
+              raise SystemExit('db.ts cloud-sync closing anchor not found')
+          s = s.replace(marker, replacement, 1)
+          db.write_text(s, encoding='utf-8')
+
+          inspector = Path('src/components/InspectorIA/InspectorIAScreen.tsx')
+          s = inspector.read_text(encoding='utf-8')
+          old = '''      const resultReport = await db.callAiApi<any>('/api/inspector-ai-analyze', {\n        imageBase64: rawBase64,\n        mimeType: imageMimeType,\n        companyName,\n        siteLocation,\n        inspectorName,\n        inspectorRegistration,\n        activityDescription: activityDescription.trim() || undefined,\n      }, 90000);'''
+          new = '''      const localRagChunks = db.searchRelevantChunks(\n        activityDescription.trim() || 'inspección de seguridad e higiene',\n        8\n      );\n\n      const resultReport = await db.callAiApi<any>('/api/inspector-ai-analyze', {\n        imageBase64: rawBase64,\n        mimeType: imageMimeType,\n        companyName,\n        siteLocation,\n        inspectorName,\n        inspectorRegistration,\n        activityDescription: activityDescription.trim() || undefined,\n        documentChunks: localRagChunks,\n      }, 90000);'''
+          if old not in s:
+              raise SystemExit('InspectorIA request anchor not found')
+          s = s.replace(old, new, 1)
+          inspector.write_text(s, encoding='utf-8')
+
+          routes = Path('server/routes/aiRoutes.ts')
+          s = routes.read_text(encoding='utf-8')
+          s = s.replace('import { requireAuth, requireTenantContext, TenantRequest } from "../authorization/middleware";', 'import { requireAuth, requireTenantContext, TenantRequest } from "../authorization/middleware";\nimport { isPersonalMode } from "../middleware/auth";', 1)
+          old = '''        imageBase64,\n        mimeType,\n        companyName,\n        siteLocation,\n        inspectorName,\n        inspectorRegistration,\n        activityDescription,\n      } = req.body;'''
+          new = '''        imageBase64,\n        mimeType,\n        companyName,\n        siteLocation,\n        inspectorName,\n        inspectorRegistration,\n        activityDescription,\n        documentChunks,\n      } = req.body;'''
+          if old not in s:
+              raise SystemExit('aiRoutes payload anchor not found')
+          s = s.replace(old, new, 1)
+          old = '''      const searchTerms = `${activityDescription || ""} ${companyName || ""} ${siteLocation || ""}`;\n      const { topChunks, formattedLibraryContext } = await retrieveServerTenantChunks(\n        orgId,\n        assignedCompanyIds,\n        searchTerms\n      );'''
+          new = '''      const searchTerms = `${activityDescription || ""} ${companyName || ""} ${siteLocation || ""}`;\n      const localChunks = Array.isArray(documentChunks) ? documentChunks.slice(0, 12) : [];\n      const { topChunks, formattedLibraryContext } = isPersonalMode() && localChunks.length > 0\n        ? {\n            topChunks: localChunks,\n            formattedLibraryContext: localChunks\n              .map((c: any, i: number) => `[DOCUMENTO BIBLIOTECA LOCAL ${i + 1}]\\nID Documento: ${c.docId || c.id || `doc_${i}`}\\nTítulo: "${c.docTitle || 'Documento local'}"\\nCategoría: ${c.category || 'Normativa'}\\nPágina: ${c.pageNumber || 'N/A'}\\nSección/Artículo: ${c.article || c.chapter || c.section || 'N/A'}\\nTexto Normativo:\\n"${c.text || ''}"`)\n              .join("\\n\\n--------------------\\n\\n"),\n          }\n        : await retrieveServerTenantChunks(orgId, assignedCompanyIds, searchTerms);'''
+          if old not in s:
+              raise SystemExit('aiRoutes RAG anchor not found')
+          s = s.replace(old, new, 1)
+          routes.write_text(s, encoding='utf-8')
+
+      - name: Build and commit
+        run: |
+          npm ci
+          npm run build
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add src/services/db.ts src/components/InspectorIA/InspectorIAScreen.tsx server/routes/aiRoutes.ts
+          git diff --cached --quiet && exit 0
+          git commit -m "fix: make Inspector IA local-first in personal mode"
+          git push

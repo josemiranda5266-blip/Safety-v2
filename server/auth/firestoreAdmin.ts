@@ -1,9 +1,7 @@
-import { getApps, initializeApp, App, applicationDefault, cert } from "firebase-admin/app";
+import { getApps, initializeApp, App, cert } from "firebase-admin/app";
 import { getFirestore, Firestore } from "firebase-admin/firestore";
 import { getStorage } from "firebase-admin/storage";
 import { getFirebaseProjectId, getAuthConfig } from "./config";
-import fs from "fs";
-import path from "path";
 
 let cachedFirestore: Firestore | null = null;
 let cachedAdminApp: App | null = null;
@@ -13,12 +11,12 @@ export function parsePrivateKey(rawKey: string): string {
   if (!rawKey || typeof rawKey !== "string") {
     throw new Error("Invalid private key: not a string or empty");
   }
+
   let key = rawKey.trim();
-  // Remove surrounding quotes if present
   if ((key.startsWith('"') && key.endsWith('"')) || (key.startsWith("'") && key.endsWith("'"))) {
     key = key.slice(1, -1).trim();
   }
-  // Replace escaped \n with actual newlines
+
   key = key.replace(/\\n/g, "\n");
 
   if (!key.includes("BEGIN PRIVATE KEY")) {
@@ -27,95 +25,58 @@ export function parsePrivateKey(rawKey: string): string {
   if (!key.includes("END PRIVATE KEY")) {
     throw new Error("Invalid private key: missing END PRIVATE KEY footer");
   }
+
   return key;
 }
 
-export function resolveAdminCredentials(): { projectId?: string; clientEmail?: string; privateKey?: string; source: string } {
-  const isProduction = process.env.NODE_ENV === "production";
-  const gac = process.env.GOOGLE_APPLICATION_CREDENTIALS;
+/**
+ * Resolves Firebase Admin credentials exclusively from explicit Firebase
+ * environment variables. Safety-v2 no longer depends on
+ * GOOGLE_APPLICATION_CREDENTIALS or Application Default Credentials.
+ *
+ * Required credentials for the server:
+ * - FIREBASE_PROJECT_ID (or GCLOUD_PROJECT / GOOGLE_CLOUD_PROJECT)
+ * - FIREBASE_CLIENT_EMAIL
+ * - FIREBASE_PRIVATE_KEY
+ *
+ * This keeps Google AI Studio from treating GOOGLE_APPLICATION_CREDENTIALS
+ * as a required project secret and prevents accidental credential discovery
+ * from the execution environment.
+ */
+export function resolveAdminCredentials(): {
+  projectId?: string;
+  clientEmail?: string;
+  privateKey?: string;
+  source: string;
+} {
+  const envProject =
+    process.env.FIREBASE_PROJECT_ID ||
+    process.env.GCLOUD_PROJECT ||
+    process.env.GOOGLE_CLOUD_PROJECT;
   const envEmail = process.env.FIREBASE_CLIENT_EMAIL;
   const envKey = process.env.FIREBASE_PRIVATE_KEY;
-  const envProject = process.env.FIREBASE_PROJECT_ID || process.env.GCLOUD_PROJECT || process.env.GOOGLE_CLOUD_PROJECT;
 
-  // 1. Check direct environment variables (CLIENT_EMAIL + PRIVATE_KEY)
   if (envEmail && envEmail.trim() !== "" && envKey && envKey.trim() !== "") {
     const projectId = envProject || getFirebaseProjectId();
     const privateKey = parsePrivateKey(envKey);
+
     return {
-      projectId,
+      projectId: projectId.trim(),
       clientEmail: envEmail.trim(),
       privateKey,
-      source: "render_env",
+      source: "firebase_env",
     };
   }
 
-  // 2. Check GOOGLE_APPLICATION_CREDENTIALS
-  if (gac && gac.trim() !== "") {
-    const gacTrimmed = gac.trim();
-    let jsonContent: any = null;
+  const missing: string[] = [];
+  if (!envProject) missing.push("FIREBASE_PROJECT_ID");
+  if (!envEmail) missing.push("FIREBASE_CLIENT_EMAIL");
+  if (!envKey) missing.push("FIREBASE_PRIVATE_KEY");
 
-    // Check if it's a file path
-    if (fs.existsSync(gacTrimmed)) {
-      try {
-        const fileData = fs.readFileSync(gacTrimmed, "utf-8");
-        jsonContent = JSON.parse(fileData);
-      } catch (err: any) {
-        throw new Error(`CRITICAL SECURITY CONFIGURATION ERROR: Failed to read or parse JSON from GOOGLE_APPLICATION_CREDENTIALS file path.`);
-      }
-      const projectId = jsonContent.project_id || jsonContent.project_id || envProject;
-      const clientEmail = jsonContent.client_email;
-      const privateKeyRaw = jsonContent.private_key;
-
-      if (!projectId || !clientEmail || !privateKeyRaw) {
-        throw new Error(`CRITICAL SECURITY CONFIGURATION ERROR: GOOGLE_APPLICATION_CREDENTIALS file JSON missing required fields (project_id, client_email, private_key).`);
-      }
-
-      return {
-        projectId: projectId.trim(),
-        clientEmail: clientEmail.trim(),
-        privateKey: parsePrivateKey(privateKeyRaw),
-        source: "gac_file",
-      };
-    } else if (gacTrimmed.startsWith("{")) {
-      // JSON string directly in GOOGLE_APPLICATION_CREDENTIALS
-      try {
-        jsonContent = JSON.parse(gacTrimmed);
-      } catch (err: any) {
-        throw new Error(`CRITICAL SECURITY CONFIGURATION ERROR: Failed to parse JSON string in GOOGLE_APPLICATION_CREDENTIALS.`);
-      }
-
-      const projectId = jsonContent.project_id || envProject;
-      const clientEmail = jsonContent.client_email;
-      const privateKeyRaw = jsonContent.private_key;
-
-      if (!projectId || !clientEmail || !privateKeyRaw) {
-        throw new Error(`CRITICAL SECURITY CONFIGURATION ERROR: GOOGLE_APPLICATION_CREDENTIALS JSON string missing required fields.`);
-      }
-
-      return {
-        projectId: projectId.trim(),
-        clientEmail: clientEmail.trim(),
-        privateKey: parsePrivateKey(privateKeyRaw),
-        source: "gac_json",
-      };
-    } else if (isProduction) {
-      throw new Error(`CRITICAL SECURITY CONFIGURATION ERROR: GOOGLE_APPLICATION_CREDENTIALS is set but is neither a valid file path nor a valid JSON string.`);
-    }
-  }
-
-  if (isProduction) {
-    const missing: string[] = [];
-    if (!envProject) missing.push("FIREBASE_PROJECT_ID");
-    if (!envEmail) missing.push("FIREBASE_CLIENT_EMAIL");
-    if (!envKey) missing.push("FIREBASE_PRIVATE_KEY");
-    throw new Error(`CRITICAL SECURITY CONFIGURATION ERROR: Missing required Firebase Admin credentials in production. Missing: ${missing.join(", ")}. Fail closed.`);
-  }
-
-  // Non-production fallback to ADC or applicationDefault
-  return {
-    projectId: envProject || "safetyia-dev-placeholder",
-    source: "adc",
-  };
+  throw new Error(
+    `Firebase Admin credentials are not configured. Missing: ${missing.join(", ")}. ` +
+      "Configure the Firebase environment variables on the server; GOOGLE_APPLICATION_CREDENTIALS is not used by Safety-v2."
+  );
 }
 
 export function getAdminApp(): App {
@@ -129,45 +90,29 @@ export function getAdminApp(): App {
     return cachedAdminApp;
   }
 
-  const isProduction = process.env.NODE_ENV === "production";
   const creds = resolveAdminCredentials();
 
-  const options: any = { projectId: creds.projectId };
-
-  if (creds.clientEmail && creds.privateKey) {
-    try {
-      options.credential = cert({
-        projectId: creds.projectId!,
-        clientEmail: creds.clientEmail,
-        privateKey: creds.privateKey,
-      });
-    } catch (err: any) {
-      if (isProduction) {
-        throw new Error("CRITICAL SECURITY CONFIGURATION ERROR: Failed to construct Firebase Admin certificate credential in production.");
-      }
-      throw err;
-    }
-  } else if (process.env.GOOGLE_APPLICATION_CREDENTIALS && fs.existsSync(process.env.GOOGLE_APPLICATION_CREDENTIALS.trim())) {
-    options.credential = applicationDefault();
-  } else {
-    try {
-      options.credential = applicationDefault();
-    } catch {
-      if (isProduction) {
-        throw new Error("CRITICAL SECURITY CONFIGURATION ERROR: Application Default Credentials unavailable in production.");
-      }
-    }
+  if (!creds.projectId || !creds.clientEmail || !creds.privateKey) {
+    throw new Error(
+      "Firebase Admin credentials are incomplete. FIREBASE_PROJECT_ID, FIREBASE_CLIENT_EMAIL and FIREBASE_PRIVATE_KEY are required."
+    );
   }
 
   try {
-    cachedAdminApp = initializeApp(options);
+    cachedAdminApp = initializeApp({
+      projectId: creds.projectId,
+      credential: cert({
+        projectId: creds.projectId,
+        clientEmail: creds.clientEmail,
+        privateKey: creds.privateKey,
+      }),
+    });
+
     console.log(`[Firebase Admin] FIREBASE_CONFIG_SOURCE=${creds.source}`);
     console.log(`[Firebase Admin] FIREBASE_CREDENTIALS_VALIDATED=true`);
   } catch (err: any) {
-    if (isProduction) {
-      throw new Error("CRITICAL SECURITY CONFIGURATION ERROR: Failed to initialize Firebase Admin SDK in production. Fail closed.");
-    }
-    throw err;
+    const message = err?.message || "Unknown Firebase Admin initialization error";
+    throw new Error(`Failed to initialize Firebase Admin SDK: ${message}`);
   }
 
   return cachedAdminApp;
@@ -179,20 +124,21 @@ export function setAdminAppForTesting(app: App | null): void {
 
 /**
  * Returns the Firebase Admin Firestore instance.
- * Strictly uses Firebase Admin SDK to interact with the project database.
+ * Uses only the explicitly configured Firebase Admin application.
  */
 export function getAdminFirestore(): Firestore {
   if (cachedFirestore) {
     return cachedFirestore;
   }
 
-  const config = getAuthConfig();
   let firestoreDatabaseId: string | undefined = process.env.FIRESTORE_DATABASE_ID;
 
-  // Attempt to read databaseId from firebase-applet-config.json if not set in environment
+  // Attempt to read the non-secret database identifier from the local
+  // Firebase applet configuration when it is not provided as an env var.
   if (!firestoreDatabaseId) {
     try {
-      const configPath = path.join(process.cwd(), "firebase-applet-config.json");
+      const configPath = `${process.cwd()}/firebase-applet-config.json`;
+      const fs = require("fs") as typeof import("fs");
       if (fs.existsSync(configPath)) {
         const raw = fs.readFileSync(configPath, "utf-8");
         const parsed = JSON.parse(raw);
@@ -201,24 +147,20 @@ export function getAdminFirestore(): Firestore {
         }
       }
     } catch {
-      // ignore
+      // Optional local configuration; ignore when unavailable.
     }
   }
 
   const app = getAdminApp();
 
-  if (firestoreDatabaseId && firestoreDatabaseId !== "(default)") {
-    cachedFirestore = getFirestore(app, firestoreDatabaseId);
-  } else {
-    cachedFirestore = getFirestore(app);
-  }
+  cachedFirestore =
+    firestoreDatabaseId && firestoreDatabaseId !== "(default)"
+      ? getFirestore(app, firestoreDatabaseId)
+      : getFirestore(app);
 
   return cachedFirestore;
 }
 
-/**
- * Helper to inject or reset Firestore instance for testing.
- */
 export function setAdminFirestoreForTesting(firestore: Firestore | null): void {
   cachedFirestore = firestore;
 }
@@ -243,10 +185,6 @@ export function getAdminStorageBucket(): any {
   return cachedStorageBucket;
 }
 
-/**
- * Helper to inject or reset Storage Bucket instance for testing.
- */
 export function setAdminStorageBucketForTesting(bucket: any): void {
   cachedStorageBucket = bucket;
 }
-

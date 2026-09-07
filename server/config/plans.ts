@@ -10,52 +10,52 @@ export interface PlanDetails {
   concurrencyLimit: number;
 }
 
+/**
+ * Safety IA is a personal-use application.
+ * The legacy plan model is kept only for backwards-compatible data structures;
+ * the active `free` profile is now the Personal profile and exposes the complete
+ * application without registration, subscription or feature gating.
+ */
 export const PLAN_CONFIG: Record<UserPlan, PlanDetails> = {
   free: {
-    name: 'Plan Gratuito (Estudiante / Inicial)',
+    name: 'Uso personal',
     code: 'free',
-    monthlyCredits: 20,
+    // Effectively unlimited for a personal installation while retaining the
+    // existing credit accounting infrastructure as a safety guard.
+    monthlyCredits: 1000000,
     priceUSD: 0,
     features: [
-      '20 créditos mensuales de IA',
-      'Acceso a biblioteca legal básica (Ley 19.587, Dec. 351/79)',
+      'Acceso completo a todas las funciones de Safety IA',
+      'Biblioteca documental personal',
       'Consultas RAG de normativa',
-      'Generación de checklists básicos',
-      'Exportación en PDF',
+      'OCR de documentos e imágenes',
+      'Comparación analítica entre documentos',
+      'Análisis fotográfico de riesgos',
+      'Inspector IA',
+      'Checklists y planificación',
+      'Informes y exportación PDF, Word y Excel',
+      'Gestión de empresas, establecimientos, sectores, puestos y legajos',
     ],
-    maxPayloadMB: 10,
-    concurrencyLimit: 1,
+    maxPayloadMB: 50,
+    concurrencyLimit: 5,
   },
+  // Legacy values retained so existing persisted records remain deserializable.
+  // Personal mode never exposes a registration/subscription flow for these plans.
   pro: {
-    name: 'Plan Profesional (Técnicos y Licenciados)',
+    name: 'Legacy / no utilizado',
     code: 'pro',
-    monthlyCredits: 300,
-    priceUSD: 19,
-    features: [
-      '300 créditos mensuales de IA',
-      'Todas las funciones del Plan Free',
-      'OCR ilimitado de documentos escaneados',
-      'Comparación analítica entre normas',
-      'Análisis fotográfico de riesgos en campo',
-      'Informes Inspector IA con respaldo legal',
-      'Exportación en Word (.docx) y Excel (.xlsx)',
-    ],
-    maxPayloadMB: 25,
-    concurrencyLimit: 3,
+    monthlyCredits: 1000000,
+    priceUSD: 0,
+    features: ['Todas las funciones'],
+    maxPayloadMB: 50,
+    concurrencyLimit: 5,
   },
   pro_plus: {
-    name: 'Plan Pro Plus / Empresas',
+    name: 'Legacy / no utilizado',
     code: 'pro_plus',
-    monthlyCredits: 1000,
-    priceUSD: 49,
-    features: [
-      '1.000 créditos mensuales de IA',
-      'Prioridad máxima de procesamiento',
-      'Carga masiva de normativas empresariales',
-      'Múltiples inspectores simultáneos',
-      'Auditoría y trazabilidad avanzada de consultas',
-      'Soporte técnico preferencial',
-    ],
+    monthlyCredits: 1000000,
+    priceUSD: 0,
+    features: ['Todas las funciones'],
     maxPayloadMB: 50,
     concurrencyLimit: 5,
   },

@@ -251,12 +251,22 @@ export async function generateContentWithRetry(options: GenerateWithRetryOptions
 export { Type };
 
 export async function generateContentWithRetryWithTimeout(options: GenerateWithRetryOptions, timeoutMs = 90000): Promise<any> {
-  const timeoutPromise = new Promise((_, reject) =>
-    setTimeout(() => reject(new GeminiPublicError(504, 'AI_PROVIDER_TIMEOUT', 'El proveedor de IA superó el tiempo de espera.')), timeoutMs)
-  );
+  let timer: NodeJS.Timeout | null = null;
+  const timeoutPromise = new Promise((_, reject) => {
+    timer = setTimeout(() => {
+      reject(new GeminiPublicError(504, 'AI_PROVIDER_TIMEOUT', 'El análisis de IA superó el tiempo límite de espera. Por favor intenta con una imagen de menor resolución o descripción más concisa.'));
+    }, timeoutMs);
+  });
 
-  return Promise.race([
-    generateContentWithRetry(options),
-    timeoutPromise
-  ]);
+  try {
+    const result = await Promise.race([
+      generateContentWithRetry(options),
+      timeoutPromise
+    ]);
+    if (timer) clearTimeout(timer);
+    return result;
+  } catch (err) {
+    if (timer) clearTimeout(timer);
+    throw err;
+  }
 }

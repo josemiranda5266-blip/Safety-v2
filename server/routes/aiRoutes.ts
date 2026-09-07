@@ -307,13 +307,33 @@ async function retrieveServerTenantChunks(orgId: string, assignedCompanyIds: str
       };
     }
 
-    // Limit documents to top 5 to avoid timeouts
-    const limitedDocs = docs.slice(0, 5);
+    const searchTerms = queryKeywordsText
+      .toLowerCase()
+      .split(/[^\w\dáéíóúñ]+/)
+      .filter((t) => t.length > 2);
+
+    // Pre-rank documents by title, category, and tags to only query chunks of the top relevant docs
+    const scoredDocs = docs.map((doc) => {
+      let score = 0;
+      const title = (doc.title || "").toLowerCase();
+      const cat = (doc.category || "").toLowerCase();
+      const tags = (doc.tags || []).join(" ").toLowerCase();
+      for (const term of searchTerms) {
+        if (title.includes(term)) score += 10;
+        if (cat.includes(term)) score += 5;
+        if (tags.includes(term)) score += 3;
+      }
+      return { doc, score };
+    });
+
+    scoredDocs.sort((a, b) => b.score - a.score);
+    // Limit to top 5 relevant documents
+    const limitedDocs = scoredDocs.slice(0, 5).map((sd) => sd.doc);
     const allChunks: any[] = [];
     
-    // Fetch chunks in parallel
-    const chunkPromises = limitedDocs.map(docItem => 
-      documentService.getDocumentChunks(orgId, docItem.id, assignedCompanyIds)
+    // Fetch limited chunks in parallel for top documents only (avoids memory saturation)
+    const chunkPromises = limitedDocs.map((docItem) => 
+      documentService.getDocumentChunks(orgId, docItem.id, assignedCompanyIds, { limit: 12 })
     );
     
     const chunkResults = await Promise.allSettled(chunkPromises);
@@ -325,7 +345,7 @@ async function retrieveServerTenantChunks(orgId: string, assignedCompanyIds: str
       }
     }
     
-    // Limit total chunks to prevent memory issues
+    // Limit total pool of chunks to evaluate
     const finalChunks = allChunks.slice(0, 50);
 
     if (finalChunks.length === 0) {
@@ -336,11 +356,6 @@ async function retrieveServerTenantChunks(orgId: string, assignedCompanyIds: str
     }
 
     // Rank chunks based on query terms
-    const searchTerms = queryKeywordsText
-      .toLowerCase()
-      .split(/[^\w\dáéíóúñ]+/)
-      .filter((t) => t.length > 2);
-
     const scoredChunks = finalChunks.map((chunk) => {
       const chunkText = (chunk.text || "").toLowerCase();
       const docTitle = (chunk.docTitle || "").toLowerCase();

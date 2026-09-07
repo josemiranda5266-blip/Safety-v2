@@ -1147,7 +1147,8 @@ export async function getDocumentCalendarEvents(
 export async function getDocumentChunks(
   orgId: string,
   documentId: string,
-  assignedCompanyIds?: string[]
+  assignedCompanyIds?: string[],
+  options?: { limit?: number }
 ): Promise<DocChunk[]> {
   const isProduction = process.env.NODE_ENV === "production";
 
@@ -1159,13 +1160,18 @@ export async function getDocumentChunks(
 
   try {
     const db = getAdminFirestore();
-    const snapshot = await db
+    let query: FirebaseFirestore.Query = db
       .collection("organizations")
       .doc(orgId)
       .collection("documents")
       .doc(documentId)
-      .collection("chunks")
-      .get();
+      .collection("chunks");
+
+    if (options?.limit && options.limit > 0) {
+      query = query.limit(options.limit);
+    }
+
+    const snapshot = await query.get();
     return snapshot.docs.map((doc) => doc.data() as DocChunk);
   } catch (e: any) {
     if (isProduction) {
@@ -1176,7 +1182,11 @@ export async function getDocumentChunks(
     }
   }
 
-  return memoryChunksStore.get(documentId) || [];
+  let memoryChunks = memoryChunksStore.get(documentId) || [];
+  if (options?.limit && options.limit > 0) {
+    memoryChunks = memoryChunks.slice(0, options.limit);
+  }
+  return memoryChunks;
 }
 
 export async function getDocumentFileBuffer(

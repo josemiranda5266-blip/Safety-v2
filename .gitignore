@@ -1,12 +1,31 @@
-node_modules/
-build/
-dist/
-coverage/
-.DS_Store
-*.log
+# Variables de entorno y secretos
+.env
+.env.local
+.env.*.local
 .env*
 !.env.example
-service-account*.json
+
+# Claves de servicio y certificados
+*.pem
+*.p12
+*-firebase-adminsdk-*.json
 firebase-adminsdk*.json
+service-account*.json
 secret*.json
+
+# Archivos de compilación y caché
+dist/
+build/
+coverage/
+node_modules/
+*.log
+.DS_Store
+
+# Archivos temporales de edición y parches
+*.patch
+*.mjs.bak
+fix_*.mjs
+fix_*.js
+update_*.mjs
+
 

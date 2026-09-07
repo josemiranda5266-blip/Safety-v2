@@ -1,7 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { dashboardService } from '../../../services/dashboardService';
 import { useTenant } from '../../../context/TenantContext';
-import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, AreaChart, Area, Legend, LineChart, Line } from 'recharts';
 import { Activity, AlertTriangle, ShieldCheck, Target, Users, Microscope, CheckCircle, Clock } from 'lucide-react';
 
 export const DashboardScreen: React.FC = () => {
@@ -23,7 +22,7 @@ export const DashboardScreen: React.FC = () => {
     } finally {
       setLoading(false);
     }
-  }
+  };
 
   if (loading || !data) return (
     <div className="flex items-center justify-center h-64 text-slate-500">
@@ -33,6 +32,11 @@ export const DashboardScreen: React.FC = () => {
       </div>
     </div>
   );
+
+  const monthlyTrend = Array.isArray(data.monthlyTrend) ? data.monthlyTrend : [];
+  const maxTrend = Math.max(1, ...monthlyTrend.flatMap((item: any) => [Number(item.accidentes) || 0, Number(item.incidentes) || 0]));
+  const totalCapas = (Number(data.closedCapas) || 0) + (Number(data.openCapas) || 0);
+  const closureRate = totalCapas > 0 ? ((Number(data.closedCapas) || 0) / totalCapas) * 100 : 0;
 
   return (
     <div className="space-y-6">
@@ -52,132 +56,65 @@ export const DashboardScreen: React.FC = () => {
       </div>
 
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
-        {/* KPI Cards */}
         <div className="bg-white dark:bg-slate-900 p-5 rounded-2xl border border-slate-200 dark:border-slate-800 shadow-sm flex flex-col justify-between hover:border-indigo-300 dark:hover:border-indigo-800 transition-colors">
-          <div className="flex justify-between items-start mb-2">
-            <span className="text-sm font-bold text-slate-500">Accidentes</span>
-            <div className="p-2 bg-red-50 dark:bg-red-900/20 rounded-lg text-red-500">
-              <AlertTriangle className="w-4 h-4" />
-            </div>
-          </div>
-          <div>
-            <span className="text-3xl font-extrabold text-slate-900 dark:text-white">{data.accidents}</span>
-            <span className="text-xs text-slate-400 ml-2">YTD</span>
-          </div>
+          <div className="flex justify-between items-start mb-2"><span className="text-sm font-bold text-slate-500">Accidentes</span><div className="p-2 bg-red-50 dark:bg-red-900/20 rounded-lg text-red-500"><AlertTriangle className="w-4 h-4" /></div></div>
+          <div><span className="text-3xl font-extrabold text-slate-900 dark:text-white">{data.accidents}</span><span className="text-xs text-slate-400 ml-2">YTD</span></div>
         </div>
 
         <div className="bg-white dark:bg-slate-900 p-5 rounded-2xl border border-slate-200 dark:border-slate-800 shadow-sm flex flex-col justify-between hover:border-indigo-300 dark:hover:border-indigo-800 transition-colors">
-          <div className="flex justify-between items-start mb-2">
-            <span className="text-sm font-bold text-slate-500">Casi Accidentes</span>
-            <div className="p-2 bg-amber-50 dark:bg-amber-900/20 rounded-lg text-amber-500">
-              <Target className="w-4 h-4" />
-            </div>
-          </div>
-          <div>
-            <span className="text-3xl font-extrabold text-slate-900 dark:text-white">{data.nearMisses}</span>
-            <span className="text-xs text-slate-400 ml-2">Reportes</span>
-          </div>
+          <div className="flex justify-between items-start mb-2"><span className="text-sm font-bold text-slate-500">Casi Accidentes</span><div className="p-2 bg-amber-50 dark:bg-amber-900/20 rounded-lg text-amber-500"><Target className="w-4 h-4" /></div></div>
+          <div><span className="text-3xl font-extrabold text-slate-900 dark:text-white">{data.nearMisses}</span><span className="text-xs text-slate-400 ml-2">Reportes</span></div>
         </div>
 
         <div className="bg-white dark:bg-slate-900 p-5 rounded-2xl border border-slate-200 dark:border-slate-800 shadow-sm flex flex-col justify-between hover:border-indigo-300 dark:hover:border-indigo-800 transition-colors">
-          <div className="flex justify-between items-start mb-2">
-            <span className="text-sm font-bold text-slate-500">Desvíos / CAPA</span>
-            <div className="p-2 bg-blue-50 dark:bg-blue-900/20 rounded-lg text-blue-500">
-              <ShieldCheck className="w-4 h-4" />
-            </div>
-          </div>
-          <div className="flex items-end gap-3">
-            <div>
-              <span className="text-3xl font-extrabold text-slate-900 dark:text-white">{data.openCapas}</span>
-              <span className="text-xs text-rose-500 font-bold ml-1">Abiertas</span>
-            </div>
-            <div className="text-xs text-emerald-500 font-bold mb-1">
-              {data.closedCapas} Cerradas
-            </div>
-          </div>
+          <div className="flex justify-between items-start mb-2"><span className="text-sm font-bold text-slate-500">Desvíos / CAPA</span><div className="p-2 bg-blue-50 dark:bg-blue-900/20 rounded-lg text-blue-500"><ShieldCheck className="w-4 h-4" /></div></div>
+          <div className="flex items-end gap-3"><div><span className="text-3xl font-extrabold text-slate-900 dark:text-white">{data.openCapas}</span><span className="text-xs text-rose-500 font-bold ml-1">Abiertas</span></div><div className="text-xs text-emerald-500 font-bold mb-1">{data.closedCapas} Cerradas</div></div>
         </div>
 
         <div className="bg-white dark:bg-slate-900 p-5 rounded-2xl border border-slate-200 dark:border-slate-800 shadow-sm flex flex-col justify-between hover:border-indigo-300 dark:hover:border-indigo-800 transition-colors">
-          <div className="flex justify-between items-start mb-2">
-            <span className="text-sm font-bold text-slate-500">Actividad</span>
-            <div className="p-2 bg-indigo-50 dark:bg-indigo-900/20 rounded-lg text-indigo-500">
-              <Users className="w-4 h-4" />
-            </div>
-          </div>
-          <div className="grid grid-cols-2 gap-2 text-center">
-            <div>
-              <div className="text-xl font-extrabold text-slate-900 dark:text-white">{data.trainings}</div>
-              <div className="text-[10px] uppercase font-bold text-slate-400 tracking-wider">Cursos</div>
-            </div>
-            <div>
-              <div className="text-xl font-extrabold text-slate-900 dark:text-white">{data.inspections}</div>
-              <div className="text-[10px] uppercase font-bold text-slate-400 tracking-wider">Auditorías</div>
-            </div>
-          </div>
+          <div className="flex justify-between items-start mb-2"><span className="text-sm font-bold text-slate-500">Actividad</span><div className="p-2 bg-indigo-50 dark:bg-indigo-900/20 rounded-lg text-indigo-500"><Users className="w-4 h-4" /></div></div>
+          <div className="grid grid-cols-2 gap-2 text-center"><div><div className="text-xl font-extrabold text-slate-900 dark:text-white">{data.trainings}</div><div className="text-[10px] uppercase font-bold text-slate-400 tracking-wider">Cursos</div></div><div><div className="text-xl font-extrabold text-slate-900 dark:text-white">{data.inspections}</div><div className="text-[10px] uppercase font-bold text-slate-400 tracking-wider">Auditorías</div></div></div>
         </div>
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
         <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 p-6 rounded-2xl shadow-sm h-[400px]">
-          <h3 className="text-lg font-bold text-slate-900 dark:text-white mb-6">Frecuencia de Accidentabilidad (YTD)</h3>
-          <ResponsiveContainer width="100%" height="85%">
-            <AreaChart data={data.monthlyTrend}>
-              <defs>
-                <linearGradient id="colorAcc" x1="0" y1="0" x2="0" y2="1">
-                  <stop offset="5%" stopColor="#ef4444" stopOpacity={0.3}/>
-                  <stop offset="95%" stopColor="#ef4444" stopOpacity={0}/>
-                </linearGradient>
-                <linearGradient id="colorInc" x1="0" y1="0" x2="0" y2="1">
-                  <stop offset="5%" stopColor="#f59e0b" stopOpacity={0.3}/>
-                  <stop offset="95%" stopColor="#f59e0b" stopOpacity={0}/>
-                </linearGradient>
-              </defs>
-              <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#334155" opacity={0.2} />
-              <XAxis dataKey="name" axisLine={false} tickLine={false} tick={{fill: '#64748b', fontSize: 12}} dy={10} />
-              <YAxis axisLine={false} tickLine={false} tick={{fill: '#64748b', fontSize: 12}} />
-              <Tooltip 
-                contentStyle={{ backgroundColor: '#0f172a', borderColor: '#1e293b', borderRadius: '12px', color: '#fff' }}
-                itemStyle={{ fontWeight: 'bold' }}
-              />
-              <Legend verticalAlign="top" height={36} wrapperStyle={{ fontSize: '12px', fontWeight: 'bold' }}/>
-              <Area type="monotone" name="Accidentes" dataKey="accidentes" stroke="#ef4444" strokeWidth={3} fillOpacity={1} fill="url(#colorAcc)" />
-              <Area type="monotone" name="Incidentes" dataKey="incidentes" stroke="#f59e0b" strokeWidth={3} fillOpacity={1} fill="url(#colorInc)" />
-            </AreaChart>
-          </ResponsiveContainer>
+          <div className="flex items-center justify-between mb-6">
+            <h3 className="text-lg font-bold text-slate-900 dark:text-white">Frecuencia de Accidentabilidad (YTD)</h3>
+            <div className="flex gap-4 text-xs font-bold"><span>● Accidentes</span><span>● Incidentes</span></div>
+          </div>
+          <div className="h-[290px] flex items-end gap-2 border-b border-slate-200 dark:border-slate-700 px-2">
+            {monthlyTrend.length === 0 ? (
+              <div className="w-full h-full flex items-center justify-center text-sm text-slate-400">Sin datos mensuales disponibles</div>
+            ) : monthlyTrend.map((item: any, index: number) => {
+              const accidents = Number(item.accidentes) || 0;
+              const incidents = Number(item.incidentes) || 0;
+              const accidentHeight = `${Math.max(3, (accidents / maxTrend) * 100)}%`;
+              const incidentHeight = `${Math.max(3, (incidents / maxTrend) * 100)}%`;
+              return (
+                <div key={`${item.name || 'month'}-${index}`} className="flex-1 h-full flex flex-col justify-end items-center gap-1 min-w-0">
+                  <div className="flex items-end justify-center gap-1 w-full h-full">
+                    <div title={`Accidentes: ${accidents}`} className="w-2/5 max-w-6 rounded-t bg-red-400" style={{ height: accidentHeight }} />
+                    <div title={`Incidentes: ${incidents}`} className="w-2/5 max-w-6 rounded-t bg-amber-400" style={{ height: incidentHeight }} />
+                  </div>
+                  <span className="text-[10px] text-slate-500 truncate max-w-full">{item.name || index + 1}</span>
+                </div>
+              );
+            })}
+          </div>
         </div>
 
         <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 p-6 rounded-2xl shadow-sm h-[400px] flex flex-col">
           <h3 className="text-lg font-bold text-slate-900 dark:text-white mb-6">Gestión de Hallazgos y CAPA</h3>
-          
           <div className="flex-1 flex flex-col justify-center items-center">
-            {/* A simple placeholder layout instead of adding more complex pie charts to keep imports clean, visualizing ratio */}
             <div className="w-full max-w-sm mb-8">
-              <div className="flex justify-between text-sm font-bold mb-2">
-                <span className="text-emerald-600 dark:text-emerald-400">Desvíos Cerrados ({data.closedCapas})</span>
-                <span className="text-rose-600 dark:text-rose-400">Abiertos ({data.openCapas})</span>
-              </div>
-              <div className="w-full h-4 bg-rose-100 dark:bg-rose-900/30 rounded-full overflow-hidden flex">
-                <div 
-                  className="bg-emerald-500 h-full transition-all duration-1000" 
-                  style={{ width: `${data.closedCapas + data.openCapas > 0 ? (data.closedCapas / (data.closedCapas + data.openCapas)) * 100 : 0}%`}}
-                ></div>
-              </div>
-              <p className="text-center text-xs text-slate-500 mt-3 font-medium">
-                Tasa de Cierre de Acciones Correctivas
-              </p>
+              <div className="flex justify-between text-sm font-bold mb-2"><span className="text-emerald-600 dark:text-emerald-400">Desvíos Cerrados ({data.closedCapas})</span><span className="text-rose-600 dark:text-rose-400">Abiertos ({data.openCapas})</span></div>
+              <div className="w-full h-4 bg-rose-100 dark:bg-rose-900/30 rounded-full overflow-hidden flex"><div className="bg-emerald-500 h-full transition-all duration-1000" style={{ width: `${closureRate}%` }} /></div>
+              <p className="text-center text-xs text-slate-500 mt-3 font-medium">Tasa de Cierre de Acciones Correctivas</p>
             </div>
-
             <div className="grid grid-cols-2 gap-4 w-full mt-4">
-               <div className="bg-slate-50 dark:bg-slate-800/50 p-4 rounded-xl text-center border border-slate-100 dark:border-slate-800">
-                  <CheckCircle className="w-6 h-6 text-emerald-500 mx-auto mb-2" />
-                  <div className="text-2xl font-extrabold text-slate-900 dark:text-white">{data.compliance}%</div>
-                  <div className="text-xs text-slate-500 font-bold uppercase tracking-wider">Cumplimiento Legal</div>
-               </div>
-               <div className="bg-slate-50 dark:bg-slate-800/50 p-4 rounded-xl text-center border border-slate-100 dark:border-slate-800">
-                  <Microscope className="w-6 h-6 text-indigo-500 mx-auto mb-2" />
-                  <div className="text-2xl font-extrabold text-slate-900 dark:text-white">{data.measurements}</div>
-                  <div className="text-xs text-slate-500 font-bold uppercase tracking-wider">Mediciones Hig.</div>
-               </div>
+              <div className="bg-slate-50 dark:bg-slate-800/50 p-4 rounded-xl text-center border border-slate-100 dark:border-slate-800"><CheckCircle className="w-6 h-6 text-emerald-500 mx-auto mb-2" /><div className="text-2xl font-extrabold text-slate-900 dark:text-white">{data.compliance}%</div><div className="text-xs text-slate-500 font-bold uppercase tracking-wider">Cumplimiento Legal</div></div>
+              <div className="bg-slate-50 dark:bg-slate-800/50 p-4 rounded-xl text-center border border-slate-100 dark:border-slate-800"><Microscope className="w-6 h-6 text-indigo-500 mx-auto mb-2" /><div className="text-2xl font-extrabold text-slate-900 dark:text-white">{data.measurements}</div><div className="text-xs text-slate-500 font-bold uppercase tracking-wider">Mediciones Hig.</div></div>
             </div>
           </div>
         </div>

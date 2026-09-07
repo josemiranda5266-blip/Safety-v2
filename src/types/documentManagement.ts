@@ -30,13 +30,13 @@ export const DOCUMENT_CATEGORIES: DocumentCategory[] = [
 export type DocumentScope = 'company' | 'establishment' | 'employee' | 'organization';
 
 export type ExpirationAlertLevel =
-  | 'expired'      // Vencido (< 0 días)
-  | 'critical_7d'  // Crítico (<= 7 días)
-  | 'urgent_15d'   // Urgente (<= 15 días)
-  | 'warning_30d'  // Atención (<= 30 días)
-  | 'notice_90d'   // Alerta temprana (<= 90 días)
-  | 'valid'        // Vigente (> 90 días)
-  | 'no_expiry';   // Permanente / Sin vencimiento
+  | 'expired'
+  | 'critical_7d'
+  | 'urgent_15d'
+  | 'warning_30d'
+  | 'notice_90d'
+  | 'valid'
+  | 'no_expiry';
 
 export type DocumentStatus = 'vigente' | 'por_vencer' | 'vencido' | 'archivado' | 'en_revision';
 
@@ -47,7 +47,7 @@ export interface DocumentVersionRecord {
   mimeType: string;
   storagePath: string;
   hash: string;
-  uploadedAt: string; // ISO 8601 string
+  uploadedAt: string;
   uploadedByUid?: string;
   uploadedByName?: string;
   issueDate?: string;
@@ -62,56 +62,39 @@ export interface ProfessionalDocument {
   companyId?: string;
   establishmentId?: string;
   employeeId?: string;
-  
-  // Relational display names (enriched for fast UI display)
   companyName?: string;
   establishmentName?: string;
   employeeName?: string;
   employeeCuil?: string;
-
   title: string;
   category: DocumentCategory;
   subCategory?: string;
-  documentNumber?: string; // N° de Póliza, Certificado, Protocolo de Medición, etc.
-  
-  issueDate: string; // ISO 8601 string (Fecha de emisión / inicio de vigencia)
-  expirationDate?: string; // ISO 8601 string (Fecha de vencimiento / renovación)
-  
-  responsibleName: string; // Nombre del profesional / emisor / técnico responsable
+  documentNumber?: string;
+  issueDate: string;
+  expirationDate?: string;
+  responsibleName: string;
   responsibleUid?: string;
-  issuingOrganism?: string; // ART, SRT, Municipalidad, IRAM, OPDS, Bomberos, etc.
-
+  issuingOrganism?: string;
   status: DocumentStatus;
-  
-  // File attributes
   filename: string;
   fileSize: number;
   mimeType: string;
-  fileType: string; // pdf, docx, xlsx, txt
+  fileType: string;
   storagePath: string;
-  hash: string; // SHA-256
-
+  hash: string;
   summary?: string;
   tags?: string[];
   notes?: string;
-
-  // Versioning
   version: number;
   versionHistory: DocumentVersionRecord[];
-
-  // Soft delete audit
   isDeleted: boolean;
   deletedAt?: string;
   deletedByUid?: string;
   deletedByName?: string;
-
-  // Audit
   createdAt: string;
   updatedAt: string;
   uploadedByUid?: string;
   uploadedByName?: string;
-
-  // Computed fields (by backend or frontend helper)
   daysUntilExpiration?: number | null;
   expirationAlertLevel?: ExpirationAlertLevel;
 }
@@ -128,6 +111,8 @@ export interface DocumentFilterOptions {
   startDate?: string;
   endDate?: string;
   includeDeleted?: boolean;
+  /** Maximum number of documents to retrieve from Firestore. */
+  limit?: number;
 }
 
 export interface DocumentDashboardMetrics {
@@ -140,7 +125,6 @@ export interface DocumentDashboardMetrics {
   notice90dCount: number;
   validCount: number;
   noExpiryCount: number;
-  
   byCategory: Record<DocumentCategory, number>;
   byScope: {
     company: number;
@@ -161,7 +145,7 @@ export interface DocumentCalendarEvent {
   id: string;
   documentId: string;
   title: string;
-  date: string; // YYYY-MM-DD
+  date: string;
   eventType: 'expiration' | 'issue' | 'renewal';
   category: DocumentCategory;
   scope: DocumentScope;

@@ -31,6 +31,41 @@ const app = express();
 app.set("trust proxy", 1);
 const PORT = 3000;
 
+// CORS for the personal Inspector IA API.
+// Google AI Studio Preview runs the frontend on a dynamic *.run.app origin,
+// while the API may be hosted on another origin (for example Render).
+// Reflect only trusted development/AI Studio origins; never use '*'.
+const isAllowedCorsOrigin = (origin: string): boolean => {
+  if (/^https?:\/\/localhost(?::\d+)?$/.test(origin)) return true;
+  if (/^https?:\/\/127\.0\.0\.1(?::\d+)?$/.test(origin)) return true;
+  if (/^https:\/\/ais-dev-[a-z0-9-]+\.run\.app$/.test(origin)) return true;
+  if (/^https:\/\/[a-z0-9-]+\.ai\.studio$/.test(origin)) return true;
+  return false;
+};
+
+app.use((req, res, next) => {
+  const origin = req.headers.origin;
+  if (origin && isAllowedCorsOrigin(origin)) {
+    res.setHeader("Access-Control-Allow-Origin", origin);
+    res.setHeader("Vary", "Origin");
+    res.setHeader("Access-Control-Allow-Methods", "GET,POST,PUT,PATCH,DELETE,OPTIONS");
+    res.setHeader(
+      "Access-Control-Allow-Headers",
+      "Content-Type, Authorization, X-User-ID, X-Org-ID"
+    );
+    res.setHeader("Access-Control-Max-Age", "600");
+  }
+
+  if (req.method === "OPTIONS") {
+    if (origin && isAllowedCorsOrigin(origin)) {
+      return res.status(204).end();
+    }
+    return res.status(403).json({ error: "CORS_ORIGIN_NOT_ALLOWED" });
+  }
+
+  next();
+});
+
 // Security Middlewares (H-03 Hardening)
 const isProd = process.env.NODE_ENV === "production";
 

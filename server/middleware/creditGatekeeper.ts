@@ -19,24 +19,28 @@ export function requireAiCredits(operationType: OperationCostType) {
     if (isPersonalMode()) {
       const uid = req.userUid || "personal_local_user";
       const cost = OPERATION_CREDIT_COSTS[operationType] || 0;
+      const now = new Date();
+      const personalProfile: UserProfileServer = {
+        uid,
+        email: req.userEmail || "personal@safetyia.local",
+        displayName: req.userDisplayName || "Usuario Personal Safety IA",
+        role: "professional",
+        plan: "free",
+        monthlyCredits: 1000000,
+        creditsUsed: 0,
+        billingPeriodStart: now.toISOString(),
+        billingPeriodEnd: new Date("2999-12-31T23:59:59.999Z").toISOString(),
+        createdAt: now.toISOString(),
+      };
+
       req.creditContext = {
         operationType,
         cost,
         uid,
         commit: () => ({
           success: true,
-          remainingCredits: Number.MAX_SAFE_INTEGER,
-          profile: {
-            uid,
-            email: req.userEmail || "personal@safetyia.local",
-            displayName: req.userDisplayName || "Usuario Personal Safety IA",
-            plan: "enterprise",
-            monthlyCredits: Number.MAX_SAFE_INTEGER,
-            creditsUsed: 0,
-            billingPeriodStart: new Date().toISOString(),
-            billingPeriodEnd: new Date("2999-12-31T23:59:59.999Z").toISOString(),
-            createdAt: new Date().toISOString(),
-          } as UserProfileServer,
+          remainingCredits: personalProfile.monthlyCredits,
+          profile: personalProfile,
         }),
       };
       next();

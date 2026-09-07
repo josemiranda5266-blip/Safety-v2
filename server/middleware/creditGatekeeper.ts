@@ -1,7 +1,7 @@
 import { Response, NextFunction } from "express";
 import { OperationCostType, OPERATION_CREDIT_COSTS } from "../config/plans";
 import { checkUserCredits, deductUserCredits, UserProfileServer } from "../services/creditService";
-import { AuthenticatedRequest } from "./auth";
+import { AuthenticatedRequest, isPersonalMode } from "./auth";
 
 export interface CreditContext {
   operationType: OperationCostType;
@@ -16,7 +16,33 @@ export interface CreditGuardedRequest extends AuthenticatedRequest {
 
 export function requireAiCredits(operationType: OperationCostType) {
   return (req: CreditGuardedRequest, res: Response, next: NextFunction) => {
-    // Strict authentication guard: credit checks require an authentic, verified user identity
+    if (isPersonalMode()) {
+      const uid = req.userUid || "personal_local_user";
+      const cost = OPERATION_CREDIT_COSTS[operationType] || 0;
+      req.creditContext = {
+        operationType,
+        cost,
+        uid,
+        commit: () => ({
+          success: true,
+          remainingCredits: Number.MAX_SAFE_INTEGER,
+          profile: {
+            uid,
+            email: req.userEmail || "personal@safetyia.local",
+            displayName: req.userDisplayName || "Usuario Personal Safety IA",
+            plan: "enterprise",
+            monthlyCredits: Number.MAX_SAFE_INTEGER,
+            creditsUsed: 0,
+            billingPeriodStart: new Date().toISOString(),
+            billingPeriodEnd: new Date("2999-12-31T23:59:59.999Z").toISOString(),
+            createdAt: new Date().toISOString(),
+          } as UserProfileServer,
+        }),
+      };
+      next();
+      return;
+    }
+
     if (!req.identity || !req.userUid) {
       return res.status(401).json({
         error: "No autenticado",
@@ -40,7 +66,6 @@ export function requireAiCredits(operationType: OperationCostType) {
       });
     }
 
-    // Attach commit helper so credits are only deducted upon successful AI completion
     let committed = false;
     req.creditContext = {
       operationType,
@@ -58,4 +83,3 @@ export function requireAiCredits(operationType: OperationCostType) {
     next();
   };
 }
-

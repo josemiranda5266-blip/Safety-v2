@@ -6,8 +6,6 @@ import {
 import { FirestoreAuthorizationRepository } from "./firestoreRepository";
 import { validateAuthConfig } from "../auth/config";
 
-// Current active repository instance
-// Can be InMemoryAuthorizationRepository or FirestoreAuthorizationRepository
 let currentAuthRepository: AuthorizationRepository = new InMemoryAuthorizationRepository();
 
 export function getAuthorizationRepository(): AuthorizationRepository {
@@ -18,44 +16,45 @@ export function setAuthorizationRepository(repo: AuthorizationRepository): void 
   currentAuthRepository = repo;
 }
 
-/**
- * Initializes Firestore as the active Authorization repository.
- */
 export function useFirestoreAuthorizationRepository(): FirestoreAuthorizationRepository {
   const repo = new FirestoreAuthorizationRepository();
   currentAuthRepository = repo;
   return repo;
 }
 
+export function isPersonalMode(): boolean {
+  return process.env.SAFETY_PERSONAL_MODE !== "false";
+}
+
 /**
  * Initializes the authorization repository depending on environment.
- * 
- * Strict Production Policy:
- * - NODE_ENV === "production" MUST use FirestoreAuthorizationRepository.
- * - InMemoryAuthorizationRepository is STRICTLY FORBIDDEN in production.
- * - Firestore health check MUST succeed before accepting traffic.
- * - If Firestore is unavailable or health check fails in production -> THROW CRITICAL SECURITY ERROR (Startup failure).
+ * Personal mode intentionally has no Firebase authorization dependency.
  */
 export async function initializeAuthorizationRepository(
   overrideEnv?: string
 ): Promise<AuthorizationRepository> {
   const env = overrideEnv || process.env.NODE_ENV || "development";
 
+  // Personal single-user deployment: keep authorization services local and do not
+  // require Firebase Admin credentials just to start the application.
+  if (isPersonalMode()) {
+    if (!(getAuthorizationRepository() instanceof InMemoryAuthorizationRepository)) {
+      setAuthorizationRepository(new InMemoryAuthorizationRepository());
+    }
+    return getAuthorizationRepository();
+  }
+
   if (env === "production") {
-    // 1. Validate auth config first (checks FIREBASE_PROJECT_ID, AUTH_DEV_MODE, etc.)
     validateAuthConfig();
 
-    // 2. Select FirestoreAuthorizationRepository
     const repo = useFirestoreAuthorizationRepository();
 
-    // 3. Strict guard: Production authorization repository CANNOT be InMemory
     if (getAuthorizationRepository() instanceof InMemoryAuthorizationRepository) {
       throw new Error(
         "CRITICAL SECURITY ERROR: Production authorization repository cannot be InMemory."
       );
     }
 
-    // 4. Run real Firestore health check
     const isHealthy = repo.healthCheck ? await repo.healthCheck() : false;
     if (!isHealthy) {
       throw new Error(
@@ -66,7 +65,6 @@ export async function initializeAuthorizationRepository(
     return repo;
   }
 
-  // Non-production (development, test) can use current repo or InMemory
   return getAuthorizationRepository();
 }
 

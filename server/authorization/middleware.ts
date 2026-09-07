@@ -2,16 +2,19 @@ import { Response, NextFunction } from "express";
 import { AuthorizationContext, Permission } from "./types";
 import { resolveAuthorizationContext } from "./context";
 import { hasPermission } from "./guards";
-import { AuthenticatedRequest } from "../middleware/auth";
+import { AuthenticatedRequest, isPersonalMode } from "../middleware/auth";
 
 export interface TenantRequest extends AuthenticatedRequest {
   authContext?: AuthorizationContext;
 }
 
-/**
- * Ensures request has an authentic, verified user identity.
- */
+/** Ensures request has an authenticated identity. Personal mode uses its local identity. */
 export function requireAuth(req: TenantRequest, res: Response, next: NextFunction): void {
+  if (isPersonalMode()) {
+    next();
+    return;
+  }
+
   if (!req.identity || !req.userUid) {
     res.status(401).json({
       error: "No autenticado",
@@ -24,10 +27,24 @@ export function requireAuth(req: TenantRequest, res: Response, next: NextFunctio
 }
 
 /**
- * Resolves and attaches authoritative AuthorizationContext to the request.
- * If user lacks active membership in the target organization, returns 403.
+ * Resolves the authoritative organization context.
+ * In personal mode, a local organization context is synthesized and no membership lookup is required.
  */
 export async function requireTenantContext(req: TenantRequest, res: Response, next: NextFunction): Promise<void> {
+  if (isPersonalMode()) {
+    req.authContext = {
+      userId: req.userUid || "personal_local_user",
+      userEmail: req.userEmail || "personal@safetyia.local",
+      orgId: "org_personal_default",
+      membershipId: "membership_personal_local",
+      membershipRole: "owner",
+      platformRole: "platform_admin",
+      assignedCompanyIds: undefined,
+    };
+    next();
+    return;
+  }
+
   if (!req.identity || !req.userUid) {
     res.status(401).json({
       error: "No autenticado",
@@ -60,9 +77,6 @@ export async function requireTenantContext(req: TenantRequest, res: Response, ne
   next();
 }
 
-/**
- * Middleware factory to enforce specific RBAC Permission on a route.
- */
 export function requirePermission(permission: Permission) {
   return (req: TenantRequest, res: Response, next: NextFunction): void => {
     if (!req.authContext) {
@@ -70,6 +84,11 @@ export function requirePermission(permission: Permission) {
         error: "Contexto de autorización no establecido",
         code: "NO_AUTH_CONTEXT",
       });
+      return;
+    }
+
+    if (isPersonalMode()) {
+      next();
       return;
     }
 

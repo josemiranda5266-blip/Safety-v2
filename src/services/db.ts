@@ -1119,7 +1119,10 @@ export class LocalSafetyDB {
   }
 
   public async callAiApi<T>(endpoint: string, payload: any, customTimeoutMs = 90000): Promise<T> {
-    const headers = await this.getAuthHeaders();
+    // Safety-v2 is a personal application: AI requests must not depend on Firebase Auth.
+    // The backend explicitly accepts unauthenticated requests in personal mode.
+    const isPersonalAiEndpoint = endpoint.includes('/inspector-ai-analyze') || endpoint.includes('/analyze-image');
+    const headers = isPersonalAiEndpoint ? {} : await this.getAuthHeaders();
     const url = buildApiUrl(endpoint);
     
     const controller = new AbortController();

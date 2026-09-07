@@ -9,16 +9,35 @@ export interface AuthenticatedRequest extends Request {
   userDisplayName?: string;
 }
 
+/** Personal mode is the default for this single-user application. */
+export function isPersonalMode(): boolean {
+  return process.env.SAFETY_PERSONAL_MODE !== "false";
+}
+
 /**
  * Extracts and cryptographically verifies Firebase ID Token from Authorization header.
- * Attaches verified AuthenticatedIdentity to request without resolving tenants or roles.
- * Fail-closed: No IP fallback, no anonymous default creation.
+ * In personal mode, a local synthetic identity is used so no registration/login is required.
  */
 export async function extractAuthUser(
   req: AuthenticatedRequest,
   _res: Response,
   next: NextFunction
 ): Promise<void> {
+  if (isPersonalMode()) {
+    const uid = "personal_local_user";
+    req.identity = {
+      uid,
+      email: "personal@safetyia.local",
+      displayName: "Usuario Personal Safety IA",
+      platformRole: "platform_admin",
+    } as AuthenticatedIdentity;
+    req.userUid = uid;
+    req.userEmail = req.identity.email;
+    req.userDisplayName = req.identity.displayName;
+    next();
+    return;
+  }
+
   const authHeader = req.headers.authorization;
   const isProduction = process.env.NODE_ENV === "production";
   const authDevMode = process.env.AUTH_DEV_MODE === "true";
@@ -28,7 +47,6 @@ export async function extractAuthUser(
   if (authHeader && authHeader.startsWith("Bearer ")) {
     token = authHeader.substring(7).trim();
   } else if (!isProduction && authDevMode) {
-    // Explicit opt-in for isolated local development/testing ONLY
     const customUid = req.headers["x-user-id"] as string;
     if (customUid && customUid.trim()) {
       token = `test_token_${customUid.trim()}`;
@@ -53,7 +71,6 @@ export async function extractAuthUser(
     req.userEmail = identity.email;
     req.userDisplayName = identity.displayName;
   } catch (_err) {
-    // Invalid/expired token: clear identity
     req.identity = undefined;
     req.userUid = undefined;
     req.userEmail = undefined;
@@ -63,15 +80,16 @@ export async function extractAuthUser(
   next();
 }
 
-/**
- * Strict authentication guard middleware.
- * Returns 401 UNAUTHENTICATED if request lacks a valid, verified identity.
- */
 export function requireAuthentication(
   req: AuthenticatedRequest,
   res: Response,
   next: NextFunction
 ): void {
+  if (isPersonalMode()) {
+    next();
+    return;
+  }
+
   if (!req.identity || !req.userUid) {
     res.status(401).json({
       error: "No autenticado",

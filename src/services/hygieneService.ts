@@ -8,17 +8,33 @@ import {
 } from '../types/safety';
 import { HygieneDocumentRepresentation } from '../types/hygieneDocument';
 import { NormativeProtocolVersionRecord } from './normativeCatalogService';
-import { auth } from './firebase';
+import { ensureAuth } from './firebase';
 
-const API_BASE = (import.meta.env.VITE_API_BASE_URL || '').replace(/\/$/, '');
+const API_BASE = ((import.meta as any).env?.VITE_API_BASE_URL || '').replace(/\/$/, '');
 
 async function request<T>(path: string, init: RequestInit = {}): Promise<T> {
-  const user = auth.currentUser;
-  if (!user) throw new Error('Authentication required');
+  const user = await ensureAuth();
   const token = await user.getIdToken();
+  const orgId = typeof localStorage !== 'undefined' ? localStorage.getItem('safetyia_active_org_id') : null;
+  const customHeaders: Record<string, string> = {};
+  if (init.headers) {
+    if (init.headers instanceof Headers) {
+      init.headers.forEach((v, k) => { customHeaders[k] = v; });
+    } else if (Array.isArray(init.headers)) {
+      init.headers.forEach(([k, v]) => { customHeaders[k] = v; });
+    } else {
+      Object.assign(customHeaders, init.headers);
+    }
+  }
+  const headers: Record<string, string> = {
+    Authorization: `Bearer ${token}`,
+    'Content-Type': 'application/json',
+    ...(orgId ? { 'x-org-id': orgId, 'X-Organization-Id': orgId } : {}),
+    ...customHeaders,
+  };
   const response = await fetch(`${API_BASE}/api/v2/hygiene${path}`, {
     ...init,
-    headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json', ...(init.headers || {}) },
+    headers,
   });
   const payload = await response.json().catch(() => ({}));
   if (!response.ok) throw new Error(payload.error || 'Hygiene API request failed');

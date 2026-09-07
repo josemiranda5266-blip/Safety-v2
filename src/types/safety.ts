@@ -38,6 +38,21 @@ export interface VerificationEvidence { id: string; photoUrl: string; date: stri
 export interface InspectionFinding { id: string; photoUrl?: string; videoUrl?: string; timestamp: string; location?: { siteName?: string; coords?: { latitude: number; longitude: number } }; hazardCategory: HazardCategory; hazardTitle: string; riskLevel: RiskLevel; description: string; suggestedAction: string; status: FindingStatus; normativeCitation: NormativeCitationRef; verifications?: VerificationEvidence[]; closedDate?: string; closingNotes?: string; capaId?: string; }
 export interface ActionPlanItem { id: string; findingId: string; task: string; responsible: string; deadline: string; status: FindingStatus; riskLevel: RiskLevel; }
 export interface InspectionReport { id: string; organizationId: string; companyId?: string; establishmentId?: string; sectorId?: string; title: string; companyName: string; siteLocation: string; inspectorName: string; inspectorRegistration?: string; date: string; gpsLocation?: string | null; activityDescription?: string; executiveSummary: string; findings: InspectionFinding[]; appliedNorms: string[]; generalRecommendations: string[]; actionPlan: ActionPlanItem[]; inspectorSignatureUrl?: string; status: 'Borrador' | 'En Proceso' | 'Completada' | 'Cerrada'; createdBy?: string; createdByName?: string; createdAt: string; updatedAt: string; }
+export type Inspection = InspectionReport;
+export type Finding = InspectionFinding;
+
+export interface RiskEvaluation { probability: number; severity: number; level: number; }
+export interface IPERControls { elimination?: string[]; substitution?: string[]; engineering?: string[]; administrative?: string[]; epp?: string[]; }
+export interface IPEREntry { id: string; taskName: string; hazard: string; risk: string; initialEvaluation: RiskEvaluation; controls: IPERControls; residualEvaluation: RiskEvaluation; }
+export interface IPERVersion { version: number; date: string; entries: IPEREntry[]; approvedBy?: string; }
+export interface IPERMatrix { id: string; companyId: string; establishmentId: string; sectorId: string; currentVersion: number; versions: IPERVersion[]; }
+
+export interface EPPItem { id: string; name: string; category: string; description?: string; certification?: string; brand?: string; model?: string; }
+export interface EPPAssignment { id: string; companyId?: string; workerId?: string; workerName?: string; employeeId?: string; employeeName?: string; eppId?: string; eppName?: string; itemName?: string; deliveryDate?: string; date?: string; quantity?: number; signed?: boolean; signatureUrl?: string; renewalDate?: string; status?: 'delivered' | 'pending_signature' | 'expired' | 'renewed' | 'Entregado' | 'Pendiente Firma'; notes?: string; observations?: string; }
+
+export interface TrainingAttendee { workerId?: string; workerName: string; attended: boolean; signatureUrl?: string; evaluationScore?: number; }
+export interface TrainingActivity { id: string; companyId: string; establishmentId?: string; establishmentName?: string; topic: string; description?: string; date: string; durationHours: number; trainer: string; attendees: TrainingAttendee[]; evidenceUrls?: string[]; status?: 'planned' | 'completed' | 'cancelled'; }
+
 export interface InspectorStats { totalInspections: number; openInspections: number; completedInspections: number; totalFindings: number; pendingCritical: number; findingsByCategory: { category: string; count: number }[]; findingsByRisk: { risk: RiskLevel; count: number }[]; avgResolutionTimeDays: number; monthlyTrend: { month: string; inspectionsCount: number; findingsCount: number }[]; }
 export interface Norma { id: string; norma: string; type: string; number: string; articleAnexo: string; topic: string; activity: string; risk: string; obligation: string; validity: string; modifications: string; repeal?: string; source: string; evidenceRequired: string; lastVerified: string; isVerified: boolean; }
 export type ComplianceStatus = 'CUMPLE' | 'NO CUMPLE' | 'PENDIENTE' | 'NO APLICA' | 'REVISAR';

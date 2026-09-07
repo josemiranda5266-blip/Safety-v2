@@ -1,16 +1,17 @@
 import { describe, expect, it } from 'vitest';
 import { calculateLightingMeasurement } from './lightingMeasurement';
+import type { CreateLightingMeasurementData } from '../types/safety';
 
 describe('calculateLightingMeasurement', () => {
-  const base = {
+  const base: CreateLightingMeasurementData = {
     sourceType: 'artificial',
-    campaign: 'campaign-1',
+    campaign: { observations: 'campaign-1' },
     points: [
       { name: 'P1', pointType: 'general', lux: 100 },
       { name: 'P2', pointType: 'general', lux: 200 },
       { name: 'P3', pointType: 'general', lux: 300 },
     ],
-  } as const;
+  };
 
   it('calculates canonical average, min, max and uniformity', () => {
     const result = calculateLightingMeasurement(base);

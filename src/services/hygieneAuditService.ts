@@ -1,4 +1,4 @@
-import { api } from "./api";
+import { ensureAuth } from "./firebase";
 
 export type HygieneMeasurementAuditEventType =
   | "created" | "updated" | "normative_snapshot_attached"
@@ -17,9 +17,30 @@ export interface HygieneMeasurementAuditEvent {
   metadata?: Record<string, unknown>;
 }
 
+const API_BASE = ((import.meta as any).env?.VITE_API_BASE_URL || "").replace(/\/$/, "");
+
 export async function listMeasurementAuditEvents(measurementId: string): Promise<HygieneMeasurementAuditEvent[]> {
-  const response = await api.get(`/api/v2/hygiene/measurements/${measurementId}/audit-events`);
-  return response.data.events ?? [];
+  const user = await ensureAuth();
+  const token = await user.getIdToken();
+  const orgId = typeof localStorage !== "undefined" ? localStorage.getItem("safetyia_active_org_id") : null;
+
+  const headers: Record<string, string> = {
+    Authorization: `Bearer ${token}`,
+    "Content-Type": "application/json",
+    ...(orgId ? { "x-org-id": orgId, "X-Organization-Id": orgId } : {}),
+  };
+
+  const response = await fetch(`${API_BASE}/api/v2/hygiene/measurements/${encodeURIComponent(measurementId)}/audit-events`, {
+    headers,
+  });
+
+  if (!response.ok) {
+    const payload = await response.json().catch(() => ({}));
+    throw new Error(payload.error || "Failed to fetch measurement audit events");
+  }
+
+  const data = await response.json();
+  return data.events ?? [];
 }
 
 export function auditEventLabel(type: HygieneMeasurementAuditEventType): string {

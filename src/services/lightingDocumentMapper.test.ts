@@ -29,7 +29,7 @@ const baseMeasurement = (): HygieneMeasurement => ({
     criteriaSnapshot: [],
   },
   instrumentSnapshots: [{
-    id: 'lux-1', instrumentType: 'Luxómetro', brand: 'Marca', model: 'Modelo', serialNumber: 'SER-1',
+    id: 'lux-1', category: 'lighting', instrumentType: 'Luxómetro', brand: 'Marca', model: 'Modelo', serialNumber: 'SER-1',
     calibrationDate: '2026-01-01', calibrationExpiry: '2027-01-01', certificateUrl: 'cert://1', capturedAt: '2026-08-29T10:06:00.000Z',
   }],
   status: 'validated',

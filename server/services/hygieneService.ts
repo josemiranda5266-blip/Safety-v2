@@ -22,6 +22,7 @@ export interface HygieneMeasurementRecord {
   context: { companyId: string; establishmentId: string; sectorId?: string; positionId?: string; employeeId?: string };
   protocolType: string; measurementDate: string; instrumentIds: string[]; instrumentSnapshots?: HygieneInstrumentSnapshot[]; notes?: string | null;
   rawData?: Record<string, unknown>; review?: HygieneMeasurementReview; normativeEvaluationSnapshot?: { normativeProtocolVersionId: string; reference: string; version: string; evaluatedAt: string; selectedCriterionId?: string; criteriaSnapshot: Array<{ id: string; code: string; title: string; description?: string; unit?: string; parameters: Record<string, string | number | boolean>; applicability?: string }> }; status: HygieneMeasurementStatus; active: boolean;
+  validatedAt?: string | null;
   createdBy: string; createdAt: string; updatedBy: string; updatedAt: string;
 }
 

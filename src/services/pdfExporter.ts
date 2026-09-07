@@ -74,11 +74,11 @@ export function exportIncidentReportPDF(incident: Incident): void {
 
 export function exportInspectionReportPDF(inspection: Inspection): void {
   const doc = new jsPDF();
-  doc.text(`Informe de Inspección: ${inspection.type}`, 14, 20);
+  doc.text(`Informe de Inspección: ${inspection.title || (inspection as any).type || 'General'}`, 14, 20);
   doc.text(`Fecha: ${inspection.date}`, 14, 30);
   doc.text(`Estado: ${inspection.status}`, 14, 40);
   
-  const tableData = inspection.findings.map(f => [f.description, f.hazard, f.severity, f.status]);
+  const tableData = inspection.findings.map(f => [f.description, f.hazardTitle || (f as any).hazard || '', f.riskLevel || (f as any).severity || '', f.status]);
   autoTable(doc, {
     head: [['Descripción', 'Peligro', 'Gravedad', 'Estado']],
     body: tableData,
